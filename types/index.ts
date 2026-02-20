@@ -1,5 +1,6 @@
 export interface Restaurant {
   id: string;
+  placeId?: string;
   name: string;
   cuisine: string;
   priceLevel: 1 | 2 | 3 | 4;
@@ -50,6 +51,7 @@ export interface UserPreferences {
   dietary: string[];
   atmosphere: string;
   groupSize: string;
+  distance: string;
 }
 
 export type CuisineType =

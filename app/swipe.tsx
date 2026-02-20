@@ -6,6 +6,7 @@ import {
   Pressable,
   Animated,
   Dimensions,
+  ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -13,8 +14,7 @@ import { Image } from 'expo-image';
 import { X, Heart, ArrowLeft, RotateCcw, Star, MapPin } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import SwipeCard from '@/components/SwipeCard';
-import { useApp } from '@/context/AppContext';
-import { restaurants } from '@/mocks/restaurants';
+import { useApp, useNearbyRestaurants } from '@/context/AppContext';
 import { Restaurant } from '@/types';
 import Colors from '@/constants/colors';
 
@@ -23,10 +23,11 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 export default function SwipeScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { preferences, toggleFavorite } = useApp();
+  const { preferences, toggleFavorite, locationPermission, requestLocation } = useApp();
+  const { data: restaurantData = [], isFetching } = useNearbyRestaurants();
 
   const sortedRestaurants = React.useMemo(() => {
-    return [...restaurants].sort((a, b) => {
+    return [...restaurantData].sort((a, b) => {
       let scoreA = 0;
       let scoreB = 0;
       if (preferences.cuisines.includes(a.cuisine)) scoreA += 2;
@@ -35,7 +36,7 @@ export default function SwipeScreen() {
       if (b.isOpenNow) scoreB += 1;
       return scoreB - scoreA;
     });
-  }, [preferences.cuisines]);
+  }, [restaurantData, preferences.cuisines]);
 
   const [currentIndex, setCurrentIndex] = useState<number>(0);
   const [liked, setLiked] = useState<Restaurant[]>([]);
@@ -103,6 +104,15 @@ export default function SwipeScreen() {
   const progress = sortedRestaurants.length > 0
     ? currentIndex / sortedRestaurants.length
     : 0;
+
+  if (isFetching && sortedRestaurants.length === 0) {
+    return (
+      <View style={[styles.container, styles.centeredState, { paddingTop: insets.top }]}>
+        <ActivityIndicator size="large" color={Colors.primary} />
+        <Text style={styles.loadingText}>Finding restaurants near you…</Text>
+      </View>
+    );
+  }
 
   if (showResults) {
     return (
@@ -186,6 +196,15 @@ export default function SwipeScreen() {
       <View style={styles.progressBarContainer}>
         <View style={[styles.progressBar, { width: `${progress * 100}%` }]} />
       </View>
+
+      {locationPermission === 'denied' && (
+        <Pressable style={styles.locationBanner} onPress={requestLocation}>
+          <MapPin size={14} color={Colors.primary} />
+          <Text style={styles.locationBannerText}>
+            Enable location for nearby restaurants
+          </Text>
+        </Pressable>
+      )}
 
       <View style={styles.cardStack}>
         {sortedRestaurants.slice(currentIndex, currentIndex + 2).reverse().map((restaurant, i) => {
@@ -471,5 +490,31 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700' as const,
     color: '#FFF',
+  },
+  centeredState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  loadingText: {
+    fontSize: 15,
+    color: Colors.textSecondary,
+    fontWeight: '500' as const,
+  },
+  locationBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginHorizontal: 20,
+    marginBottom: 8,
+    backgroundColor: Colors.primaryLight,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 10,
+  },
+  locationBannerText: {
+    fontSize: 13,
+    color: Colors.primary,
+    fontWeight: '600' as const,
   },
 });

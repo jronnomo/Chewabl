@@ -2,13 +2,30 @@ import { useEffect, useState, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import createContextHook from '@nkzw/create-context-hook';
+import * as Location from 'expo-location';
 import { UserPreferences, DiningPlan, Restaurant } from '../types';
 import { samplePlans } from '../mocks/plans';
+import {
+  searchNearby,
+  searchText,
+  buildSearchNearbyParams,
+  CUISINE_TYPE_MAP,
+  Coords,
+} from '../services/googlePlaces';
+import { mapToRestaurant } from '../lib/placesMapper';
+import { restaurants as mockRestaurants } from '../mocks/restaurants';
 
 const PREFS_KEY = 'chewabl_preferences';
 const ONBOARDED_KEY = 'chewabl_onboarded';
 const PLANS_KEY = 'chewabl_plans';
 const FAVORITES_KEY = 'chewabl_favorites';
+
+const BUDGET_MAP: Record<string, string[]> = {
+  '$': ['PRICE_LEVEL_1'],
+  '$$': ['PRICE_LEVEL_2'],
+  '$$$': ['PRICE_LEVEL_3'],
+  '$$$$': ['PRICE_LEVEL_4'],
+};
 
 export const [AppProvider, useApp] = createContextHook(() => {
   const queryClient = useQueryClient();
@@ -20,9 +37,14 @@ export const [AppProvider, useApp] = createContextHook(() => {
     dietary: [],
     atmosphere: 'Moderate',
     groupSize: '2',
+    distance: '5',
   });
   const [plans, setPlans] = useState<DiningPlan[]>(samplePlans);
   const [favorites, setFavorites] = useState<string[]>([]);
+  const [userLocation, setUserLocation] = useState<Coords | null>(null);
+  const [locationPermission, setLocationPermission] = useState<
+    'undetermined' | 'granted' | 'denied'
+  >('undetermined');
 
   const onboardedQuery = useQuery({
     queryKey: ['onboarded'],
@@ -36,7 +58,7 @@ export const [AppProvider, useApp] = createContextHook(() => {
     queryKey: ['preferences'],
     queryFn: async () => {
       const stored = await AsyncStorage.getItem(PREFS_KEY);
-      return stored ? JSON.parse(stored) as UserPreferences : null;
+      return stored ? (JSON.parse(stored) as UserPreferences) : null;
     },
   });
 
@@ -44,7 +66,7 @@ export const [AppProvider, useApp] = createContextHook(() => {
     queryKey: ['favorites'],
     queryFn: async () => {
       const stored = await AsyncStorage.getItem(FAVORITES_KEY);
-      return stored ? JSON.parse(stored) as string[] : [];
+      return stored ? (JSON.parse(stored) as string[]) : [];
     },
   });
 
@@ -56,7 +78,8 @@ export const [AppProvider, useApp] = createContextHook(() => {
 
   useEffect(() => {
     if (prefsQuery.data) {
-      setPreferences(prefsQuery.data);
+      // Merge with defaults so legacy stored prefs without `distance` still work
+      setPreferences(prev => ({ ...prev, ...prefsQuery.data, distance: prefsQuery.data!.distance ?? '5' }));
     }
   }, [prefsQuery.data]);
 
@@ -65,6 +88,33 @@ export const [AppProvider, useApp] = createContextHook(() => {
       setFavorites(favoritesQuery.data);
     }
   }, [favoritesQuery.data]);
+
+  const requestLocation = useCallback(async () => {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        setLocationPermission('denied');
+        return;
+      }
+      setLocationPermission('granted');
+      const pos = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+      setUserLocation({
+        latitude: pos.coords.latitude,
+        longitude: pos.coords.longitude,
+      });
+    } catch {
+      setLocationPermission('denied');
+    }
+  }, []);
+
+  // Request location once after onboarding is confirmed
+  useEffect(() => {
+    if (isOnboarded && !userLocation && locationPermission === 'undetermined') {
+      requestLocation();
+    }
+  }, [isOnboarded]);
 
   const saveOnboarding = useMutation({
     mutationFn: async (prefs: UserPreferences) => {
@@ -112,9 +162,91 @@ export const [AppProvider, useApp] = createContextHook(() => {
     preferences,
     plans,
     favorites,
+    userLocation,
+    locationPermission,
     saveOnboarding,
     updatePreferences,
     toggleFavorite,
     addPlan,
+    requestLocation,
   };
 });
+
+// ---------------------------------------------------------------------------
+// Standalone React Query hooks – call these inside AppProvider children
+// ---------------------------------------------------------------------------
+
+export function useNearbyRestaurants() {
+  const { preferences, userLocation } = useApp();
+
+  return useQuery<Restaurant[]>({
+    queryKey: [
+      'nearbyRestaurants',
+      preferences.cuisines,
+      preferences.budget,
+      preferences.atmosphere,
+      preferences.distance,
+      userLocation,
+    ],
+    queryFn: async () => {
+      if (!userLocation) return mockRestaurants;
+      try {
+        const params = buildSearchNearbyParams(preferences, userLocation);
+        const places = await searchNearby(params);
+        if (places.length === 0) return mockRestaurants;
+        return places.map(p => mapToRestaurant(p, userLocation));
+      } catch {
+        return mockRestaurants;
+      }
+    },
+    staleTime: 5 * 60 * 1000,
+    placeholderData: mockRestaurants,
+  });
+}
+
+export function useSearchRestaurants(
+  query: string,
+  cuisine: string,
+  budget: string
+) {
+  const { preferences, userLocation } = useApp();
+
+  return useQuery<Restaurant[]>({
+    queryKey: ['searchRestaurants', query, cuisine, budget, userLocation],
+    queryFn: async () => {
+      try {
+        const distanceMiles = parseFloat(preferences.distance || '5');
+        const radiusMeters = Math.round(distanceMiles * 1609.34);
+        const priceLevels = budget !== 'All' ? (BUDGET_MAP[budget] || []) : [];
+
+        // Build text query: use typed query, or cuisine filter, or generic fallback
+        let textQuery = query.trim();
+        if (!textQuery) {
+          textQuery = cuisine !== 'All' ? `${cuisine} restaurant` : 'restaurant';
+        }
+
+        // Map selected cuisine chip to an includedType for the API
+        const includedType =
+          cuisine !== 'All' && CUISINE_TYPE_MAP[cuisine]
+            ? CUISINE_TYPE_MAP[cuisine][0]
+            : undefined;
+
+        const places = await searchText({
+          textQuery,
+          location: userLocation || undefined,
+          radiusMeters: userLocation ? radiusMeters : undefined,
+          priceLevels: priceLevels.length > 0 ? priceLevels : undefined,
+          includedType,
+          maxResultCount: 20,
+        });
+
+        if (places.length === 0) return mockRestaurants;
+        return places.map(p => mapToRestaurant(p, userLocation || undefined));
+      } catch {
+        return mockRestaurants;
+      }
+    },
+    staleTime: 5 * 60 * 1000,
+    placeholderData: mockRestaurants,
+  });
+}

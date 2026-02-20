@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -13,16 +13,30 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Search, SlidersHorizontal, X } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import RestaurantCard from '../../../components/RestaurantCard';
-import { restaurants, CUISINES, BUDGET_OPTIONS } from '../../../mocks/restaurants';
+import { CUISINES, BUDGET_OPTIONS } from '../../../mocks/restaurants';
+import { useSearchRestaurants } from '../../../context/AppContext';
 import Colors from '../../../constants/colors';
 
 export default function DiscoverScreen() {
   const insets = useSafeAreaInsets();
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [debouncedQuery, setDebouncedQuery] = useState<string>('');
   const [selectedCuisine, setSelectedCuisine] = useState<string>('All');
   const [selectedBudget, setSelectedBudget] = useState<string>('All');
   const [showFilters, setShowFilters] = useState<boolean>(false);
   const filterHeight = useRef(new Animated.Value(0)).current;
+
+  // Debounce search query by 300ms
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedQuery(searchQuery), 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  const { data: filteredRestaurants = [] } = useSearchRestaurants(
+    debouncedQuery,
+    selectedCuisine,
+    selectedBudget
+  );
 
   const toggleFilters = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -34,18 +48,6 @@ export default function DiscoverScreen() {
     }).start();
     setShowFilters(!showFilters);
   }, [showFilters, filterHeight]);
-
-  const filteredRestaurants = useMemo(() => {
-    return restaurants.filter(r => {
-      const matchesSearch = searchQuery === '' ||
-        r.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        r.cuisine.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        r.tags.some(t => t.toLowerCase().includes(searchQuery.toLowerCase()));
-      const matchesCuisine = selectedCuisine === 'All' || r.cuisine === selectedCuisine;
-      const matchesBudget = selectedBudget === 'All' || '$'.repeat(r.priceLevel) === selectedBudget;
-      return matchesSearch && matchesCuisine && matchesBudget;
-    });
-  }, [searchQuery, selectedCuisine, selectedBudget]);
 
   const filterContainerHeight = filterHeight.interpolate({
     inputRange: [0, 1],

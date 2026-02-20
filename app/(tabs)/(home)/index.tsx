@@ -13,15 +13,22 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, Redirect } from 'expo-router';
 import { Zap, CalendarPlus, Flame, TrendingUp, Sparkles, ChevronRight, Heart, Users } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
-import { useApp } from '../../../context/AppContext';
+import { useApp, useNearbyRestaurants } from '../../../context/AppContext';
 import RestaurantCard from '../../../components/RestaurantCard';
-import { tonightNearYou, lastCallDeals, trendingWithFriends, basedOnPastPicks } from '../../../mocks/restaurants';
 import Colors from '../../../constants/colors';
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { preferences, isOnboarded, isLoading } = useApp();
+  const { data: allRestaurants = [] } = useNearbyRestaurants();
+
+  const tonightNearYou = allRestaurants.filter(r => r.isOpenNow).slice(0, 5);
+  const lastCallDeals = allRestaurants.filter(r => r.lastCallDeal);
+  const trendingWithFriends = allRestaurants.filter(r => r.rating >= 4.5).slice(0, 5);
+  const basedOnPastPicks = preferences.cuisines.length > 0
+    ? allRestaurants.filter(r => preferences.cuisines.includes(r.cuisine)).slice(0, 5)
+    : allRestaurants.slice(0, 5);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
 

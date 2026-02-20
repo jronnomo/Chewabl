@@ -15,11 +15,11 @@ import { useRouter } from 'expo-router';
 import { ChevronRight, ChevronLeft, Utensils } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useApp } from '../context/AppContext';
-import { CUISINES, BUDGET_OPTIONS, DIETARY_OPTIONS, ATMOSPHERE_OPTIONS, GROUP_SIZE_OPTIONS } from '../mocks/restaurants';
+import { CUISINES, BUDGET_OPTIONS, DIETARY_OPTIONS, ATMOSPHERE_OPTIONS, GROUP_SIZE_OPTIONS, DISTANCE_OPTIONS } from '../mocks/restaurants';
 import { UserPreferences } from '../types';
 import Colors from '../constants/colors';
 
-const TOTAL_STEPS = 4;
+const TOTAL_STEPS = 5;
 
 export default function OnboardingScreen() {
   const insets = useSafeAreaInsets();
@@ -32,6 +32,7 @@ export default function OnboardingScreen() {
   const [selectedDietary, setSelectedDietary] = useState<string[]>([]);
   const [selectedAtmosphere, setSelectedAtmosphere] = useState<string>('Moderate');
   const [selectedGroupSize, setSelectedGroupSize] = useState<string>('2');
+  const [selectedDistance, setSelectedDistance] = useState<string>('5');
 
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const slideAnim = useRef(new Animated.Value(0)).current;
@@ -65,6 +66,7 @@ export default function OnboardingScreen() {
         dietary: selectedDietary,
         atmosphere: selectedAtmosphere,
         groupSize: selectedGroupSize,
+        distance: selectedDistance,
       };
       saveOnboarding.mutate(prefs, {
         onSuccess: () => {
@@ -72,7 +74,7 @@ export default function OnboardingScreen() {
         },
       });
     }
-  }, [step, name, selectedCuisines, selectedBudget, selectedDietary, selectedAtmosphere, selectedGroupSize, saveOnboarding, router, animateTransition]);
+  }, [step, name, selectedCuisines, selectedBudget, selectedDietary, selectedAtmosphere, selectedGroupSize, selectedDistance, saveOnboarding, router, animateTransition]);
 
   const handleBack = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -201,6 +203,30 @@ export default function OnboardingScreen() {
                   }}
                 >
                   <Text style={[styles.optionChipText, selectedGroupSize === g && styles.optionChipTextActive]}>{g}</Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+        );
+      case 4:
+        return (
+          <View style={styles.stepContent}>
+            <Text style={styles.stepEmoji}>📍</Text>
+            <Text style={styles.stepTitle}>How far will you go?</Text>
+            <Text style={styles.stepSubtitle}>Maximum distance you're willing to travel for a meal</Text>
+            <View style={styles.optionsGrid}>
+              {DISTANCE_OPTIONS.map(d => (
+                <Pressable
+                  key={d}
+                  style={[styles.optionChip, selectedDistance === d && styles.optionChipActive]}
+                  onPress={() => {
+                    Haptics.selectionAsync();
+                    setSelectedDistance(d);
+                  }}
+                >
+                  <Text style={[styles.optionChipText, selectedDistance === d && styles.optionChipTextActive]}>
+                    {d} mi
+                  </Text>
                 </Pressable>
               ))}
             </View>

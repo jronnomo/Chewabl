@@ -20,6 +20,7 @@ import {
   Settings,
   ChevronRight,
   LogOut,
+  MapPin,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useApp } from '../../../context/AppContext';
@@ -83,6 +84,8 @@ export default function ProfileScreen() {
             <PrefRow icon={Volume2} label="Atmosphere" value={preferences.atmosphere || 'Not set'} />
             <View style={styles.prefDivider} />
             <PrefRow icon={Users} label="Group Size" value={preferences.groupSize || 'Not set'} />
+            <View style={styles.prefDivider} />
+            <PrefRow icon={MapPin} label="Distance" value={preferences.distance ? `${preferences.distance} mi` : 'Not set'} />
           </View>
         </View>
 
