@@ -28,10 +28,6 @@ const PRICE_LEVEL_MAP: Record<string, 1 | 2 | 3 | 4> = {
   PRICE_LEVEL_MODERATE: 2,
   PRICE_LEVEL_EXPENSIVE: 3,
   PRICE_LEVEL_VERY_EXPENSIVE: 4,
-  PRICE_LEVEL_1: 1,
-  PRICE_LEVEL_2: 2,
-  PRICE_LEVEL_3: 3,
-  PRICE_LEVEL_4: 4,
 };
 
 function haversineDistanceMiles(lat1: number, lon1: number, lat2: number, lon2: number): number {

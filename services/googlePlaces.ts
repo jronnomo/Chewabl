@@ -1,6 +1,12 @@
 const API_KEY = process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY || '';
 const BASE_URL = 'https://places.googleapis.com/v1';
 
+if (!API_KEY) {
+  console.warn('[Places] EXPO_PUBLIC_GOOGLE_PLACES_API_KEY is not set');
+} else {
+  console.log('[Places] API key loaded:', API_KEY.slice(0, 8) + '…');
+}
+
 const FIELD_MASK = [
   'places.id',
   'places.displayName',
@@ -34,10 +40,10 @@ export const CUISINE_TYPE_MAP: Record<string, string[]> = {
 };
 
 const BUDGET_MAP: Record<string, string[]> = {
-  '$': ['PRICE_LEVEL_1'],
-  '$$': ['PRICE_LEVEL_2'],
-  '$$$': ['PRICE_LEVEL_3'],
-  '$$$$': ['PRICE_LEVEL_4'],
+  '$': ['PRICE_LEVEL_INEXPENSIVE'],
+  '$$': ['PRICE_LEVEL_MODERATE'],
+  '$$$': ['PRICE_LEVEL_EXPENSIVE'],
+  '$$$$': ['PRICE_LEVEL_VERY_EXPENSIVE'],
 };
 
 export interface Coords {
@@ -117,7 +123,8 @@ export async function searchNearby(params: SearchNearbyParams): Promise<Place[]>
   });
 
   if (!response.ok) {
-    throw new Error(`Places API searchNearby error: ${response.status}`);
+    const errBody = await response.text();
+    throw new Error(`Places API searchNearby ${response.status}: ${errBody}`);
   }
 
   const data = await response.json();
@@ -169,7 +176,8 @@ export async function searchText(params: {
   });
 
   if (!response.ok) {
-    throw new Error(`Places API searchText error: ${response.status}`);
+    const errBody = await response.text();
+    throw new Error(`Places API searchText ${response.status}: ${errBody}`);
   }
 
   const data = await response.json();

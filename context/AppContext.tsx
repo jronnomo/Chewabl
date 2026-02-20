@@ -21,10 +21,10 @@ const PLANS_KEY = 'chewabl_plans';
 const FAVORITES_KEY = 'chewabl_favorites';
 
 const BUDGET_MAP: Record<string, string[]> = {
-  '$': ['PRICE_LEVEL_1'],
-  '$$': ['PRICE_LEVEL_2'],
-  '$$$': ['PRICE_LEVEL_3'],
-  '$$$$': ['PRICE_LEVEL_4'],
+  '$': ['PRICE_LEVEL_INEXPENSIVE'],
+  '$$': ['PRICE_LEVEL_MODERATE'],
+  '$$$': ['PRICE_LEVEL_EXPENSIVE'],
+  '$$$$': ['PRICE_LEVEL_VERY_EXPENSIVE'],
 };
 
 export const [AppProvider, useApp] = createContextHook(() => {
@@ -189,13 +189,24 @@ export function useNearbyRestaurants() {
       userLocation,
     ],
     queryFn: async () => {
-      if (!userLocation) return mockRestaurants;
+      if (!userLocation) {
+        console.log('[Places] No location yet, using mock data');
+        return mockRestaurants;
+      }
+      console.log('[Places] Fetching nearby restaurants for', userLocation);
       try {
         const params = buildSearchNearbyParams(preferences, userLocation);
+        // Always include at least 'restaurant' so the query is meaningful
+        if (!params.includedTypes || params.includedTypes.length === 0) {
+          params.includedTypes = ['restaurant'];
+        }
+        console.log('[Places] searchNearby params:', JSON.stringify(params));
         const places = await searchNearby(params);
+        console.log('[Places] Got', places.length, 'results');
         if (places.length === 0) return mockRestaurants;
         return places.map(p => mapToRestaurant(p, userLocation));
-      } catch {
+      } catch (err) {
+        console.error('[Places] searchNearby failed:', err);
         return mockRestaurants;
       }
     },
@@ -231,6 +242,7 @@ export function useSearchRestaurants(
             ? CUISINE_TYPE_MAP[cuisine][0]
             : undefined;
 
+        console.log('[Places] searchText query:', textQuery, '| cuisine:', cuisine, '| budget:', budget);
         const places = await searchText({
           textQuery,
           location: userLocation || undefined,
@@ -240,9 +252,11 @@ export function useSearchRestaurants(
           maxResultCount: 20,
         });
 
+        console.log('[Places] searchText got', places.length, 'results');
         if (places.length === 0) return mockRestaurants;
         return places.map(p => mapToRestaurant(p, userLocation || undefined));
-      } catch {
+      } catch (err) {
+        console.error('[Places] searchText failed:', err);
         return mockRestaurants;
       }
     },
