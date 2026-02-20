@@ -33,6 +33,8 @@ export default React.memo(function SwipeCard({
   const position = useRef(new Animated.ValueXY()).current;
   const opacityYes = useRef(new Animated.Value(0)).current;
   const opacityNo = useRef(new Animated.Value(0)).current;
+  const isTopRef = useRef(isTop);
+  isTopRef.current = isTop;
 
   const resetPosition = useCallback(() => {
     Animated.spring(position, {
@@ -61,9 +63,9 @@ export default React.memo(function SwipeCard({
 
   const panResponder = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => isTop,
+      onStartShouldSetPanResponder: () => isTopRef.current,
       onMoveShouldSetPanResponder: (_, gesture) => {
-        return isTop && (Math.abs(gesture.dx) > 5 || Math.abs(gesture.dy) > 5);
+        return isTopRef.current && (Math.abs(gesture.dx) > 5 || Math.abs(gesture.dy) > 5);
       },
       onPanResponderMove: (_, gesture) => {
         position.setValue({ x: gesture.dx, y: gesture.dy * 0.3 });
