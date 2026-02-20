@@ -18,6 +18,72 @@ const statusConfig = {
   cancelled: { label: 'Cancelled', color: Colors.error, icon: X, bg: '#FFEBEE' },
 };
 
+function PlanCardFooter({ plan }: { plan: DiningPlan }) {
+  // Prefer the backend invites shape; fall back to legacy invitees
+  if (plan.invites && plan.invites.length > 0) {
+    const accepted = plan.invites.filter(i => i.status === 'accepted').length;
+    const pending = plan.invites.filter(i => i.status === 'pending').length;
+    return (
+      <View style={styles.footer}>
+        <View style={styles.avatarsRow}>
+          {plan.invites.slice(0, 4).map((invite, i) => (
+            <View
+              key={invite.userId}
+              style={[
+                styles.avatarContainer,
+                i > 0 && { marginLeft: -8 },
+                invite.status === 'accepted' && styles.avatarAccepted,
+                invite.status === 'declined' && styles.avatarDeclined,
+              ]}
+            >
+              {invite.avatarUri ? (
+                <Image source={{ uri: invite.avatarUri }} style={styles.avatar} contentFit="cover" />
+              ) : (
+                <View style={[styles.avatar, styles.avatarFallback]}>
+                  <Text style={styles.avatarInitial}>{invite.name[0]?.toUpperCase()}</Text>
+                </View>
+              )}
+            </View>
+          ))}
+          {plan.invites.length > 4 && (
+            <View style={[styles.avatarContainer, { marginLeft: -8, backgroundColor: Colors.primaryLight }]}>
+              <Text style={styles.moreText}>+{plan.invites.length - 4}</Text>
+            </View>
+          )}
+        </View>
+        <View style={styles.inviteeInfo}>
+          <Users size={13} color={Colors.textSecondary} />
+          <Text style={styles.inviteeText}>
+            {accepted}/{plan.invites.length} accepted{pending > 0 ? ` · ${pending} pending` : ''}
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  // Legacy invitees fallback
+  return (
+    <View style={styles.footer}>
+      <View style={styles.avatarsRow}>
+        {plan.invitees.slice(0, 4).map((invitee, i) => (
+          <View key={invitee.id} style={[styles.avatarContainer, i > 0 && { marginLeft: -8 }]}>
+            <Image source={{ uri: invitee.avatar }} style={styles.avatar} contentFit="cover" />
+          </View>
+        ))}
+        {plan.invitees.length > 4 && (
+          <View style={[styles.avatarContainer, { marginLeft: -8, backgroundColor: Colors.primaryLight }]}>
+            <Text style={styles.moreText}>+{plan.invitees.length - 4}</Text>
+          </View>
+        )}
+      </View>
+      <View style={styles.inviteeInfo}>
+        <Users size={13} color={Colors.textSecondary} />
+        <Text style={styles.inviteeText}>{plan.invitees.length} people</Text>
+      </View>
+    </View>
+  );
+}
+
 export default React.memo(function PlanCard({ plan, onPress }: PlanCardProps) {
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const config = statusConfig[plan.status];
@@ -73,24 +139,7 @@ export default React.memo(function PlanCard({ plan, onPress }: PlanCardProps) {
           </View>
         )}
 
-        <View style={styles.footer}>
-          <View style={styles.avatarsRow}>
-            {plan.invitees.slice(0, 4).map((invitee, i) => (
-              <View key={invitee.id} style={[styles.avatarContainer, i > 0 && { marginLeft: -8 }]}>
-                <Image source={{ uri: invitee.avatar }} style={styles.avatar} contentFit="cover" />
-              </View>
-            ))}
-            {plan.invitees.length > 4 && (
-              <View style={[styles.avatarContainer, { marginLeft: -8, backgroundColor: Colors.primaryLight }]}>
-                <Text style={styles.moreText}>+{plan.invitees.length - 4}</Text>
-              </View>
-            )}
-          </View>
-          <View style={styles.inviteeInfo}>
-            <Users size={13} color={Colors.textSecondary} />
-            <Text style={styles.inviteeText}>{plan.invitees.length} people</Text>
-          </View>
-        </View>
+        <PlanCardFooter plan={plan} />
       </Animated.View>
     </Pressable>
   );
@@ -219,6 +268,22 @@ const styles = StyleSheet.create({
   },
   moreText: {
     fontSize: 10,
+    fontWeight: '700' as const,
+    color: Colors.primary,
+  },
+  avatarAccepted: {
+    borderColor: Colors.success,
+  },
+  avatarDeclined: {
+    opacity: 0.4,
+  },
+  avatarFallback: {
+    backgroundColor: Colors.primaryLight,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  avatarInitial: {
+    fontSize: 11,
     fontWeight: '700' as const,
     color: Colors.primary,
   },

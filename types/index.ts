@@ -22,6 +22,14 @@ export interface Restaurant {
   photos: string[];
 }
 
+export interface PlanInvite {
+  userId: string;
+  name: string;
+  avatarUri?: string;
+  status: 'pending' | 'accepted' | 'declined';
+  respondedAt?: string;
+}
+
 export interface DiningPlan {
   id: string;
   title: string;
@@ -31,7 +39,12 @@ export interface DiningPlan {
   status: 'voting' | 'confirmed' | 'completed' | 'cancelled';
   cuisine: string;
   budget: string;
+  /** Legacy field — kept for mock data compatibility */
   invitees: Invitee[];
+  /** Backend-driven invites with RSVP status */
+  invites?: PlanInvite[];
+  rsvpDeadline?: string;
+  ownerId?: string;
   options: Restaurant[];
   votes: Record<string, string[]>;
   createdAt: string;
@@ -52,6 +65,34 @@ export interface UserPreferences {
   atmosphere: string;
   groupSize: string;
   distance: string;
+  isDarkMode?: boolean;
+  notificationsEnabled?: boolean;
+}
+
+export interface Friend {
+  id: string;
+  name: string;
+  phone?: string;
+  email?: string;
+  avatarUri?: string;
+  mutualPlans?: number;
+}
+
+export interface FriendRequest {
+  id: string;
+  from: Friend;
+  createdAt: string;
+}
+
+export interface BackendUser {
+  id: string;
+  name: string;
+  email: string;
+  phone?: string;
+  avatarUri?: string;
+  pushToken?: string;
+  inviteCode: string;
+  createdAt: string;
 }
 
 export type CuisineType =

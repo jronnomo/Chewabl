@@ -9,14 +9,20 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { X, CalendarDays, Clock, MapPin, UtensilsCrossed, DollarSign, Users, Sparkles } from 'lucide-react-native';
+import { Image } from 'expo-image';
+import { X, CalendarDays, Clock, MapPin, UtensilsCrossed, DollarSign, Users, Sparkles, UserCheck } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
+import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../context/AppContext';
+import { useAuth } from '../context/AuthContext';
 import { CUISINES, BUDGET_OPTIONS, restaurants } from '../mocks/restaurants';
 import { DiningPlan } from '../types';
+import { getFriends } from '../services/friends';
+import { createPlan } from '../services/plans';
 import Colors from '../constants/colors';
 
 const TIME_OPTIONS = [
@@ -25,58 +31,122 @@ const TIME_OPTIONS = [
   '8:00 PM', '8:30 PM', '9:00 PM',
 ];
 
-const DATE_OPTIONS = [
-  { label: 'Today', value: '2026-02-20' },
-  { label: 'Tomorrow', value: '2026-02-21' },
-  { label: 'Sat', value: '2026-02-22' },
-  { label: 'Sun', value: '2026-02-23' },
-  { label: 'Mon', value: '2026-02-24' },
+const today = new Date();
+const DATE_OPTIONS = Array.from({ length: 5 }, (_, i) => {
+  const d = new Date(today);
+  d.setDate(today.getDate() + i);
+  const label = i === 0 ? 'Today' : i === 1 ? 'Tomorrow'
+    : d.toLocaleDateString('en-US', { weekday: 'short' });
+  const value = d.toISOString().split('T')[0];
+  return { label, value };
+});
+
+const RSVP_DEADLINE_OPTIONS = [
+  { label: '12 hrs', hours: 12 },
+  { label: '1 day', hours: 24 },
+  { label: '2 days', hours: 48 },
+  { label: '3 days', hours: 72 },
 ];
 
 export default function PlanEventScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { addPlan } = useApp();
+  const { isAuthenticated } = useAuth();
 
   const [title, setTitle] = useState<string>('');
   const [selectedDate, setSelectedDate] = useState<string>(DATE_OPTIONS[0].value);
   const [selectedTime, setSelectedTime] = useState<string>('7:00 PM');
   const [selectedCuisine, setSelectedCuisine] = useState<string>('');
   const [selectedBudget, setSelectedBudget] = useState<string>('$$');
+  const [selectedFriendIds, setSelectedFriendIds] = useState<string[]>([]);
+  const [rsvpHours, setRsvpHours] = useState<number | null>(24);
+  const [loading, setLoading] = useState(false);
 
-  const handleCreate = useCallback(() => {
+  const { data: friends = [] } = useQuery({
+    queryKey: ['friends'],
+    queryFn: getFriends,
+    enabled: isAuthenticated,
+  });
+
+  const toggleFriend = useCallback((id: string) => {
+    Haptics.selectionAsync();
+    setSelectedFriendIds(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  }, []);
+
+  const handleCreate = useCallback(async () => {
     if (!title.trim()) {
       Alert.alert('Missing title', 'Give your dining plan a name');
       return;
     }
 
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    setLoading(true);
 
-    const suggestedOptions = restaurants
-      .filter(r => {
-        const matchesCuisine = !selectedCuisine || r.cuisine === selectedCuisine;
-        const matchesBudget = '$'.repeat(r.priceLevel) === selectedBudget;
-        return matchesCuisine || matchesBudget;
-      })
-      .slice(0, 3);
+    try {
+      const suggestedOptions = restaurants
+        .filter(r => {
+          const matchesCuisine = !selectedCuisine || r.cuisine === selectedCuisine;
+          const matchesBudget = '$'.repeat(r.priceLevel) === selectedBudget;
+          return matchesCuisine || matchesBudget;
+        })
+        .slice(0, 3);
 
-    const newPlan: DiningPlan = {
-      id: `p${Date.now()}`,
-      title: title.trim(),
-      date: selectedDate,
-      time: selectedTime,
-      status: 'voting',
-      cuisine: selectedCuisine || 'Any',
-      budget: selectedBudget,
-      invitees: [],
-      options: suggestedOptions,
-      votes: {},
-      createdAt: new Date().toISOString().split('T')[0],
-    };
+      let rsvpDeadline: string | undefined;
+      if (rsvpHours !== null) {
+        const dl = new Date();
+        dl.setHours(dl.getHours() + rsvpHours);
+        rsvpDeadline = dl.toISOString();
+      }
 
-    addPlan(newPlan);
-    router.back();
-  }, [title, selectedDate, selectedTime, selectedCuisine, selectedBudget, addPlan, router]);
+      if (isAuthenticated && selectedFriendIds.length > 0) {
+        // Use backend
+        const plan = await createPlan({
+          title: title.trim(),
+          date: selectedDate,
+          time: selectedTime,
+          cuisine: selectedCuisine || 'Any',
+          budget: selectedBudget,
+          inviteeIds: selectedFriendIds,
+          rsvpDeadline,
+          options: suggestedOptions.map(r => r.id),
+        });
+        // Merge options for local display
+        const localPlan: DiningPlan = {
+          ...plan,
+          invitees: [],
+          options: suggestedOptions,
+        };
+        addPlan(localPlan);
+      } else {
+        const newPlan: DiningPlan = {
+          id: `p${Date.now()}`,
+          title: title.trim(),
+          date: selectedDate,
+          time: selectedTime,
+          status: 'voting',
+          cuisine: selectedCuisine || 'Any',
+          budget: selectedBudget,
+          invitees: [],
+          invites: [],
+          rsvpDeadline,
+          options: suggestedOptions,
+          votes: {},
+          createdAt: new Date().toISOString().split('T')[0],
+        };
+        addPlan(newPlan);
+      }
+
+      router.back();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to create plan';
+      Alert.alert('Error', msg);
+    } finally {
+      setLoading(false);
+    }
+  }, [title, selectedDate, selectedTime, selectedCuisine, selectedBudget, selectedFriendIds, rsvpHours, isAuthenticated, addPlan, router]);
 
   return (
     <KeyboardAvoidingView
@@ -122,10 +192,7 @@ export default function PlanEventScreen() {
                   <Pressable
                     key={d.value}
                     style={[styles.dateChip, selectedDate === d.value && styles.chipActive]}
-                    onPress={() => {
-                      Haptics.selectionAsync();
-                      setSelectedDate(d.value);
-                    }}
+                    onPress={() => { Haptics.selectionAsync(); setSelectedDate(d.value); }}
                   >
                     <Text style={[styles.dateChipText, selectedDate === d.value && styles.chipTextActive]}>
                       {d.label}
@@ -147,10 +214,7 @@ export default function PlanEventScreen() {
                   <Pressable
                     key={t}
                     style={[styles.timeChip, selectedTime === t && styles.chipActive]}
-                    onPress={() => {
-                      Haptics.selectionAsync();
-                      setSelectedTime(t);
-                    }}
+                    onPress={() => { Haptics.selectionAsync(); setSelectedTime(t); }}
                   >
                     <Text style={[styles.timeChipText, selectedTime === t && styles.chipTextActive]}>{t}</Text>
                   </Pressable>
@@ -167,10 +231,7 @@ export default function PlanEventScreen() {
             <View style={styles.wrapRow}>
               <Pressable
                 style={[styles.cuisineChip, !selectedCuisine && styles.chipActive]}
-                onPress={() => {
-                  Haptics.selectionAsync();
-                  setSelectedCuisine('');
-                }}
+                onPress={() => { Haptics.selectionAsync(); setSelectedCuisine(''); }}
               >
                 <Text style={[styles.cuisineChipText, !selectedCuisine && styles.chipTextActive]}>Any</Text>
               </Pressable>
@@ -178,10 +239,7 @@ export default function PlanEventScreen() {
                 <Pressable
                   key={c}
                   style={[styles.cuisineChip, selectedCuisine === c && styles.chipActive]}
-                  onPress={() => {
-                    Haptics.selectionAsync();
-                    setSelectedCuisine(c);
-                  }}
+                  onPress={() => { Haptics.selectionAsync(); setSelectedCuisine(c); }}
                 >
                   <Text style={[styles.cuisineChipText, selectedCuisine === c && styles.chipTextActive]}>{c}</Text>
                 </Pressable>
@@ -199,16 +257,75 @@ export default function PlanEventScreen() {
                 <Pressable
                   key={b}
                   style={[styles.budgetChip, selectedBudget === b && styles.chipActive]}
-                  onPress={() => {
-                    Haptics.selectionAsync();
-                    setSelectedBudget(b);
-                  }}
+                  onPress={() => { Haptics.selectionAsync(); setSelectedBudget(b); }}
                 >
                   <Text style={[styles.budgetChipText, selectedBudget === b && styles.chipTextActive]}>{b}</Text>
                 </Pressable>
               ))}
             </View>
           </View>
+
+          {isAuthenticated && friends.length > 0 && (
+            <View style={styles.inputGroup}>
+              <View style={styles.labelRow}>
+                <UserCheck size={16} color={Colors.primary} />
+                <Text style={styles.label}>Invite Friends</Text>
+              </View>
+              <View style={styles.wrapRow}>
+                {friends.map(f => {
+                  const selected = selectedFriendIds.includes(f.id);
+                  return (
+                    <Pressable
+                      key={f.id}
+                      style={[styles.friendChip, selected && styles.chipActive]}
+                      onPress={() => toggleFriend(f.id)}
+                    >
+                      {f.avatarUri ? (
+                        <Image source={{ uri: f.avatarUri }} style={styles.friendChipAvatar} contentFit="cover" />
+                      ) : (
+                        <View style={styles.friendChipAvatarFallback}>
+                          <Text style={[styles.friendChipInitial, selected && { color: '#FFF' }]}>
+                            {f.name[0]?.toUpperCase()}
+                          </Text>
+                        </View>
+                      )}
+                      <Text style={[styles.friendChipText, selected && styles.chipTextActive]}>
+                        {f.name.split(' ')[0]}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+          )}
+
+          {isAuthenticated && (
+            <View style={styles.inputGroup}>
+              <View style={styles.labelRow}>
+                <MapPin size={16} color={Colors.primary} />
+                <Text style={styles.label}>RSVP Deadline</Text>
+              </View>
+              <View style={styles.chipRow}>
+                <Pressable
+                  style={[styles.timeChip, rsvpHours === null && styles.chipActive]}
+                  onPress={() => { Haptics.selectionAsync(); setRsvpHours(null); }}
+                >
+                  <Text style={[styles.timeChipText, rsvpHours === null && styles.chipTextActive]}>None</Text>
+                </Pressable>
+                {RSVP_DEADLINE_OPTIONS.map(opt => (
+                  <Pressable
+                    key={opt.hours}
+                    style={[styles.timeChip, rsvpHours === opt.hours && styles.chipActive]}
+                    onPress={() => { Haptics.selectionAsync(); setRsvpHours(opt.hours); }}
+                  >
+                    <Text style={[styles.timeChipText, rsvpHours === opt.hours && styles.chipTextActive]}>
+                      {opt.label}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+          )}
 
           <View style={styles.infoCard}>
             <Sparkles size={18} color={Colors.secondary} />
@@ -225,12 +342,16 @@ export default function PlanEventScreen() {
 
         <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 12 }]}>
           <Pressable
-            style={[styles.createBtn, !title.trim() && styles.createBtnDisabled]}
+            style={[styles.createBtn, (!title.trim() || loading) && styles.createBtnDisabled]}
             onPress={handleCreate}
-            disabled={!title.trim()}
+            disabled={!title.trim() || loading}
             testID="create-plan-btn"
           >
-            <Text style={styles.createBtnText}>Create Plan</Text>
+            {loading ? (
+              <ActivityIndicator color="#FFF" />
+            ) : (
+              <Text style={styles.createBtnText}>Create Plan</Text>
+            )}
           </Pressable>
         </View>
       </View>
@@ -381,6 +502,40 @@ const styles = StyleSheet.create({
   },
   chipTextActive: {
     color: '#FFF',
+  },
+  friendChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 22,
+    backgroundColor: Colors.card,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+  },
+  friendChipAvatar: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+  },
+  friendChipAvatarFallback: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: Colors.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  friendChipInitial: {
+    fontSize: 11,
+    fontWeight: '700' as const,
+    color: Colors.primary,
+  },
+  friendChipText: {
+    fontSize: 13,
+    fontWeight: '600' as const,
+    color: Colors.text,
   },
   infoCard: {
     flexDirection: 'row',

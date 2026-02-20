@@ -41,6 +41,25 @@
         {
           "locationAlwaysAndWhenInUsePermission": "Allow Chewabl to use your location to find nearby restaurants."
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/icon.png",
+          "color": "#FF6B35"
+        }
+      ],
+      [
+        "expo-contacts",
+        {
+          "contactsPermission": "Allow Chewabl to access your contacts to find friends."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Chewabl to access your photos to set a profile picture."
+        }
       ]
     ],
     "experiments": {

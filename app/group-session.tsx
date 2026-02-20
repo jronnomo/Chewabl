@@ -27,14 +27,17 @@ import {
 import * as Haptics from 'expo-haptics';
 import SwipeCard from '@/components/SwipeCard';
 import { useApp } from '@/context/AppContext';
+import { useAuth } from '@/context/AuthContext';
 import { restaurants } from '@/mocks/restaurants';
 import { Restaurant, GroupMember, SwipeResult } from '@/types';
 import Colors from '@/constants/colors';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
+const FALLBACK_AVATAR = 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100';
+
 const MOCK_MEMBERS: GroupMember[] = [
-  { id: 'me', name: 'You', avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100', completedSwiping: false },
+  { id: 'me', name: 'You', avatar: FALLBACK_AVATAR, completedSwiping: false },
   { id: 'u1', name: 'Sarah M.', avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100', completedSwiping: false },
   { id: 'u2', name: 'Jake R.', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100', completedSwiping: false },
   { id: 'u3', name: 'Emily K.', avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100', completedSwiping: false },
@@ -58,7 +61,8 @@ export default function GroupSessionScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const params = useLocalSearchParams<{ planId?: string }>();
-  const { preferences } = useApp();
+  const { preferences, plans } = useApp();
+  const { user } = useAuth();
 
   const sessionRestaurants = useMemo(() => {
     return [...restaurants].sort((a, b) => {
@@ -72,12 +76,38 @@ export default function GroupSessionScreen() {
     });
   }, [preferences.cuisines]);
 
+  // Derive members from plan invites if available, otherwise fall back to MOCK_MEMBERS
+  const initialMembers = useMemo((): GroupMember[] => {
+    if (params.planId) {
+      const plan = plans.find(p => p.id === params.planId);
+      if (plan?.invites && plan.invites.length > 0) {
+        const accepted = plan.invites.filter(i => i.status === 'accepted');
+        if (accepted.length > 0) {
+          const meEntry: GroupMember = {
+            id: user?.id ?? 'me',
+            name: user?.name ? `${user.name} (You)` : 'You',
+            avatar: user?.avatarUri ?? FALLBACK_AVATAR,
+            completedSwiping: false,
+          };
+          const others: GroupMember[] = accepted.map(inv => ({
+            id: inv.userId,
+            name: inv.name,
+            avatar: inv.avatarUri ?? FALLBACK_AVATAR,
+            completedSwiping: false,
+          }));
+          return [meEntry, ...others];
+        }
+      }
+    }
+    return MOCK_MEMBERS;
+  }, [params.planId, plans, user]);
+
   const [phase, setPhase] = useState<Phase>('lobby');
-  const [members, setMembers] = useState<GroupMember[]>(MOCK_MEMBERS);
+  const [members, setMembers] = useState<GroupMember[]>(initialMembers);
   const [currentIndex, setCurrentIndex] = useState<number>(0);
   const [mySwipes, setMySwipes] = useState<Record<string, 'yes' | 'no'>>({});
   const [friendSwipes] = useState<Record<string, Record<string, 'yes' | 'no'>>>(
-    () => generateMockSwipes(MOCK_MEMBERS.map(m => m.id), sessionRestaurants)
+    () => generateMockSwipes(initialMembers.map(m => m.id), sessionRestaurants)
   );
   const [results, setResults] = useState<SwipeResult[]>([]);
 

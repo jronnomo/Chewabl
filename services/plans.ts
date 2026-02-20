@@ -1,0 +1,32 @@
+import { api } from './api';
+import { DiningPlan } from '../types';
+
+export interface CreatePlanInput {
+  title: string;
+  date: string;
+  time: string;
+  cuisine: string;
+  budget: string;
+  inviteeIds?: string[];
+  rsvpDeadline?: string;
+  options?: string[];
+}
+
+export async function getPlans(): Promise<DiningPlan[]> {
+  return api.get<DiningPlan[]>('/plans');
+}
+
+export async function getPlan(id: string): Promise<DiningPlan> {
+  return api.get<DiningPlan>(`/plans/${id}`);
+}
+
+export async function createPlan(input: CreatePlanInput): Promise<DiningPlan> {
+  return api.post<DiningPlan>('/plans', input);
+}
+
+export async function rsvpPlan(
+  planId: string,
+  action: 'accept' | 'decline'
+): Promise<void> {
+  await api.post(`/plans/${planId}/rsvp`, { action });
+}

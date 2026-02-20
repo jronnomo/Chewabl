@@ -4,9 +4,12 @@ import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { AppProvider } from "@/context/AppContext";
+import { AuthProvider } from "@/context/AuthContext";
+import { configurePushHandler } from "@/services/notifications";
 import Colors from "@/constants/colors";
 
 SplashScreen.preventAutoHideAsync();
+configurePushHandler();
 
 const queryClient = new QueryClient();
 
@@ -22,6 +25,14 @@ function RootLayoutNav() {
       <Stack.Screen
         name="onboarding"
         options={{ headerShown: false, gestureEnabled: false }}
+      />
+      <Stack.Screen
+        name="auth"
+        options={{ headerShown: false, gestureEnabled: false }}
+      />
+      <Stack.Screen
+        name="friends"
+        options={{ headerShown: false }}
       />
       <Stack.Screen
         name="restaurant/[id]"
@@ -60,9 +71,11 @@ export default function RootLayout() {
   return (
     <QueryClientProvider client={queryClient}>
       <GestureHandlerRootView>
-        <AppProvider>
-          <RootLayoutNav />
-        </AppProvider>
+        <AuthProvider>
+          <AppProvider>
+            <RootLayoutNav />
+          </AppProvider>
+        </AuthProvider>
       </GestureHandlerRootView>
     </QueryClientProvider>
   );

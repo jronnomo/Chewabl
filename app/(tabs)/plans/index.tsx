@@ -5,13 +5,18 @@ import {
   StyleSheet,
   FlatList,
   Pressable,
+  Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Plus } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import PlanCard from '../../../components/PlanCard';
 import { useApp } from '../../../context/AppContext';
+import { useAuth } from '../../../context/AuthContext';
+import { rsvpPlan } from '../../../services/plans';
+import { DiningPlan } from '../../../types';
 import Colors from '../../../constants/colors';
 
 type TabFilter = 'upcoming' | 'past' | 'all';
@@ -20,7 +25,44 @@ export default function PlansScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { plans } = useApp();
+  const { user, isAuthenticated } = useAuth();
+  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<TabFilter>('upcoming');
+
+  const rsvpMutation = useMutation({
+    mutationFn: ({ planId, action }: { planId: string; action: 'accept' | 'decline' }) =>
+      rsvpPlan(planId, action),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['plans'] });
+    },
+  });
+
+  const handlePlanPress = useCallback((plan: DiningPlan) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+    // Check if user has a pending invite on this plan
+    if (isAuthenticated && user && plan.invites) {
+      const myInvite = plan.invites.find(i => i.userId === user.id && i.status === 'pending');
+      if (myInvite) {
+        Alert.alert(
+          `"${plan.title}"`,
+          `${plan.date} at ${plan.time}\n\nWill you attend?`,
+          [
+            {
+              text: 'Decline',
+              style: 'destructive',
+              onPress: () => rsvpMutation.mutate({ planId: plan.id, action: 'decline' }),
+            },
+            {
+              text: 'Accept',
+              onPress: () => rsvpMutation.mutate({ planId: plan.id, action: 'accept' }),
+            },
+          ]
+        );
+        return;
+      }
+    }
+  }, [isAuthenticated, user, rsvpMutation]);
 
   const filteredPlans = useMemo(() => {
     switch (activeTab) {
@@ -73,7 +115,7 @@ export default function PlansScreen() {
       <FlatList
         data={filteredPlans}
         keyExtractor={item => item.id}
-        renderItem={({ item }) => <PlanCard plan={item} />}
+        renderItem={({ item }) => <PlanCard plan={item} onPress={() => handlePlanPress(item)} />}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
