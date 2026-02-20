@@ -1,0 +1,354 @@
+import React, { useRef, useEffect, useCallback } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  Pressable,
+  Animated,
+  FlatList,
+  ActivityIndicator,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useRouter, Redirect } from 'expo-router';
+import { Zap, CalendarPlus, Flame, TrendingUp, Sparkles, ChevronRight, Heart, Users } from 'lucide-react-native';
+import * as Haptics from 'expo-haptics';
+import { useApp } from '../../../context/AppContext';
+import RestaurantCard from '../../../components/RestaurantCard';
+import { tonightNearYou, lastCallDeals, trendingWithFriends, basedOnPastPicks } from '../../../mocks/restaurants';
+import Colors from '../../../constants/colors';
+
+export default function HomeScreen() {
+  const insets = useSafeAreaInsets();
+  const router = useRouter();
+  const { preferences, isOnboarded, isLoading } = useApp();
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(30)).current;
+
+  const handleEatNow = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    router.push('/swipe' as never);
+  }, [router]);
+
+  const handlePlanLater = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    router.push('/plan-event' as never);
+  }, [router]);
+
+  const handleGroupSwipe = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    router.push('/group-session' as never);
+  }, [router]);
+
+  useEffect(() => {
+    if (!isLoading && isOnboarded) {
+      Animated.parallel([
+        Animated.timing(fadeAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
+        Animated.timing(slideAnim, { toValue: 0, duration: 600, useNativeDriver: true }),
+      ]).start();
+    }
+  }, [isOnboarded, isLoading]);
+
+  if (isLoading) {
+    return (
+      <View style={[styles.container, styles.centered]}>
+        <ActivityIndicator size="large" color={Colors.primary} />
+      </View>
+    );
+  }
+
+  if (!isOnboarded) {
+    return <Redirect href={'/onboarding' as never} />;
+  }
+
+  const firstName = preferences.name.split(' ')[0] || 'there';
+
+  return (
+    <View style={[styles.container, { paddingTop: insets.top }]}>
+      <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }], flex: 1 }}>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
+        >
+          <View style={styles.greeting}>
+            <Text style={styles.greetingText}>Hey {firstName} 👋</Text>
+            <Text style={styles.greetingSubtext}>Where are we eating?</Text>
+          </View>
+
+          <View style={styles.quickActions}>
+            <Pressable
+              style={styles.eatNowBtn}
+              onPress={handleEatNow}
+              testID="eat-now-btn"
+            >
+              <View style={styles.eatNowInner}>
+                <Heart size={22} color="#FFF" fill="#FFF" />
+                <View>
+                  <Text style={styles.eatNowTitle}>Swipe</Text>
+                  <Text style={styles.eatNowSub}>Find your next spot</Text>
+                </View>
+              </View>
+            </Pressable>
+            <Pressable
+              style={styles.planLaterBtn}
+              onPress={handlePlanLater}
+              testID="plan-later-btn"
+            >
+              <View style={styles.planLaterInner}>
+                <CalendarPlus size={22} color={Colors.primary} />
+                <View>
+                  <Text style={styles.planLaterTitle}>Plan Event</Text>
+                  <Text style={styles.planLaterSub}>Schedule dining</Text>
+                </View>
+              </View>
+            </Pressable>
+          </View>
+
+          <Pressable
+            style={styles.groupSwipeBtn}
+            onPress={handleGroupSwipe}
+            testID="group-swipe-btn"
+          >
+            <View style={styles.groupSwipeInner}>
+              <View style={styles.groupSwipeIcon}>
+                <Users size={20} color="#FFF" />
+              </View>
+              <View style={styles.groupSwipeText}>
+                <Text style={styles.groupSwipeTitle}>Group Swipe</Text>
+                <Text style={styles.groupSwipeSub}>Swipe together, decide as a group</Text>
+              </View>
+              <ChevronRight size={18} color={Colors.textTertiary} />
+            </View>
+          </Pressable>
+
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <View style={styles.sectionTitleRow}>
+                <Sparkles size={18} color={Colors.primary} />
+                <Text style={styles.sectionTitle}>Tonight Near You</Text>
+              </View>
+              <Pressable style={styles.seeAllBtn}>
+                <Text style={styles.seeAllText}>See all</Text>
+                <ChevronRight size={14} color={Colors.primary} />
+              </Pressable>
+            </View>
+            <FlatList
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              data={tonightNearYou}
+              keyExtractor={item => item.id}
+              renderItem={({ item }) => <RestaurantCard restaurant={item} variant="horizontal" />}
+              contentContainerStyle={styles.horizontalList}
+            />
+          </View>
+
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <View style={styles.sectionTitleRow}>
+                <Flame size={18} color={Colors.error} />
+                <Text style={styles.sectionTitle}>Last Call Deals</Text>
+              </View>
+              <Pressable style={styles.seeAllBtn}>
+                <Text style={styles.seeAllText}>See all</Text>
+                <ChevronRight size={14} color={Colors.primary} />
+              </Pressable>
+            </View>
+            <FlatList
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              data={lastCallDeals}
+              keyExtractor={item => item.id}
+              renderItem={({ item }) => <RestaurantCard restaurant={item} variant="horizontal" />}
+              contentContainerStyle={styles.horizontalList}
+            />
+          </View>
+
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <View style={styles.sectionTitleRow}>
+                <TrendingUp size={18} color={Colors.success} />
+                <Text style={styles.sectionTitle}>Trending with Friends</Text>
+              </View>
+            </View>
+            {trendingWithFriends.map(r => (
+              <RestaurantCard key={r.id} restaurant={r} variant="compact" />
+            ))}
+          </View>
+
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <View style={styles.sectionTitleRow}>
+                <Sparkles size={18} color={Colors.secondary} />
+                <Text style={styles.sectionTitle}>Based on Your Picks</Text>
+              </View>
+            </View>
+            {basedOnPastPicks.map(r => (
+              <RestaurantCard key={r.id} restaurant={r} variant="compact" />
+            ))}
+          </View>
+
+          <View style={{ height: 20 }} />
+        </ScrollView>
+      </Animated.View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: Colors.background,
+  },
+  centered: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  scrollContent: {
+    paddingHorizontal: 20,
+    paddingBottom: 30,
+  },
+  greeting: {
+    marginTop: 16,
+    marginBottom: 20,
+  },
+  greetingText: {
+    fontSize: 28,
+    fontWeight: '800' as const,
+    color: Colors.text,
+  },
+  greetingSubtext: {
+    fontSize: 16,
+    color: Colors.textSecondary,
+    marginTop: 4,
+  },
+  quickActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 14,
+  },
+  groupSwipeBtn: {
+    backgroundColor: Colors.card,
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 28,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    shadowColor: Colors.shadowColor,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  groupSwipeInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  groupSwipeIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: '#2D2D3F',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  groupSwipeText: {
+    flex: 1,
+  },
+  groupSwipeTitle: {
+    fontSize: 15,
+    fontWeight: '700' as const,
+    color: Colors.text,
+  },
+  groupSwipeSub: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    marginTop: 1,
+  },
+  eatNowBtn: {
+    flex: 1,
+    backgroundColor: Colors.primary,
+    borderRadius: 16,
+    padding: 16,
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  eatNowInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  eatNowTitle: {
+    fontSize: 16,
+    fontWeight: '800' as const,
+    color: '#FFF',
+  },
+  eatNowSub: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.8)',
+    marginTop: 1,
+  },
+  planLaterBtn: {
+    flex: 1,
+    backgroundColor: Colors.card,
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1.5,
+    borderColor: Colors.primaryLight,
+    shadowColor: Colors.shadowColor,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  planLaterInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  planLaterTitle: {
+    fontSize: 16,
+    fontWeight: '800' as const,
+    color: Colors.text,
+  },
+  planLaterSub: {
+    fontSize: 11,
+    color: Colors.textSecondary,
+    marginTop: 1,
+  },
+  section: {
+    marginBottom: 24,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  sectionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '700' as const,
+    color: Colors.text,
+  },
+  seeAllBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  seeAllText: {
+    fontSize: 13,
+    fontWeight: '600' as const,
+    color: Colors.primary,
+  },
+  horizontalList: {
+    paddingRight: 20,
+  },
+});
