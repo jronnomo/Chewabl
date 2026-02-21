@@ -13,6 +13,7 @@ import {
   Coords,
 } from '../services/googlePlaces';
 import { mapToRestaurant } from '../lib/placesMapper';
+import { registerRestaurants } from '../lib/restaurantRegistry';
 import { restaurants as mockRestaurants } from '../mocks/restaurants';
 
 const PREFS_KEY = 'chewabl_preferences';
@@ -227,7 +228,9 @@ export function useNearbyRestaurants() {
         const places = await searchNearby(params);
         console.log('[Places] Got', places.length, 'results');
         if (places.length === 0) return mockRestaurants;
-        return places.map(p => mapToRestaurant(p, userLocation));
+        const mapped = places.map(p => mapToRestaurant(p, userLocation));
+        registerRestaurants(mapped);
+        return mapped;
       } catch (err) {
         console.error('[Places] searchNearby failed:', err);
         return mockRestaurants;
@@ -277,7 +280,9 @@ export function useSearchRestaurants(
 
         console.log('[Places] searchText got', places.length, 'results');
         if (places.length === 0) return mockRestaurants;
-        return places.map(p => mapToRestaurant(p, userLocation || undefined));
+        const mapped = places.map(p => mapToRestaurant(p, userLocation || undefined));
+        registerRestaurants(mapped);
+        return mapped;
       } catch (err) {
         console.error('[Places] searchText failed:', err);
         return mockRestaurants;

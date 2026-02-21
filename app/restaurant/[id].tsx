@@ -29,6 +29,7 @@ import {
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { restaurants } from '../../mocks/restaurants';
+import { getRegisteredRestaurant } from '../../lib/restaurantRegistry';
 import { useApp } from '../../context/AppContext';
 import Colors from '../../constants/colors';
 
@@ -39,7 +40,10 @@ export default function RestaurantDetailScreen() {
   const { favorites, toggleFavorite } = useApp();
   const heartScale = useRef(new Animated.Value(1)).current;
 
-  const restaurant = useMemo(() => restaurants.find(r => r.id === id), [id]);
+  const restaurant = useMemo(
+    () => getRegisteredRestaurant(id ?? '') ?? restaurants.find(r => r.id === id),
+    [id]
+  );
 
   const isFavorite = restaurant ? favorites.includes(restaurant.id) : false;
 
@@ -65,8 +69,8 @@ export default function RestaurantDetailScreen() {
 
   const handlePlanEvent = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    router.push('/plan-event' as never);
-  }, [router]);
+    router.push(`/plan-event?restaurantId=${id}` as never);
+  }, [router, id]);
 
   if (!restaurant) {
     return (

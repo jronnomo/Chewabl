@@ -67,8 +67,8 @@ export default function PlansScreen() {
       }
     }
 
-    // For voting/confirmed plans, offer to start group swipe
-    if (plan.status === 'voting' || plan.status === 'confirmed') {
+    // For voting plans, offer to start group swipe to pick a restaurant
+    if (plan.status === 'voting') {
       Alert.alert(
         plan.title,
         `${plan.date} at ${plan.time}`,

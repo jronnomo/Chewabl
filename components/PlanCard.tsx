@@ -16,7 +16,7 @@ interface PlanCardProps {
 
 const statusConfig = {
   voting: { label: 'Voting', color: Colors.secondary, icon: Vote, bg: Colors.secondaryLight },
-  confirmed: { label: 'Confirmed', color: Colors.success, icon: Check, bg: '#E8F9EE' },
+  confirmed: { label: 'Restaurant Set', color: Colors.success, icon: Check, bg: '#E8F9EE' },
   completed: { label: 'Completed', color: Colors.textTertiary, icon: Clock, bg: '#F0F0F0' },
   cancelled: { label: 'Cancelled', color: Colors.error, icon: X, bg: '#FFEBEE' },
 };

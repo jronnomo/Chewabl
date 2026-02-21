@@ -13,7 +13,7 @@ import {
   Switch,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Image } from 'expo-image';
 import { X, CalendarDays, Clock, MapPin, UtensilsCrossed, DollarSign, Users, Sparkles, UserCheck } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
@@ -21,6 +21,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { CUISINES, BUDGET_OPTIONS, restaurants } from '../mocks/restaurants';
+import { getRegisteredRestaurant } from '../lib/restaurantRegistry';
 import { DiningPlan } from '../types';
 import { getFriends } from '../services/friends';
 import { createPlan } from '../services/plans';
@@ -58,6 +59,11 @@ export default function PlanEventScreen() {
   const Colors = useColors();
   const { addPlan } = useApp();
   const { isAuthenticated } = useAuth();
+  const { restaurantId } = useLocalSearchParams<{ restaurantId?: string }>();
+
+  const pinnedRestaurant = restaurantId
+    ? (getRegisteredRestaurant(restaurantId) ?? restaurants.find(r => r.id === restaurantId))
+    : undefined;
 
   const [title, setTitle] = useState<string>('');
   const [selectedDate, setSelectedDate] = useState<string>(DATE_OPTIONS[0].value);
@@ -91,13 +97,18 @@ export default function PlanEventScreen() {
     setLoading(true);
 
     try {
-      const suggestedOptions = restaurants
-        .filter(r => {
-          const matchesCuisine = !selectedCuisine || r.cuisine === selectedCuisine;
-          const matchesBudget = '$'.repeat(r.priceLevel) === selectedBudget;
-          return matchesCuisine || matchesBudget;
-        })
-        .slice(0, 3);
+      const effectiveCuisine = pinnedRestaurant ? pinnedRestaurant.cuisine : (selectedCuisine || 'Any');
+      const effectiveBudget = pinnedRestaurant ? '$'.repeat(pinnedRestaurant.priceLevel) : selectedBudget;
+
+      const suggestedOptions = pinnedRestaurant
+        ? [pinnedRestaurant]
+        : restaurants
+            .filter(r => {
+              const matchesCuisine = !selectedCuisine || r.cuisine === selectedCuisine;
+              const matchesBudget = '$'.repeat(r.priceLevel) === selectedBudget;
+              return matchesCuisine || matchesBudget;
+            })
+            .slice(0, 3);
 
       let rsvpDeadline: string | undefined;
       if (rsvpHours !== null) {
@@ -113,8 +124,8 @@ export default function PlanEventScreen() {
           title: title.trim(),
           date: selectedDate,
           time: selectedTime,
-          cuisine: selectedCuisine || 'Any',
-          budget: selectedBudget,
+          cuisine: effectiveCuisine,
+          budget: effectiveBudget,
           inviteeIds: selectedFriendIds,
           rsvpDeadline,
           options: suggestedOptions.map(r => r.id),
@@ -134,8 +145,8 @@ export default function PlanEventScreen() {
           date: selectedDate,
           time: selectedTime,
           status: 'voting',
-          cuisine: selectedCuisine || 'Any',
-          budget: selectedBudget,
+          cuisine: effectiveCuisine,
+          budget: effectiveBudget,
           invitees: [],
           invites: [],
           rsvpDeadline,
@@ -165,7 +176,7 @@ export default function PlanEventScreen() {
     } finally {
       setLoading(false);
     }
-  }, [title, selectedDate, selectedTime, selectedCuisine, selectedBudget, selectedFriendIds, rsvpHours, isAuthenticated, addPlan, router, allowCurveball]);
+  }, [title, selectedDate, selectedTime, selectedCuisine, selectedBudget, selectedFriendIds, rsvpHours, isAuthenticated, addPlan, router, allowCurveball, pinnedRestaurant]);
 
   return (
     <KeyboardAvoidingView
@@ -242,65 +253,80 @@ export default function PlanEventScreen() {
             </ScrollView>
           </View>
 
-          <View style={styles.inputGroup}>
-            <View style={styles.labelRow}>
-              <UtensilsCrossed size={16} color={Colors.primary} />
-              <Text style={styles.label}>Cuisine Vibe</Text>
-            </View>
-            <View style={styles.wrapRow}>
-              <Pressable
-                style={[styles.cuisineChip, !selectedCuisine && styles.chipActive]}
-                onPress={() => { Haptics.selectionAsync(); setSelectedCuisine(''); }}
-              >
-                <Text style={[styles.cuisineChipText, !selectedCuisine && styles.chipTextActive]}>Any</Text>
-              </Pressable>
-              {CUISINES.slice(0, 8).map(c => (
-                <Pressable
-                  key={c}
-                  style={[styles.cuisineChip, selectedCuisine === c && styles.chipActive]}
-                  onPress={() => { Haptics.selectionAsync(); setSelectedCuisine(c); }}
-                >
-                  <Text style={[styles.cuisineChipText, selectedCuisine === c && styles.chipTextActive]}>{c}</Text>
-                </Pressable>
-              ))}
-            </View>
-          </View>
-
-          <View style={styles.inputGroup}>
-            <View style={styles.labelRow}>
-              <DollarSign size={16} color={Colors.primary} />
-              <Text style={styles.label}>Budget</Text>
-            </View>
-            <View style={styles.budgetRow}>
-              {BUDGET_OPTIONS.map(b => (
-                <Pressable
-                  key={b}
-                  style={[styles.budgetChip, selectedBudget === b && styles.chipActive]}
-                  onPress={() => { Haptics.selectionAsync(); setSelectedBudget(b); }}
-                >
-                  <Text style={[styles.budgetChipText, selectedBudget === b && styles.chipTextActive]}>{b}</Text>
-                </Pressable>
-              ))}
-            </View>
-          </View>
-
-          <View style={styles.inputGroup}>
-            <View style={[styles.labelRow, { justifyContent: 'space-between' }]}>
-              <View style={styles.labelRow}>
-                <Sparkles size={16} color={Colors.secondary} />
-                <Text style={styles.label}>Allow Curveball Deals 🎲</Text>
+          {pinnedRestaurant ? (
+            <View style={styles.pinnedCard}>
+              <Image source={{ uri: pinnedRestaurant.imageUrl }} style={styles.pinnedImage} contentFit="cover" />
+              <View style={styles.pinnedInfo}>
+                <Text style={styles.pinnedLabel}>Restaurant</Text>
+                <Text style={styles.pinnedName}>{pinnedRestaurant.name}</Text>
+                <Text style={styles.pinnedMeta}>
+                  {pinnedRestaurant.cuisine} · {'$'.repeat(pinnedRestaurant.priceLevel)} · {pinnedRestaurant.distance}
+                </Text>
               </View>
-              <Switch
-                value={allowCurveball}
-                onValueChange={(v) => { Haptics.selectionAsync(); setAllowCurveball(v); }}
-                trackColor={{ false: StaticColors.border, true: Colors.secondary }}
-                thumbColor="#FFF"
-              />
             </View>
-            <Text style={{ fontSize: 12, color: Colors.textSecondary, marginTop: 4 }}>
-              Include off-cuisine restaurants with active deals
-            </Text>
-          </View>
+          ) : (
+            <>
+              <View style={styles.inputGroup}>
+                <View style={styles.labelRow}>
+                  <UtensilsCrossed size={16} color={Colors.primary} />
+                  <Text style={styles.label}>Cuisine Vibe</Text>
+                </View>
+                <View style={styles.wrapRow}>
+                  <Pressable
+                    style={[styles.cuisineChip, !selectedCuisine && styles.chipActive]}
+                    onPress={() => { Haptics.selectionAsync(); setSelectedCuisine(''); }}
+                  >
+                    <Text style={[styles.cuisineChipText, !selectedCuisine && styles.chipTextActive]}>Any</Text>
+                  </Pressable>
+                  {CUISINES.slice(0, 8).map(c => (
+                    <Pressable
+                      key={c}
+                      style={[styles.cuisineChip, selectedCuisine === c && styles.chipActive]}
+                      onPress={() => { Haptics.selectionAsync(); setSelectedCuisine(c); }}
+                    >
+                      <Text style={[styles.cuisineChipText, selectedCuisine === c && styles.chipTextActive]}>{c}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+
+              <View style={styles.inputGroup}>
+                <View style={styles.labelRow}>
+                  <DollarSign size={16} color={Colors.primary} />
+                  <Text style={styles.label}>Budget</Text>
+                </View>
+                <View style={styles.budgetRow}>
+                  {BUDGET_OPTIONS.map(b => (
+                    <Pressable
+                      key={b}
+                      style={[styles.budgetChip, selectedBudget === b && styles.chipActive]}
+                      onPress={() => { Haptics.selectionAsync(); setSelectedBudget(b); }}
+                    >
+                      <Text style={[styles.budgetChipText, selectedBudget === b && styles.chipTextActive]}>{b}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+
+              <View style={styles.inputGroup}>
+                <View style={[styles.labelRow, { justifyContent: 'space-between' }]}>
+                  <View style={styles.labelRow}>
+                    <Sparkles size={16} color={Colors.secondary} />
+                    <Text style={styles.label}>Allow Curveball Deals 🎲</Text>
+                  </View>
+                  <Switch
+                    value={allowCurveball}
+                    onValueChange={(v) => { Haptics.selectionAsync(); setAllowCurveball(v); }}
+                    trackColor={{ false: StaticColors.border, true: Colors.secondary }}
+                    thumbColor="#FFF"
+                  />
+                </View>
+                <Text style={{ fontSize: 12, color: Colors.textSecondary, marginTop: 4 }}>
+                  Include off-cuisine restaurants with active deals
+                </Text>
+              </View>
+            </>
+          )}
 
           {isAuthenticated && friends.length > 0 && (
             <View style={styles.inputGroup}>
@@ -367,9 +393,13 @@ export default function PlanEventScreen() {
           <View style={styles.infoCard}>
             <Sparkles size={18} color={Colors.secondary} />
             <View style={styles.infoCardContent}>
-              <Text style={styles.infoCardTitle}>Smart Suggestions</Text>
+              <Text style={styles.infoCardTitle}>
+                {pinnedRestaurant ? 'Restaurant Locked In' : 'Smart Suggestions'}
+              </Text>
               <Text style={styles.infoCardText}>
-                We'll suggest 3-5 curated restaurants based on your preferences. Friends can vote on their favorites!
+                {pinnedRestaurant
+                  ? `This plan is set for ${pinnedRestaurant.name}. Invite friends and pick a time that works for everyone!`
+                  : "We'll suggest 3-5 curated restaurants based on your preferences. Friends can vote on their favorites!"}
               </Text>
             </View>
           </View>
@@ -573,6 +603,42 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600' as const,
     color: Colors.text,
+  },
+  pinnedCard: {
+    flexDirection: 'row',
+    backgroundColor: Colors.card,
+    borderRadius: 16,
+    overflow: 'hidden',
+    marginBottom: 24,
+    borderWidth: 1.5,
+    borderColor: Colors.primary,
+  },
+  pinnedImage: {
+    width: 90,
+    height: 90,
+  },
+  pinnedInfo: {
+    flex: 1,
+    padding: 12,
+    justifyContent: 'center',
+    gap: 2,
+  },
+  pinnedLabel: {
+    fontSize: 11,
+    fontWeight: '700' as const,
+    color: Colors.primary,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.5,
+  },
+  pinnedName: {
+    fontSize: 16,
+    fontWeight: '800' as const,
+    color: Colors.text,
+  },
+  pinnedMeta: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    marginTop: 2,
   },
   infoCard: {
     flexDirection: 'row',
