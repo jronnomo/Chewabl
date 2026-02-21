@@ -39,6 +39,8 @@ import { Friend, FriendRequest } from '../types';
 import StaticColors from '../constants/colors';
 import { useColors } from '../context/ThemeContext';
 
+const Colors = StaticColors;
+
 type Tab = 'friends' | 'requests' | 'add';
 
 function normalizePhone(raw: string): string | null {

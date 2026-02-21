@@ -20,6 +20,8 @@ import { DiningPlan } from '../../../types';
 import StaticColors from '../../../constants/colors';
 import { useColors } from '../../../context/ThemeContext';
 
+const Colors = StaticColors;
+
 type TabFilter = 'upcoming' | 'past' | 'all';
 
 export default function PlansScreen() {

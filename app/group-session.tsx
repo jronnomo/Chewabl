@@ -36,6 +36,7 @@ import { Restaurant, GroupMember, SwipeResult } from '@/types';
 import StaticColors from '@/constants/colors';
 import { useColors } from '@/context/ThemeContext';
 
+const Colors = StaticColors;
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 const FALLBACK_AVATAR = 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100';

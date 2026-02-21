@@ -19,6 +19,8 @@ import { useAuth } from '../context/AuthContext';
 import StaticColors from '../constants/colors';
 import { useColors } from '../context/ThemeContext';
 
+const Colors = StaticColors;
+
 type Tab = 'signin' | 'signup';
 
 export default function AuthScreen() {
@@ -52,7 +54,7 @@ export default function AuthScreen() {
       } else {
         await signUp(name.trim(), email.trim(), password, phone.trim() || undefined);
       }
-      router.replace('/(tabs)');
+      router.replace('/(tabs)' as never);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Something went wrong';
       Alert.alert('Error', message);

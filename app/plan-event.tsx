@@ -27,6 +27,8 @@ import { createPlan } from '../services/plans';
 import StaticColors from '../constants/colors';
 import { useColors } from '../context/ThemeContext';
 
+const Colors = StaticColors;
+
 const TIME_OPTIONS = [
   '11:30 AM', '12:00 PM', '12:30 PM', '1:00 PM',
   '6:00 PM', '6:30 PM', '7:00 PM', '7:30 PM',

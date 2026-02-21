@@ -14,6 +14,8 @@ import { Restaurant } from '../types';
 import StaticColors from '../constants/colors';
 import { useColors } from '../context/ThemeContext';
 
+const Colors = StaticColors;
+
 interface RestaurantCardProps {
   restaurant: Restaurant;
   variant?: 'horizontal' | 'vertical' | 'compact';

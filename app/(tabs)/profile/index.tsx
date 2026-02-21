@@ -39,6 +39,8 @@ import { restaurants } from '../../../mocks/restaurants';
 import StaticColors from '../../../constants/colors';
 import { useColors } from '../../../context/ThemeContext';
 
+const Colors = StaticColors;
+
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();

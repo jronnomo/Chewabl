@@ -19,6 +19,7 @@ import { Restaurant } from '@/types';
 import StaticColors from '@/constants/colors';
 import { useColors } from '@/context/ThemeContext';
 
+const Colors = StaticColors;
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export default function SwipeScreen() {

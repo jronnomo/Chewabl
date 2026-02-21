@@ -18,6 +18,8 @@ import RestaurantCard from '../../../components/RestaurantCard';
 import StaticColors from '../../../constants/colors';
 import { useColors } from '../../../context/ThemeContext';
 
+const Colors = StaticColors;
+
 export default function HomeScreen() {
   const Colors = useColors();
   const insets = useSafeAreaInsets();

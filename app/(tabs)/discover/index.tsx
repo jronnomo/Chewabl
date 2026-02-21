@@ -18,6 +18,8 @@ import { useSearchRestaurants } from '../../../context/AppContext';
 import StaticColors from '../../../constants/colors';
 import { useColors } from '../../../context/ThemeContext';
 
+const Colors = StaticColors;
+
 export default function DiscoverScreen() {
   const Colors = useColors();
   const insets = useSafeAreaInsets();
