@@ -29,7 +29,13 @@ async function request<T>(
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${BASE_URL}${path}`, { ...options, headers });
+  const response = await fetch(`${BASE_URL}${path}`, { ...options, headers }).catch((err: unknown) => {
+    const isNetworkError = err instanceof TypeError;
+    throw new Error(isNetworkError
+      ? 'Cannot connect to server. Please check your connection or try again later.'
+      : String(err)
+    );
+  });
 
   if (!response.ok) {
     const body = await response.text();

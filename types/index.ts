@@ -19,6 +19,7 @@ export interface Restaurant {
   hours: string;
   description: string;
   lastCallDeal?: string;
+  closingSoon?: string;
   photos: string[];
 }
 

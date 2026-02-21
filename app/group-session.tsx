@@ -179,6 +179,11 @@ export default function GroupSessionScreen() {
     return resultList;
   }, [friendSwipes, mySwipes, sessionRestaurants, members.length]);
 
+  const handleRemoveMember = useCallback((memberId: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setMembers(prev => prev.filter(m => m.id !== memberId));
+  }, []);
+
   const handleAddMember = useCallback(() => {
     setShowAddModal(true);
   }, []);
@@ -276,11 +281,19 @@ export default function GroupSessionScreen() {
                   {member.name}
                   {member.id === 'me' ? ' (You)' : ''}
                 </Text>
-                {member.id === 'me' && (
+                {member.id === 'me' ? (
                   <View style={styles.hostBadge}>
                     <Crown size={11} color="#B8860B" />
                     <Text style={styles.hostBadgeText}>Host</Text>
                   </View>
+                ) : (
+                  <Pressable
+                    style={styles.removeMemberBtn}
+                    onPress={() => handleRemoveMember(member.id)}
+                    hitSlop={8}
+                  >
+                    <XIcon size={16} color={Colors.error} />
+                  </Pressable>
                 )}
               </View>
             ))}
@@ -653,6 +666,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,
+  },
+  removeMemberBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#FFEBEE',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   hostBadgeText: {
     fontSize: 11,

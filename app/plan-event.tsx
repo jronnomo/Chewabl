@@ -159,17 +159,23 @@ export default function PlanEventScreen() {
       }
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert(
-        'Plan Created!',
-        'Start a Group Swipe session now?',
-        [
-          { text: 'Later', onPress: () => router.back() },
-          {
-            text: 'Start Swipe',
-            onPress: () => router.replace(`/group-session?planId=${planId}&curveball=${allowCurveball}` as never),
-          },
-        ]
-      );
+
+      if (pinnedRestaurant) {
+        // Restaurant already selected — go straight to group swipe lobby to invite friends
+        router.replace(`/group-session?planId=${planId}` as never);
+      } else {
+        Alert.alert(
+          'Plan Created!',
+          'Start a Group Swipe session now?',
+          [
+            { text: 'Later', onPress: () => router.back() },
+            {
+              text: 'Start Swipe',
+              onPress: () => router.replace(`/group-session?planId=${planId}&curveball=${allowCurveball}` as never),
+            },
+          ]
+        );
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to create plan';
       Alert.alert('Error', msg);

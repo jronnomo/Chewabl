@@ -64,7 +64,8 @@ export default function RestaurantDetailScreen() {
 
   const handleDirections = useCallback(() => {
     if (!restaurant) return;
-    Alert.alert('Directions', `Navigate to ${restaurant.address}`);
+    const url = `https://maps.google.com/?q=${encodeURIComponent(restaurant.address)}`;
+    Linking.openURL(url);
   }, [restaurant]);
 
   const handlePlanEvent = useCallback(() => {

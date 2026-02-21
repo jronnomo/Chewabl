@@ -45,6 +45,11 @@ export default function EditPreferencesScreen() {
     );
   }, []);
 
+  const handleSelectAllCuisines = useCallback(() => {
+    Haptics.selectionAsync();
+    setCuisines(prev => prev.length === CUISINES.length ? [] : [...CUISINES]);
+  }, []);
+
   const toggleDietary = useCallback((d: string) => {
     Haptics.selectionAsync();
     setDietary(prev =>
@@ -81,7 +86,17 @@ export default function EditPreferencesScreen() {
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
 
-        <Section title="Cuisines" subtitle="Select all you enjoy">
+        <Section
+          title="Cuisines"
+          subtitle="Select all you enjoy"
+          action={
+            <Pressable onPress={handleSelectAllCuisines}>
+              <Text style={[styles.sectionActionText, { color: Colors.primary }]}>
+                {cuisines.length === CUISINES.length ? 'Clear All' : 'Select All'}
+              </Text>
+            </Pressable>
+          }
+        >
           <View style={styles.wrapRow}>
             {CUISINES.map(c => (
               <Pressable
@@ -174,16 +189,23 @@ export default function EditPreferencesScreen() {
 function Section({
   title,
   subtitle,
+  action,
   children,
 }: {
   title: string;
   subtitle?: string;
+  action?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
     <View style={styles.section}>
-      <Text style={styles.sectionTitle}>{title}</Text>
-      {subtitle && <Text style={styles.sectionSubtitle}>{subtitle}</Text>}
+      <View style={styles.sectionHeader}>
+        <View>
+          <Text style={styles.sectionTitle}>{title}</Text>
+          {subtitle && <Text style={styles.sectionSubtitle}>{subtitle}</Text>}
+        </View>
+        {action}
+      </View>
       {children}
     </View>
   );
@@ -236,6 +258,16 @@ const styles = StyleSheet.create({
   },
   section: {
     marginBottom: 28,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  sectionActionText: {
+    fontSize: 13,
+    fontWeight: '600' as const,
+    paddingTop: 2,
   },
   sectionTitle: {
     fontSize: 16,

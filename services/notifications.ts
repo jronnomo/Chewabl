@@ -16,10 +16,14 @@ export async function registerForPushNotifications(): Promise<string | null> {
   const granted = await requestNotificationPermissions();
   if (!granted) return null;
 
+  const projectId = process.env.EXPO_PUBLIC_PROJECT_ID;
+  if (!projectId) {
+    console.warn('[Push] EXPO_PUBLIC_PROJECT_ID not set — skipping push token registration');
+    return null;
+  }
+
   try {
-    const token = await Notifications.getExpoPushTokenAsync({
-      projectId: process.env.EXPO_PUBLIC_PROJECT_ID,
-    });
+    const token = await Notifications.getExpoPushTokenAsync({ projectId });
     await registerPushToken(token.data);
     return token.data;
   } catch (err) {
