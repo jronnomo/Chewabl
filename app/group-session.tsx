@@ -7,6 +7,8 @@ import {
   Animated,
   ScrollView,
   Dimensions,
+  Alert,
+  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -23,6 +25,7 @@ import {
   Star,
   MapPin,
   Utensils,
+  UserPlus,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import SwipeCard from '@/components/SwipeCard';
@@ -30,7 +33,8 @@ import { useApp } from '@/context/AppContext';
 import { useAuth } from '@/context/AuthContext';
 import { restaurants } from '@/mocks/restaurants';
 import { Restaurant, GroupMember, SwipeResult } from '@/types';
-import Colors from '@/constants/colors';
+import StaticColors from '@/constants/colors';
+import { useColors } from '@/context/ThemeContext';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -60,21 +64,29 @@ type Phase = 'lobby' | 'swiping' | 'waiting' | 'results';
 export default function GroupSessionScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const params = useLocalSearchParams<{ planId?: string }>();
+  const Colors = useColors();
+  const params = useLocalSearchParams<{ planId?: string; curveball?: string }>();
   const { preferences, plans } = useApp();
   const { user } = useAuth();
 
   const sessionRestaurants = useMemo(() => {
-    return [...restaurants].sort((a, b) => {
-      let scoreA = 0;
-      let scoreB = 0;
+    const plan = params.planId ? plans.find(p => p.id === params.planId) : null;
+    const allowCurveball = params.curveball === 'true';
+
+    return [...restaurants].filter(r => {
+      if (!plan || plan.cuisine === 'Any' || !plan.cuisine) return true;
+      if (r.cuisine === plan.cuisine) return true;
+      if (allowCurveball && r.lastCallDeal) return true;
+      return false;
+    }).sort((a, b) => {
+      let scoreA = 0, scoreB = 0;
       if (preferences.cuisines.includes(a.cuisine)) scoreA += 2;
       if (preferences.cuisines.includes(b.cuisine)) scoreB += 2;
       if (a.isOpenNow) scoreA += 1;
       if (b.isOpenNow) scoreB += 1;
       return scoreB - scoreA;
     });
-  }, [preferences.cuisines]);
+  }, [preferences.cuisines, params.planId, params.curveball, plans]);
 
   // Derive members from plan invites if available, otherwise fall back to MOCK_MEMBERS
   const initialMembers = useMemo((): GroupMember[] => {
@@ -151,6 +163,36 @@ export default function GroupSessionScreen() {
     resultList.sort((a, b) => b.yesCount - a.yesCount);
     return resultList;
   }, [friendSwipes, mySwipes, sessionRestaurants, members.length]);
+
+  const handleAddMember = useCallback(() => {
+    if (Platform.OS === 'ios') {
+      Alert.prompt(
+        'Add Person',
+        'Enter their name',
+        (name) => {
+          if (name?.trim()) {
+            const newMember: GroupMember = {
+              id: `guest_${Date.now()}`,
+              name: name.trim(),
+              avatar: FALLBACK_AVATAR,
+              completedSwiping: false,
+            };
+            setMembers(prev => [...prev, newMember]);
+          }
+        },
+        'plain-text'
+      );
+    } else {
+      const guestNum = members.filter(m => m.id.startsWith('guest_')).length + 1;
+      const newMember: GroupMember = {
+        id: `guest_${Date.now()}`,
+        name: `Guest ${guestNum}`,
+        avatar: FALLBACK_AVATAR,
+        completedSwiping: false,
+      };
+      setMembers(prev => [...prev, newMember]);
+    }
+  }, [members]);
 
   const handleStartSwiping = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
@@ -245,6 +287,13 @@ export default function GroupSessionScreen() {
                 )}
               </View>
             ))}
+            <Pressable
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10, marginTop: 4 }}
+              onPress={handleAddMember}
+            >
+              <UserPlus size={16} color={Colors.primary} />
+              <Text style={{ fontSize: 14, fontWeight: '600', color: Colors.primary }}>Add Person</Text>
+            </Pressable>
           </View>
 
           <View style={styles.sessionInfo}>

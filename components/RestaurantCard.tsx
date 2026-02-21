@@ -11,7 +11,8 @@ import { Star, Clock, MapPin, Flame } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { Restaurant } from '../types';
-import Colors from '../constants/colors';
+import StaticColors from '../constants/colors';
+import { useColors } from '../context/ThemeContext';
 
 interface RestaurantCardProps {
   restaurant: Restaurant;
@@ -19,6 +20,7 @@ interface RestaurantCardProps {
 }
 
 export default React.memo(function RestaurantCard({ restaurant, variant = 'vertical' }: RestaurantCardProps) {
+  const Colors = useColors();
   const router = useRouter();
   const scaleAnim = useRef(new Animated.Value(1)).current;
 

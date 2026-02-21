@@ -18,12 +18,14 @@ import {
   DIETARY_OPTIONS,
   DISTANCE_OPTIONS,
 } from '../../../mocks/restaurants';
-import Colors from '../../../constants/colors';
+import StaticColors from '../../../constants/colors';
+import { useColors } from '../../../context/ThemeContext';
 
 const ATMOSPHERE_OPTIONS = ['Quiet', 'Moderate', 'Lively'];
 const GROUP_SIZE_OPTIONS = ['1', '2', '3-4', '5-6', '7+'];
 
 export default function EditPreferencesScreen() {
+  const Colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { preferences, updatePreferences } = useApp();

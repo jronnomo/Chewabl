@@ -19,6 +19,7 @@ const PREFS_KEY = 'chewabl_preferences';
 const ONBOARDED_KEY = 'chewabl_onboarded';
 const PLANS_KEY = 'chewabl_plans';
 const FAVORITES_KEY = 'chewabl_favorites';
+const AVATAR_KEY = 'chewabl_avatar_uri';
 
 const BUDGET_MAP: Record<string, string[]> = {
   '$': ['PRICE_LEVEL_INEXPENSIVE'],
@@ -41,6 +42,7 @@ export const [AppProvider, useApp] = createContextHook(() => {
   });
   const [plans, setPlans] = useState<DiningPlan[]>(samplePlans);
   const [favorites, setFavorites] = useState<string[]>([]);
+  const [localAvatarUri, setLocalAvatarUri] = useState<string | null>(null);
   const [userLocation, setUserLocation] = useState<Coords | null>(null);
   const [locationPermission, setLocationPermission] = useState<
     'undetermined' | 'granted' | 'denied'
@@ -70,6 +72,14 @@ export const [AppProvider, useApp] = createContextHook(() => {
     },
   });
 
+  const avatarQuery = useQuery({
+    queryKey: ['avatarUri'],
+    queryFn: async () => {
+      const stored = await AsyncStorage.getItem(AVATAR_KEY);
+      return stored ?? null;
+    },
+  });
+
   useEffect(() => {
     if (onboardedQuery.data !== undefined) {
       setIsOnboarded(onboardedQuery.data);
@@ -88,6 +98,12 @@ export const [AppProvider, useApp] = createContextHook(() => {
       setFavorites(favoritesQuery.data);
     }
   }, [favoritesQuery.data]);
+
+  useEffect(() => {
+    if (avatarQuery.data !== undefined) {
+      setLocalAvatarUri(avatarQuery.data);
+    }
+  }, [avatarQuery.data]);
 
   const requestLocation = useCallback(async () => {
     try {
@@ -154,6 +170,11 @@ export const [AppProvider, useApp] = createContextHook(() => {
     setPlans(prev => [plan, ...prev]);
   }, []);
 
+  const setLocalAvatar = useCallback(async (uri: string) => {
+    await AsyncStorage.setItem(AVATAR_KEY, uri);
+    setLocalAvatarUri(uri);
+  }, []);
+
   const isLoading = onboardedQuery.isLoading || prefsQuery.isLoading;
 
   return {
@@ -162,6 +183,8 @@ export const [AppProvider, useApp] = createContextHook(() => {
     preferences,
     plans,
     favorites,
+    localAvatarUri,
+    setLocalAvatar,
     userLocation,
     locationPermission,
     saveOnboarding,

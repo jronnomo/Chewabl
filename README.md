@@ -46,7 +46,8 @@ bun run start-web
 # Option A (recommended):
 bun run start  # then press "i" in the terminal to open iOS Simulator
 # Option B (if supported by your environment):
-bun run start -- --ios
+# bun run start -- --ios
+npx expo start --ios
 ```
 
 ### **Edit a file directly in GitHub**

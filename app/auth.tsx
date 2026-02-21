@@ -16,11 +16,13 @@ import { useRouter } from 'expo-router';
 import { Mail, Lock, User, Phone, ChevronRight } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useAuth } from '../context/AuthContext';
-import Colors from '../constants/colors';
+import StaticColors from '../constants/colors';
+import { useColors } from '../context/ThemeContext';
 
 type Tab = 'signin' | 'signup';
 
 export default function AuthScreen() {
+  const Colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { signIn, signUp } = useAuth();

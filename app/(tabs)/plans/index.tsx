@@ -17,13 +17,15 @@ import { useApp } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
 import { rsvpPlan } from '../../../services/plans';
 import { DiningPlan } from '../../../types';
-import Colors from '../../../constants/colors';
+import StaticColors from '../../../constants/colors';
+import { useColors } from '../../../context/ThemeContext';
 
 type TabFilter = 'upcoming' | 'past' | 'all';
 
 export default function PlansScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const Colors = useColors();
   const { plans } = useApp();
   const { user, isAuthenticated } = useAuth();
   const queryClient = useQueryClient();
@@ -62,7 +64,22 @@ export default function PlansScreen() {
         return;
       }
     }
-  }, [isAuthenticated, user, rsvpMutation]);
+
+    // For voting/confirmed plans, offer to start group swipe
+    if (plan.status === 'voting' || plan.status === 'confirmed') {
+      Alert.alert(
+        plan.title,
+        `${plan.date} at ${plan.time}`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Group Swipe',
+            onPress: () => router.push(`/group-session?planId=${plan.id}` as never),
+          },
+        ]
+      );
+    }
+  }, [isAuthenticated, user, rsvpMutation, router]);
 
   const filteredPlans = useMemo(() => {
     switch (activeTab) {

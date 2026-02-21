@@ -5,6 +5,7 @@ import React, { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { AppProvider } from "@/context/AppContext";
 import { AuthProvider } from "@/context/AuthContext";
+import { ThemeProvider } from "@/context/ThemeContext";
 import { configurePushHandler } from "@/services/notifications";
 import Colors from "@/constants/colors";
 
@@ -73,7 +74,9 @@ export default function RootLayout() {
       <GestureHandlerRootView>
         <AuthProvider>
           <AppProvider>
-            <RootLayoutNav />
+            <ThemeProvider>
+              <RootLayoutNav />
+            </ThemeProvider>
           </AppProvider>
         </AuthProvider>
       </GestureHandlerRootView>

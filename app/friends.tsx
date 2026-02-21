@@ -36,7 +36,8 @@ import {
 } from '../services/friends';
 import { useAuth } from '../context/AuthContext';
 import { Friend, FriendRequest } from '../types';
-import Colors from '../constants/colors';
+import StaticColors from '../constants/colors';
+import { useColors } from '../context/ThemeContext';
 
 type Tab = 'friends' | 'requests' | 'add';
 
@@ -51,6 +52,7 @@ function normalizePhone(raw: string): string | null {
 export default function FriendsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const Colors = useColors();
   const { user } = useAuth();
   const queryClient = useQueryClient();
 

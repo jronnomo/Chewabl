@@ -4,7 +4,10 @@ import { Image } from 'expo-image';
 import { CalendarDays, Users, Check, Vote, Clock, X } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { DiningPlan } from '../types';
-import Colors from '../constants/colors';
+import StaticColors from '../constants/colors';
+import { useColors } from '../context/ThemeContext';
+
+const Colors = StaticColors;
 
 interface PlanCardProps {
   plan: DiningPlan;
@@ -85,6 +88,7 @@ function PlanCardFooter({ plan }: { plan: DiningPlan }) {
 }
 
 export default React.memo(function PlanCard({ plan, onPress }: PlanCardProps) {
+  const Colors = useColors();
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const config = statusConfig[plan.status];
   const StatusIcon = config.icon;

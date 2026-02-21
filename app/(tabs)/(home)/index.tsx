@@ -15,9 +15,11 @@ import { Zap, CalendarPlus, Flame, TrendingUp, Sparkles, ChevronRight, Heart, Us
 import * as Haptics from 'expo-haptics';
 import { useApp, useNearbyRestaurants } from '../../../context/AppContext';
 import RestaurantCard from '../../../components/RestaurantCard';
-import Colors from '../../../constants/colors';
+import StaticColors from '../../../constants/colors';
+import { useColors } from '../../../context/ThemeContext';
 
 export default function HomeScreen() {
+  const Colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { preferences, isOnboarded, isLoading } = useApp();
@@ -134,7 +136,7 @@ export default function HomeScreen() {
                 <Sparkles size={18} color={Colors.primary} />
                 <Text style={styles.sectionTitle}>Tonight Near You</Text>
               </View>
-              <Pressable style={styles.seeAllBtn}>
+              <Pressable style={styles.seeAllBtn} onPress={() => router.push('/(tabs)/discover')}>
                 <Text style={styles.seeAllText}>See all</Text>
                 <ChevronRight size={14} color={Colors.primary} />
               </Pressable>
@@ -155,7 +157,7 @@ export default function HomeScreen() {
                 <Flame size={18} color={Colors.error} />
                 <Text style={styles.sectionTitle}>Last Call Deals</Text>
               </View>
-              <Pressable style={styles.seeAllBtn}>
+              <Pressable style={styles.seeAllBtn} onPress={() => router.push('/(tabs)/discover')}>
                 <Text style={styles.seeAllText}>See all</Text>
                 <ChevronRight size={14} color={Colors.primary} />
               </Pressable>

@@ -34,13 +34,16 @@ import * as ImagePicker from 'expo-image-picker';
 import { useApp } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
 import { updateProfile } from '../../../services/auth';
+import { requestNotificationPermissions, registerForPushNotifications } from '../../../services/notifications';
 import { restaurants } from '../../../mocks/restaurants';
-import Colors from '../../../constants/colors';
+import StaticColors from '../../../constants/colors';
+import { useColors } from '../../../context/ThemeContext';
 
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { preferences, updatePreferences, favorites } = useApp();
+  const Colors = useColors();
+  const { preferences, updatePreferences, favorites, setLocalAvatar, localAvatarUri } = useApp();
   const { user, signOut, updateUser, isAuthenticated } = useAuth();
 
   const [avatarLoading, setAvatarLoading] = useState(false);
@@ -66,6 +69,7 @@ export default function ProfileScreen() {
     const uri = result.assets[0].uri;
     setAvatarLoading(true);
     try {
+      await setLocalAvatar(uri);
       if (isAuthenticated) {
         const updated = await updateProfile({ avatarUri: uri });
         updateUser({ avatarUri: updated.avatarUri });
@@ -77,7 +81,7 @@ export default function ProfileScreen() {
     } finally {
       setAvatarLoading(false);
     }
-  }, [isAuthenticated, updateUser]);
+  }, [isAuthenticated, updateUser, setLocalAvatar]);
 
   const handleToggleDarkMode = useCallback(() => {
     Haptics.selectionAsync();
@@ -87,8 +91,17 @@ export default function ProfileScreen() {
     });
   }, [preferences, updatePreferences]);
 
-  const handleToggleNotifications = useCallback(() => {
+  const handleToggleNotifications = useCallback(async () => {
     Haptics.selectionAsync();
+    if (!preferences.notificationsEnabled) {
+      // Turning ON — request permission first
+      const granted = await requestNotificationPermissions();
+      if (!granted) {
+        Alert.alert('Notifications Disabled', 'Please enable notifications in your device Settings.');
+        return;
+      }
+      registerForPushNotifications();
+    }
     updatePreferences.mutate({
       ...preferences,
       notificationsEnabled: !preferences.notificationsEnabled,
@@ -111,7 +124,7 @@ export default function ProfileScreen() {
   }, [signOut, router]);
 
   const displayName = user?.name || preferences.name || 'Foodie';
-  const avatarUri = user?.avatarUri;
+  const avatarUri = user?.avatarUri || localAvatarUri;
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>

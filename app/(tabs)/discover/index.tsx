@@ -15,9 +15,11 @@ import * as Haptics from 'expo-haptics';
 import RestaurantCard from '../../../components/RestaurantCard';
 import { CUISINES, BUDGET_OPTIONS } from '../../../mocks/restaurants';
 import { useSearchRestaurants } from '../../../context/AppContext';
-import Colors from '../../../constants/colors';
+import StaticColors from '../../../constants/colors';
+import { useColors } from '../../../context/ThemeContext';
 
 export default function DiscoverScreen() {
+  const Colors = useColors();
   const insets = useSafeAreaInsets();
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [debouncedQuery, setDebouncedQuery] = useState<string>('');

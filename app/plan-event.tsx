@@ -10,6 +10,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  Switch,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -23,7 +24,8 @@ import { CUISINES, BUDGET_OPTIONS, restaurants } from '../mocks/restaurants';
 import { DiningPlan } from '../types';
 import { getFriends } from '../services/friends';
 import { createPlan } from '../services/plans';
-import Colors from '../constants/colors';
+import StaticColors from '../constants/colors';
+import { useColors } from '../context/ThemeContext';
 
 const TIME_OPTIONS = [
   '11:30 AM', '12:00 PM', '12:30 PM', '1:00 PM',
@@ -51,11 +53,13 @@ const RSVP_DEADLINE_OPTIONS = [
 export default function PlanEventScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const Colors = useColors();
   const { addPlan } = useApp();
   const { isAuthenticated } = useAuth();
 
   const [title, setTitle] = useState<string>('');
   const [selectedDate, setSelectedDate] = useState<string>(DATE_OPTIONS[0].value);
+  const [allowCurveball, setAllowCurveball] = useState(false);
   const [selectedTime, setSelectedTime] = useState<string>('7:00 PM');
   const [selectedCuisine, setSelectedCuisine] = useState<string>('');
   const [selectedBudget, setSelectedBudget] = useState<string>('$$');
@@ -82,7 +86,6 @@ export default function PlanEventScreen() {
       return;
     }
 
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setLoading(true);
 
     try {
@@ -101,6 +104,7 @@ export default function PlanEventScreen() {
         rsvpDeadline = dl.toISOString();
       }
 
+      let planId: string;
       if (isAuthenticated && selectedFriendIds.length > 0) {
         // Use backend
         const plan = await createPlan({
@@ -120,6 +124,7 @@ export default function PlanEventScreen() {
           options: suggestedOptions,
         };
         addPlan(localPlan);
+        planId = plan.id;
       } else {
         const newPlan: DiningPlan = {
           id: `p${Date.now()}`,
@@ -137,16 +142,28 @@ export default function PlanEventScreen() {
           createdAt: new Date().toISOString().split('T')[0],
         };
         addPlan(newPlan);
+        planId = newPlan.id;
       }
 
-      router.back();
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert(
+        'Plan Created!',
+        'Start a Group Swipe session now?',
+        [
+          { text: 'Later', onPress: () => router.back() },
+          {
+            text: 'Start Swipe',
+            onPress: () => router.replace(`/group-session?planId=${planId}&curveball=${allowCurveball}` as never),
+          },
+        ]
+      );
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to create plan';
       Alert.alert('Error', msg);
     } finally {
       setLoading(false);
     }
-  }, [title, selectedDate, selectedTime, selectedCuisine, selectedBudget, selectedFriendIds, rsvpHours, isAuthenticated, addPlan, router]);
+  }, [title, selectedDate, selectedTime, selectedCuisine, selectedBudget, selectedFriendIds, rsvpHours, isAuthenticated, addPlan, router, allowCurveball]);
 
   return (
     <KeyboardAvoidingView
@@ -263,6 +280,24 @@ export default function PlanEventScreen() {
                 </Pressable>
               ))}
             </View>
+          </View>
+
+          <View style={styles.inputGroup}>
+            <View style={[styles.labelRow, { justifyContent: 'space-between' }]}>
+              <View style={styles.labelRow}>
+                <Sparkles size={16} color={Colors.secondary} />
+                <Text style={styles.label}>Allow Curveball Deals 🎲</Text>
+              </View>
+              <Switch
+                value={allowCurveball}
+                onValueChange={(v) => { Haptics.selectionAsync(); setAllowCurveball(v); }}
+                trackColor={{ false: StaticColors.border, true: Colors.secondary }}
+                thumbColor="#FFF"
+              />
+            </View>
+            <Text style={{ fontSize: 12, color: Colors.textSecondary, marginTop: 4 }}>
+              Include off-cuisine restaurants with active deals
+            </Text>
           </View>
 
           {isAuthenticated && friends.length > 0 && (

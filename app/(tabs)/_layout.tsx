@@ -2,9 +2,10 @@ import { Tabs } from "expo-router";
 import { Home, Search, CalendarDays, User } from "lucide-react-native";
 import React from "react";
 import { Platform } from "react-native";
-import Colors from "@/constants/colors";
+import { useColors } from "@/context/ThemeContext";
 
 export default function TabLayout() {
+  const Colors = useColors();
   return (
     <Tabs
       screenOptions={{

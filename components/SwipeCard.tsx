@@ -10,7 +10,8 @@ import {
 import { Image } from 'expo-image';
 import { Star, MapPin, DollarSign, Volume2, Flame } from 'lucide-react-native';
 import { Restaurant } from '@/types';
-import Colors from '@/constants/colors';
+import StaticColors from '@/constants/colors';
+import { useColors } from '@/context/ThemeContext';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const SWIPE_THRESHOLD = SCREEN_WIDTH * 0.25;
@@ -30,6 +31,7 @@ export default React.memo(function SwipeCard({
   onSwipeRight,
   isTop,
 }: SwipeCardProps) {
+  const Colors = useColors();
   const position = useRef(new Animated.ValueXY()).current;
   const opacityYes = useRef(new Animated.Value(0)).current;
   const opacityNo = useRef(new Animated.Value(0)).current;

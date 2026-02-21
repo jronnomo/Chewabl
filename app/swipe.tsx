@@ -16,11 +16,13 @@ import * as Haptics from 'expo-haptics';
 import SwipeCard from '@/components/SwipeCard';
 import { useApp, useNearbyRestaurants } from '@/context/AppContext';
 import { Restaurant } from '@/types';
-import Colors from '@/constants/colors';
+import StaticColors from '@/constants/colors';
+import { useColors } from '@/context/ThemeContext';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export default function SwipeScreen() {
+  const Colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { preferences, toggleFavorite, locationPermission, requestLocation } = useApp();
