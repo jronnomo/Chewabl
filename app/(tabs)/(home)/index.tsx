@@ -82,8 +82,8 @@ export default function HomeScreen() {
           contentContainerStyle={styles.scrollContent}
         >
           <View style={styles.greeting}>
-            <Text style={styles.greetingText}>Hey {firstName} 👋</Text>
-            <Text style={styles.greetingSubtext}>Where are we eating?</Text>
+            <Text style={[styles.greetingText, { color: Colors.text }]}>Hey {firstName} 👋</Text>
+            <Text style={[styles.greetingSubtext, { color: Colors.textSecondary }]}>Where are we eating?</Text>
           </View>
 
           <View style={styles.quickActions}>
@@ -101,22 +101,22 @@ export default function HomeScreen() {
               </View>
             </Pressable>
             <Pressable
-              style={styles.planLaterBtn}
+              style={[styles.planLaterBtn, { backgroundColor: Colors.card, borderColor: Colors.primaryLight }]}
               onPress={handlePlanLater}
               testID="plan-later-btn"
             >
               <View style={styles.planLaterInner}>
                 <CalendarPlus size={22} color={Colors.primary} />
                 <View>
-                  <Text style={styles.planLaterTitle}>Plan Event</Text>
-                  <Text style={styles.planLaterSub}>Schedule dining</Text>
+                  <Text style={[styles.planLaterTitle, { color: Colors.text }]}>Plan Event</Text>
+                  <Text style={[styles.planLaterSub, { color: Colors.textSecondary }]}>Schedule dining</Text>
                 </View>
               </View>
             </Pressable>
           </View>
 
           <Pressable
-            style={styles.groupSwipeBtn}
+            style={[styles.groupSwipeBtn, { backgroundColor: Colors.card, borderColor: Colors.border }]}
             onPress={handleGroupSwipe}
             testID="group-swipe-btn"
           >
@@ -125,8 +125,8 @@ export default function HomeScreen() {
                 <Users size={20} color="#FFF" />
               </View>
               <View style={styles.groupSwipeText}>
-                <Text style={styles.groupSwipeTitle}>Group Swipe</Text>
-                <Text style={styles.groupSwipeSub}>Swipe together, decide as a group</Text>
+                <Text style={[styles.groupSwipeTitle, { color: Colors.text }]}>Group Swipe</Text>
+                <Text style={[styles.groupSwipeSub, { color: Colors.textSecondary }]}>Swipe together, decide as a group</Text>
               </View>
               <ChevronRight size={18} color={Colors.textTertiary} />
             </View>
@@ -136,10 +136,10 @@ export default function HomeScreen() {
             <View style={styles.sectionHeader}>
               <View style={styles.sectionTitleRow}>
                 <Sparkles size={18} color={Colors.primary} />
-                <Text style={styles.sectionTitle}>Tonight Near You</Text>
+                <Text style={[styles.sectionTitle, { color: Colors.text }]}>Tonight Near You</Text>
               </View>
               <Pressable style={styles.seeAllBtn} onPress={() => router.push('/(tabs)/discover')}>
-                <Text style={styles.seeAllText}>See all</Text>
+                <Text style={[styles.seeAllText, { color: Colors.primary }]}>See all</Text>
                 <ChevronRight size={14} color={Colors.primary} />
               </Pressable>
             </View>
@@ -157,10 +157,10 @@ export default function HomeScreen() {
             <View style={styles.sectionHeader}>
               <View style={styles.sectionTitleRow}>
                 <Flame size={18} color={Colors.error} />
-                <Text style={styles.sectionTitle}>Last Call Deals</Text>
+                <Text style={[styles.sectionTitle, { color: Colors.text }]}>Last Call Deals</Text>
               </View>
               <Pressable style={styles.seeAllBtn} onPress={() => router.push('/(tabs)/discover?filter=deals' as never)}>
-                <Text style={styles.seeAllText}>See all</Text>
+                <Text style={[styles.seeAllText, { color: Colors.primary }]}>See all</Text>
                 <ChevronRight size={14} color={Colors.primary} />
               </Pressable>
             </View>
@@ -178,7 +178,7 @@ export default function HomeScreen() {
             <View style={styles.sectionHeader}>
               <View style={styles.sectionTitleRow}>
                 <TrendingUp size={18} color={Colors.success} />
-                <Text style={styles.sectionTitle}>Trending with Friends</Text>
+                <Text style={[styles.sectionTitle, { color: Colors.text }]}>Trending with Friends</Text>
               </View>
             </View>
             {trendingWithFriends.map(r => (
@@ -190,7 +190,7 @@ export default function HomeScreen() {
             <View style={styles.sectionHeader}>
               <View style={styles.sectionTitleRow}>
                 <Sparkles size={18} color={Colors.secondary} />
-                <Text style={styles.sectionTitle}>Based on Your Picks</Text>
+                <Text style={[styles.sectionTitle, { color: Colors.text }]}>Based on Your Picks</Text>
               </View>
             </View>
             {basedOnPastPicks.map(r => (

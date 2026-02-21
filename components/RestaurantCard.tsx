@@ -56,15 +56,15 @@ export default React.memo(function RestaurantCard({ restaurant, variant = 'verti
         onPressOut={handlePressOut}
         testID={`restaurant-card-compact-${restaurant.id}`}
       >
-        <Animated.View style={[styles.compactCard, { transform: [{ scale: scaleAnim }] }]}>
+        <Animated.View style={[styles.compactCard, { backgroundColor: Colors.card, transform: [{ scale: scaleAnim }] }]}>
           <Image source={{ uri: restaurant.imageUrl }} style={styles.compactImage} contentFit="cover" />
           <View style={styles.compactInfo}>
-            <Text style={styles.compactName} numberOfLines={1}>{restaurant.name}</Text>
-            <Text style={styles.compactCuisine}>{restaurant.cuisine} · {priceString}</Text>
+            <Text style={[styles.compactName, { color: Colors.text }]} numberOfLines={1}>{restaurant.name}</Text>
+            <Text style={[styles.compactCuisine, { color: Colors.textSecondary }]}>{restaurant.cuisine} · {priceString}</Text>
             <View style={styles.ratingRow}>
               <Star size={12} color={Colors.star} fill={Colors.star} />
-              <Text style={styles.ratingText}>{restaurant.rating}</Text>
-              <Text style={styles.distanceText}>{restaurant.distance}</Text>
+              <Text style={[styles.ratingText, { color: Colors.text }]}>{restaurant.rating}</Text>
+              <Text style={[styles.distanceText, { color: Colors.textTertiary }]}>{restaurant.distance}</Text>
             </View>
           </View>
         </Animated.View>
@@ -80,23 +80,23 @@ export default React.memo(function RestaurantCard({ restaurant, variant = 'verti
         onPressOut={handlePressOut}
         testID={`restaurant-card-horizontal-${restaurant.id}`}
       >
-        <Animated.View style={[styles.horizontalCard, { transform: [{ scale: scaleAnim }] }]}>
+        <Animated.View style={[styles.horizontalCard, { backgroundColor: Colors.card, transform: [{ scale: scaleAnim }] }]}>
           <Image source={{ uri: restaurant.imageUrl }} style={styles.horizontalImage} contentFit="cover" />
           {restaurant.lastCallDeal && (
             <View style={styles.dealBadge}>
               <Flame size={10} color="#FFF" />
-              <Text style={styles.dealText}>Deal</Text>
+              <Text style={styles.dealText} numberOfLines={1}>{restaurant.lastCallDeal}</Text>
             </View>
           )}
           <View style={styles.horizontalInfo}>
-            <Text style={styles.horizontalName} numberOfLines={1}>{restaurant.name}</Text>
-            <Text style={styles.horizontalCuisine}>{restaurant.cuisine} · {priceString}</Text>
+            <Text style={[styles.horizontalName, { color: Colors.text }]} numberOfLines={1}>{restaurant.name}</Text>
+            <Text style={[styles.horizontalCuisine, { color: Colors.textSecondary }]}>{restaurant.cuisine} · {priceString}</Text>
             <View style={styles.ratingRow}>
               <Star size={13} color={Colors.star} fill={Colors.star} />
-              <Text style={styles.ratingText}>{restaurant.rating}</Text>
+              <Text style={[styles.ratingText, { color: Colors.text }]}>{restaurant.rating}</Text>
               <View style={styles.dot} />
               <MapPin size={11} color={Colors.textTertiary} />
-              <Text style={styles.distanceText}>{restaurant.distance}</Text>
+              <Text style={[styles.distanceText, { color: Colors.textTertiary }]}>{restaurant.distance}</Text>
             </View>
             {restaurant.isOpenNow && (
               <View style={styles.openBadge}>
@@ -117,7 +117,7 @@ export default React.memo(function RestaurantCard({ restaurant, variant = 'verti
       onPressOut={handlePressOut}
       testID={`restaurant-card-${restaurant.id}`}
     >
-      <Animated.View style={[styles.verticalCard, { transform: [{ scale: scaleAnim }] }]}>
+      <Animated.View style={[styles.verticalCard, { backgroundColor: Colors.card, transform: [{ scale: scaleAnim }] }]}>
         <Image source={{ uri: restaurant.imageUrl }} style={styles.verticalImage} contentFit="cover" />
         {restaurant.lastCallDeal && (
           <View style={styles.dealBadgeVertical}>
@@ -127,13 +127,13 @@ export default React.memo(function RestaurantCard({ restaurant, variant = 'verti
         )}
         <View style={styles.verticalInfo}>
           <View style={styles.verticalHeader}>
-            <Text style={styles.verticalName} numberOfLines={1}>{restaurant.name}</Text>
+            <Text style={[styles.verticalName, { color: Colors.text }]} numberOfLines={1}>{restaurant.name}</Text>
             <View style={styles.ratingBadge}>
               <Star size={12} color={Colors.star} fill={Colors.star} />
               <Text style={styles.ratingBadgeText}>{restaurant.rating}</Text>
             </View>
           </View>
-          <Text style={styles.verticalCuisine}>{restaurant.cuisine} · {priceString} · {restaurant.distance}</Text>
+          <Text style={[styles.verticalCuisine, { color: Colors.textSecondary }]}>{restaurant.cuisine} · {priceString} · {restaurant.distance}</Text>
           <View style={styles.tagsRow}>
             {restaurant.tags.slice(0, 3).map(tag => (
               <View key={tag} style={styles.tag}>
@@ -305,19 +305,23 @@ const styles = StyleSheet.create({
   dealBadge: {
     position: 'absolute',
     top: 8,
+    left: 8,
     right: 8,
     backgroundColor: Colors.primary,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 7,
-    paddingVertical: 3,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
     borderRadius: 12,
-    gap: 3,
+    gap: 4,
+    maxWidth: 200,
   },
   dealText: {
     fontSize: 10,
     fontWeight: '700' as const,
     color: '#FFF',
+    flexShrink: 1,
   },
   ratingRow: {
     flexDirection: 'row',
