@@ -61,10 +61,10 @@ const MOCK_MEMBERS: GroupMember[] = [
   { id: 'u3', name: 'Emily K.', avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100', completedSwiping: false },
 ];
 
-const generateMockSwipes = (memberIds: string[], restaurantList: Restaurant[]): Record<string, Record<string, 'yes' | 'no'>> => {
+const generateMockSwipes = (memberIds: string[], restaurantList: Restaurant[], myId: string): Record<string, Record<string, 'yes' | 'no'>> => {
   const swipes: Record<string, Record<string, 'yes' | 'no'>> = {};
   memberIds.forEach(memberId => {
-    if (memberId === 'me') return;
+    if (memberId === myId) return;
     swipes[memberId] = {};
     restaurantList.forEach(r => {
       swipes[memberId][r.id] = Math.random() > 0.4 ? 'yes' : 'no';
@@ -128,13 +128,15 @@ export default function GroupSessionScreen() {
     return MOCK_MEMBERS;
   }, [params.planId, plans, user]);
 
+  const myMemberId = initialMembers[0]?.id ?? 'me';
+
   const [phase, setPhase] = useState<Phase>('lobby');
   const [members, setMembers] = useState<GroupMember[]>(initialMembers);
   const [showAddModal, setShowAddModal] = useState(false);
   const [currentIndex, setCurrentIndex] = useState<number>(0);
   const [mySwipes, setMySwipes] = useState<Record<string, 'yes' | 'no'>>({});
   const [friendSwipes] = useState<Record<string, Record<string, 'yes' | 'no'>>>(
-    () => generateMockSwipes(initialMembers.map(m => m.id), sessionRestaurants)
+    () => generateMockSwipes(initialMembers.map(m => m.id), sessionRestaurants, myMemberId)
   );
   const [results, setResults] = useState<SwipeResult[]>([]);
 
@@ -157,7 +159,7 @@ export default function GroupSessionScreen() {
   const calculateResults = useCallback(() => {
     const allSwipes: Record<string, Record<string, 'yes' | 'no'>> = {
       ...friendSwipes,
-      me: mySwipes,
+      [myMemberId]: mySwipes,
     };
 
     const resultList: SwipeResult[] = sessionRestaurants.map(r => {
@@ -199,7 +201,7 @@ export default function GroupSessionScreen() {
   const handleStartSwiping = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     setMembers(prev => prev.map(m =>
-      m.id !== 'me' ? { ...m, completedSwiping: true } : m
+      m.id !== myMemberId ? { ...m, completedSwiping: true } : m
     ));
     setPhase('swiping');
   }, []);
@@ -277,11 +279,8 @@ export default function GroupSessionScreen() {
             {members.map(member => (
               <View key={member.id} style={styles.memberRow}>
                 <Image source={{ uri: member.avatar }} style={styles.memberAvatar} contentFit="cover" />
-                <Text style={styles.memberName}>
-                  {member.name}
-                  {member.id === 'me' ? ' (You)' : ''}
-                </Text>
-                {member.id === 'me' ? (
+                <Text style={styles.memberName}>{member.name}</Text>
+                {member.id === myMemberId ? (
                   <View style={styles.hostBadge}>
                     <Crown size={11} color="#B8860B" />
                     <Text style={styles.hostBadgeText}>Host</Text>
@@ -540,7 +539,7 @@ export default function GroupSessionScreen() {
           <View style={styles.memberVoteSummary}>
             <Text style={styles.memberVoteTitle}>Who voted what</Text>
             {members.map(m => {
-              const memberSwipeData = m.id === 'me' ? mySwipes : (friendSwipes[m.id] ?? {});
+              const memberSwipeData = m.id === myMemberId ? mySwipes : (friendSwipes[m.id] ?? {});
               const yesCount = Object.values(memberSwipeData).filter(v => v === 'yes').length;
               return (
                 <View key={m.id} style={styles.memberVoteRow}>

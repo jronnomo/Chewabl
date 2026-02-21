@@ -57,7 +57,18 @@ export default function AuthScreen() {
       router.replace('/(tabs)' as never);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Something went wrong';
-      Alert.alert('Error', message);
+      if (message.includes('Cannot connect to server')) {
+        Alert.alert(
+          'Server Unavailable',
+          'The server is not reachable right now. You can continue as a guest to explore the app — your preferences will be saved locally.',
+          [
+            { text: 'Try Again', style: 'cancel' },
+            { text: 'Continue as Guest', onPress: () => router.replace('/(tabs)' as never) },
+          ]
+        );
+      } else {
+        Alert.alert('Error', message);
+      }
     } finally {
       setLoading(false);
     }
@@ -180,6 +191,15 @@ export default function AuthScreen() {
             </Pressable>
           </View>
 
+          <Pressable
+            style={styles.skipBtn}
+            onPress={() => router.replace('/(tabs)' as never)}
+          >
+            <Text style={[styles.skipBtnText, { color: Colors.textSecondary }]}>
+              Continue without an account
+            </Text>
+          </Pressable>
+
           <View style={{ height: 40 }} />
         </ScrollView>
       </View>
@@ -288,6 +308,16 @@ const styles = StyleSheet.create({
   },
   submitBtnDisabled: {
     opacity: 0.6,
+  },
+  skipBtn: {
+    alignItems: 'center',
+    paddingVertical: 16,
+    marginTop: 8,
+  },
+  skipBtnText: {
+    fontSize: 14,
+    fontWeight: '500' as const,
+    textDecorationLine: 'underline' as const,
   },
   submitBtnText: {
     fontSize: 16,
