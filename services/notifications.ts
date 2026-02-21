@@ -24,10 +24,16 @@ export async function registerForPushNotifications(): Promise<string | null> {
 
   try {
     const token = await Notifications.getExpoPushTokenAsync({ projectId });
-    await registerPushToken(token.data);
+    // Token obtained — try to register with backend (non-critical)
+    try {
+      await registerPushToken(token.data);
+    } catch {
+      // Backend unavailable — token saved locally, will sync on next launch
+    }
     return token.data;
   } catch (err) {
-    console.error('[Push] Failed to get push token:', err);
+    // Push tokens unavailable (e.g., simulator, no network to Expo servers)
+    console.warn('[Push] Push token unavailable:', err);
     return null;
   }
 }
