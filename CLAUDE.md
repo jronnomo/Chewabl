@@ -2,7 +2,9 @@
 
 ## Testing Requirement
 
-**Always run `npx tsc --noEmit` before asking the user to test any feature.** Fix all TypeScript errors before considering the task done.
+**Always run `npx tsc --noEmit` before considering any feature done.** Fix all TypeScript errors without asking.
+
+Do not ask the user to test features — run the type check yourself and fix issues proactively.
 
 ## Color System Pattern
 
