@@ -268,6 +268,7 @@ export default function ProfileScreen() {
 }
 
 function PrefRow({ icon: Icon, label, value }: { icon: React.ElementType; label: string; value: string }) {
+  const Colors = useColors();
   return (
     <View style={styles.prefRow}>
       <View style={styles.prefIconCircle}>
