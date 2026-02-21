@@ -1,31 +1,60 @@
 # Chewabl — Claude Instructions
 
-## Testing Requirement
+## Definition of Done
 
-**Always run `npx tsc --noEmit` before considering any feature done.** Fix all TypeScript errors without asking.
+A feature is **not done** until ALL of the following pass:
 
-Do not ask the user to test features — run the type check yourself and fix issues proactively.
+1. `npx tsc --noEmit` — zero errors
+2. Every new/changed screen has been read and visually verified in code (not just compiled)
+3. Dark mode checklist passed (see below)
+4. No follow-up correction commits — get it right before declaring done
+
+Do not ask the user to test. Do not commit until these pass.
+
+## Quality Standards (learned from post-mortem)
+
+- **Never trust subagent output** without reading the changed files yourself before committing
+- **Module-level helper components** (functions defined outside the main component) cannot call `useColors()` automatically — add `const Colors = useColors()` inside the function body explicitly
+- **Declare done only once** — multiple correction commits after "done" is a failure mode to avoid
+
+## Dark Mode Checklist
+
+Every screen/component touched must pass this before committing:
+
+- [ ] Root container: `{ backgroundColor: Colors.background }` inline override
+- [ ] All `<Text>` elements: `{ color: Colors.text }` or `{ color: Colors.textSecondary }` inline
+- [ ] Card/surface `<View>` backgrounds: `{ backgroundColor: Colors.card }` inline
+- [ ] Border colors on inputs/cards: `{ borderColor: Colors.border }` inline
+- [ ] Any module-level helper component calls `const Colors = useColors()` inside its own body
 
 ## Color System Pattern
 
-All files must follow this two-level color pattern:
-
-1. **Module level** — `const Colors = StaticColors;` (used by `StyleSheet.create()`)
-2. **Component level** — `const Colors = useColors();` inside each component function (shadows module-level `Colors` for reactive dark mode)
+All files use this two-level pattern:
 
 ```ts
 import StaticColors from '../constants/colors';
 import { useColors } from '../context/ThemeContext';
 
-const Colors = StaticColors; // ← for StyleSheet.create()
+const Colors = StaticColors; // ← module level, for StyleSheet.create()
 
 export default function MyScreen() {
-  const Colors = useColors(); // ← shadows above; use for JSX icon colors, inline styles
-  ...
+  const Colors = useColors(); // ← component level, shadows above for reactive dark mode
+
+  return (
+    <View style={[styles.container, { backgroundColor: Colors.background }]}>
+      <Text style={[styles.title, { color: Colors.text }]}>...</Text>
+    </View>
+  );
 }
 ```
 
-Never reference `Colors` in a `StyleSheet.create()` block without a module-level `const Colors = StaticColors` fallback.
+`StyleSheet.create()` is static — it never updates. Inline overrides are required for all visible color properties.
+
+## Testing Requirement
+
+**Always run `npx tsc --noEmit` before considering any feature done.** Fix all TypeScript errors without asking.
+
+Do not ask the user to test features — run the type check yourself and fix issues proactively.
 
 ## Key Architecture
 
