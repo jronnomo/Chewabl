@@ -119,7 +119,7 @@ export default function SwipeScreen() {
 
   if (showResults) {
     return (
-      <View style={[styles.container, { paddingTop: insets.top }]}>
+      <View style={[styles.container, { paddingTop: insets.top, backgroundColor: Colors.background }]}>
         <Animated.View style={[styles.resultsContainer, { opacity: resultsOpacity }]}>
           <View style={styles.resultsHeader}>
             <Pressable style={styles.backBtn} onPress={() => router.back()}>

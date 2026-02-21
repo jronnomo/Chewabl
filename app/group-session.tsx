@@ -8,7 +8,8 @@ import {
   ScrollView,
   Dimensions,
   Alert,
-  Platform,
+  Modal,
+  ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -28,16 +29,28 @@ import {
   UserPlus,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
+import * as Contacts from 'expo-contacts';
+import { useQuery } from '@tanstack/react-query';
 import SwipeCard from '@/components/SwipeCard';
 import { useApp } from '@/context/AppContext';
 import { useAuth } from '@/context/AuthContext';
+import { getFriends, lookupByPhones } from '@/services/friends';
 import { restaurants } from '@/mocks/restaurants';
-import { Restaurant, GroupMember, SwipeResult } from '@/types';
+import { Restaurant, GroupMember, SwipeResult, Friend } from '@/types';
 import StaticColors from '@/constants/colors';
 import { useColors } from '@/context/ThemeContext';
 
 const Colors = StaticColors;
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+interface ContactMatch {
+  id: string;
+  name: string;
+  phone: string;
+  hasChewabl: boolean;
+  avatarUri?: string;
+  inviteCode: string;
+}
 
 const FALLBACK_AVATAR = 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100';
 
@@ -117,6 +130,7 @@ export default function GroupSessionScreen() {
 
   const [phase, setPhase] = useState<Phase>('lobby');
   const [members, setMembers] = useState<GroupMember[]>(initialMembers);
+  const [showAddModal, setShowAddModal] = useState(false);
   const [currentIndex, setCurrentIndex] = useState<number>(0);
   const [mySwipes, setMySwipes] = useState<Record<string, 'yes' | 'no'>>({});
   const [friendSwipes] = useState<Record<string, Record<string, 'yes' | 'no'>>>(
@@ -166,34 +180,16 @@ export default function GroupSessionScreen() {
   }, [friendSwipes, mySwipes, sessionRestaurants, members.length]);
 
   const handleAddMember = useCallback(() => {
-    if (Platform.OS === 'ios') {
-      Alert.prompt(
-        'Add Person',
-        'Enter their name',
-        (name) => {
-          if (name?.trim()) {
-            const newMember: GroupMember = {
-              id: `guest_${Date.now()}`,
-              name: name.trim(),
-              avatar: FALLBACK_AVATAR,
-              completedSwiping: false,
-            };
-            setMembers(prev => [...prev, newMember]);
-          }
-        },
-        'plain-text'
-      );
-    } else {
-      const guestNum = members.filter(m => m.id.startsWith('guest_')).length + 1;
-      const newMember: GroupMember = {
-        id: `guest_${Date.now()}`,
-        name: `Guest ${guestNum}`,
-        avatar: FALLBACK_AVATAR,
-        completedSwiping: false,
-      };
-      setMembers(prev => [...prev, newMember]);
-    }
-  }, [members]);
+    setShowAddModal(true);
+  }, []);
+
+  const handleMemberAdded = useCallback((member: GroupMember) => {
+    setMembers(prev => {
+      if (prev.some(m => m.id === member.id)) return prev; // no duplicates
+      return [...prev, member];
+    });
+    setShowAddModal(false);
+  }, []);
 
   const handleStartSwiping = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
@@ -246,7 +242,7 @@ export default function GroupSessionScreen() {
 
   if (phase === 'lobby') {
     return (
-      <View style={[styles.container, { paddingTop: insets.top }]}>
+      <View style={[styles.container, { paddingTop: insets.top, backgroundColor: Colors.background }]}>
         <Animated.View style={[styles.phaseContent, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
           <View style={styles.lobbyHeader}>
             <Pressable style={styles.backBtn} onPress={() => router.back()}>
@@ -316,6 +312,13 @@ export default function GroupSessionScreen() {
             <ChevronRight size={18} color="#FFF" />
           </Pressable>
         </View>
+
+        <AddMemberModal
+          visible={showAddModal}
+          onClose={() => setShowAddModal(false)}
+          onAddMember={handleMemberAdded}
+          existingMemberIds={members.map(m => m.id)}
+        />
       </View>
     );
   }
@@ -326,7 +329,7 @@ export default function GroupSessionScreen() {
       : 0;
 
     return (
-      <View style={[styles.container, { paddingTop: insets.top }]}>
+      <View style={[styles.container, { paddingTop: insets.top, backgroundColor: Colors.background }]}>
         <View style={styles.swipeHeader}>
           <Pressable style={styles.backBtn} onPress={() => setPhase('lobby')}>
             <ArrowLeft size={20} color={Colors.text} />
@@ -1105,5 +1108,289 @@ const styles = StyleSheet.create({
     height: '100%',
     backgroundColor: Colors.primary,
     borderRadius: 3,
+  },
+});
+
+// ─── Add Member Modal ────────────────────────────────────────────────────────
+
+function AddMemberModal({
+  visible,
+  onClose,
+  onAddMember,
+  existingMemberIds,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  onAddMember: (member: GroupMember) => void;
+  existingMemberIds: string[];
+}) {
+  const Colors = useColors();
+  const { isAuthenticated } = useAuth();
+  const [contactsLoading, setContactsLoading] = useState(false);
+  const [contactMatches, setContactMatches] = useState<ContactMatch[]>([]);
+  const [showContacts, setShowContacts] = useState(false);
+
+  const { data: friends = [], isLoading: friendsLoading } = useQuery({
+    queryKey: ['friends'],
+    queryFn: getFriends,
+    enabled: isAuthenticated && visible,
+    retry: false,
+  });
+
+  const availableFriends = friends.filter(f => !existingMemberIds.includes(f.id));
+
+  const handleAddFriend = useCallback((friend: Friend) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    onAddMember({
+      id: friend.id,
+      name: friend.name,
+      avatar: friend.avatarUri ?? FALLBACK_AVATAR,
+      completedSwiping: false,
+    });
+  }, [onAddMember]);
+
+  const handleOpenContacts = useCallback(async () => {
+    setContactsLoading(true);
+    try {
+      const { status } = await Contacts.requestPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission needed', 'Please allow contacts access in Settings.');
+        return;
+      }
+      const { data } = await Contacts.getContactsAsync({
+        fields: [Contacts.Fields.PhoneNumbers, Contacts.Fields.Name],
+      });
+      const phones: string[] = [];
+      const contactMap: Record<string, { name: string }> = {};
+      for (const contact of data) {
+        for (const p of (contact.phoneNumbers ?? [])) {
+          if (p.number) {
+            const digits = p.number.replace(/\D/g, '');
+            const e164 = digits.length === 10 ? `+1${digits}` : `+${digits}`;
+            if (!contactMap[e164]) {
+              phones.push(e164);
+              contactMap[e164] = { name: contact.name ?? p.number };
+            }
+          }
+        }
+      }
+      let matches: ContactMatch[] = [];
+      try {
+        const found = await lookupByPhones(phones.slice(0, 100));
+        matches = found.map(u => ({
+          id: u.id,
+          name: u.name,
+          phone: u.phone ?? '',
+          hasChewabl: true,
+          avatarUri: u.avatarUri,
+          inviteCode: u.inviteCode,
+        }));
+        // Also add contacts that weren't found
+        const foundPhones = new Set(found.map(u => u.phone));
+        for (const [phone, c] of Object.entries(contactMap).slice(0, 30)) {
+          if (!foundPhones.has(phone) && !matches.find(m => m.phone === phone)) {
+            matches.push({ id: `contact_${phone}`, name: c.name, phone, hasChewabl: false, inviteCode: '' });
+          }
+        }
+      } catch {
+        // Backend unavailable — show contacts as invitable
+        matches = Object.entries(contactMap).slice(0, 30).map(([phone, c]) => ({
+          id: `contact_${phone}`,
+          name: c.name,
+          phone,
+          hasChewabl: false,
+          inviteCode: '',
+        }));
+      }
+      setContactMatches(matches);
+      setShowContacts(true);
+    } catch {
+      Alert.alert('Error', 'Could not access contacts.');
+    } finally {
+      setContactsLoading(false);
+    }
+  }, []);
+
+  const handleContactTap = useCallback((match: ContactMatch) => {
+    if (match.hasChewabl && !existingMemberIds.includes(match.id)) {
+      onAddMember({ id: match.id, name: match.name, avatar: match.avatarUri ?? FALLBACK_AVATAR, completedSwiping: false });
+    } else if (!match.hasChewabl) {
+      Alert.alert('Invite Sent', `${match.name} will receive an invitation to join Chewabl.`);
+    }
+  }, [onAddMember, existingMemberIds]);
+
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+      <View style={{ flex: 1, backgroundColor: Colors.background }}>
+        <View style={modalStyles.header}>
+          <Text style={[modalStyles.title, { color: Colors.text }]}>Add to Group</Text>
+          <Pressable onPress={onClose} style={modalStyles.closeBtn}>
+            <XIcon size={22} color={Colors.textSecondary} />
+          </Pressable>
+        </View>
+
+        <ScrollView contentContainerStyle={modalStyles.scrollContent}>
+          {isAuthenticated && (
+            <View style={modalStyles.section}>
+              <Text style={[modalStyles.sectionTitle, { color: Colors.text }]}>Your Friends</Text>
+              {friendsLoading && <ActivityIndicator color={Colors.primary} style={{ marginVertical: 12 }} />}
+              {!friendsLoading && availableFriends.length === 0 && (
+                <Text style={[modalStyles.emptyText, { color: Colors.textTertiary }]}>
+                  No friends to add yet. Add friends from the Friends tab.
+                </Text>
+              )}
+              {availableFriends.map(friend => (
+                <Pressable
+                  key={friend.id}
+                  style={[modalStyles.row, { borderBottomColor: Colors.borderLight }]}
+                  onPress={() => handleAddFriend(friend)}
+                >
+                  <View style={[modalStyles.avatar, { backgroundColor: Colors.primaryLight }]}>
+                    {friend.avatarUri
+                      ? <Image source={{ uri: friend.avatarUri }} style={modalStyles.avatarImg} contentFit="cover" />
+                      : <Text style={[modalStyles.avatarInitial, { color: Colors.primary }]}>{friend.name[0]?.toUpperCase()}</Text>
+                    }
+                  </View>
+                  <Text style={[modalStyles.rowName, { color: Colors.text }]}>{friend.name}</Text>
+                  <UserPlus size={18} color={Colors.primary} />
+                </Pressable>
+              ))}
+            </View>
+          )}
+
+          {!showContacts ? (
+            <Pressable
+              style={[modalStyles.contactsBtn, { backgroundColor: Colors.card, borderColor: Colors.border }]}
+              onPress={handleOpenContacts}
+              disabled={contactsLoading}
+            >
+              {contactsLoading
+                ? <ActivityIndicator color={Colors.primary} />
+                : <>
+                  <Users size={18} color={Colors.primary} />
+                  <Text style={[modalStyles.contactsBtnText, { color: Colors.primary }]}>Add from Contacts</Text>
+                </>
+              }
+            </Pressable>
+          ) : (
+            <View style={modalStyles.section}>
+              <Text style={[modalStyles.sectionTitle, { color: Colors.text }]}>Contacts</Text>
+              {contactMatches.map(match => (
+                <Pressable
+                  key={match.id}
+                  style={[modalStyles.row, { borderBottomColor: Colors.borderLight }]}
+                  onPress={() => handleContactTap(match)}
+                >
+                  <View style={[modalStyles.avatar, { backgroundColor: Colors.primaryLight }]}>
+                    {match.avatarUri
+                      ? <Image source={{ uri: match.avatarUri }} style={modalStyles.avatarImg} contentFit="cover" />
+                      : <Text style={[modalStyles.avatarInitial, { color: Colors.primary }]}>{match.name[0]?.toUpperCase()}</Text>
+                    }
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[modalStyles.rowName, { color: Colors.text }]}>{match.name}</Text>
+                    {!match.hasChewabl && (
+                      <Text style={[modalStyles.rowSub, { color: Colors.textTertiary }]}>Not on Chewabl yet</Text>
+                    )}
+                  </View>
+                  <Text style={[modalStyles.actionLabel, { color: match.hasChewabl ? Colors.primary : Colors.secondary }]}>
+                    {match.hasChewabl ? (existingMemberIds.includes(match.id) ? 'Added' : 'Add') : 'Invite'}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          )}
+        </ScrollView>
+      </View>
+    </Modal>
+  );
+}
+
+const modalStyles = StyleSheet.create({
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.borderLight,
+  },
+  title: {
+    fontSize: 18,
+    fontWeight: '800' as const,
+  },
+  closeBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Colors.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scrollContent: {
+    padding: 20,
+    paddingBottom: 40,
+  },
+  section: {
+    marginBottom: 24,
+  },
+  sectionTitle: {
+    fontSize: 15,
+    fontWeight: '700' as const,
+    marginBottom: 12,
+  },
+  emptyText: {
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+  },
+  avatar: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  avatarImg: {
+    width: 42,
+    height: 42,
+  },
+  avatarInitial: {
+    fontSize: 16,
+    fontWeight: '700' as const,
+  },
+  rowName: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '600' as const,
+  },
+  rowSub: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  actionLabel: {
+    fontSize: 14,
+    fontWeight: '700' as const,
+  },
+  contactsBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderRadius: 14,
+    paddingVertical: 14,
+    borderWidth: 1.5,
+  },
+  contactsBtnText: {
+    fontSize: 15,
+    fontWeight: '700' as const,
   },
 });

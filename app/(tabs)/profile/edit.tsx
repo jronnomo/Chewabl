@@ -67,7 +67,7 @@ export default function EditPreferencesScreen() {
   }, [preferences, cuisines, budget, dietary, atmosphere, groupSize, distance, updatePreferences, router]);
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <View style={[styles.container, { paddingTop: insets.top, backgroundColor: Colors.background }]}>
       <View style={styles.header}>
         <Pressable style={styles.backBtn} onPress={() => router.back()}>
           <ArrowLeft size={20} color={Colors.text} />

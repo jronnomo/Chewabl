@@ -106,7 +106,7 @@ export default function PlansScreen() {
   ];
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <View style={[styles.container, { paddingTop: insets.top, backgroundColor: Colors.background }]}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>My Plans</Text>
         <Pressable style={styles.addBtn} onPress={handleNewPlan} testID="new-plan-btn">

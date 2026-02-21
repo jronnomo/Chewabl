@@ -172,7 +172,7 @@ export default function PlanEventScreen() {
       style={styles.flex}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <View style={[styles.container, { paddingTop: insets.top }]}>
+      <View style={[styles.container, { paddingTop: insets.top, backgroundColor: Colors.background }]}>
         <View style={styles.header}>
           <View style={styles.headerHandle} />
           <View style={styles.headerRow}>

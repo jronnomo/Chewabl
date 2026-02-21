@@ -10,7 +10,8 @@ import {
   Animated,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Search, SlidersHorizontal, X } from 'lucide-react-native';
+import { useLocalSearchParams } from 'expo-router';
+import { Search, SlidersHorizontal, X, Flame } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import RestaurantCard from '../../../components/RestaurantCard';
 import { CUISINES, BUDGET_OPTIONS } from '../../../mocks/restaurants';
@@ -23,6 +24,8 @@ const Colors = StaticColors;
 export default function DiscoverScreen() {
   const Colors = useColors();
   const insets = useSafeAreaInsets();
+  const { filter } = useLocalSearchParams<{ filter?: string }>();
+  const dealsMode = filter === 'deals';
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [debouncedQuery, setDebouncedQuery] = useState<string>('');
   const [selectedCuisine, setSelectedCuisine] = useState<string>('All');
@@ -36,11 +39,14 @@ export default function DiscoverScreen() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  const { data: filteredRestaurants = [] } = useSearchRestaurants(
+  const { data: rawRestaurants = [] } = useSearchRestaurants(
     debouncedQuery,
     selectedCuisine,
     selectedBudget
   );
+  const filteredRestaurants = dealsMode
+    ? rawRestaurants.filter(r => r.lastCallDeal)
+    : rawRestaurants;
 
   const toggleFilters = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -61,9 +67,16 @@ export default function DiscoverScreen() {
   const activeFilterCount = (selectedCuisine !== 'All' ? 1 : 0) + (selectedBudget !== 'All' ? 1 : 0);
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <View style={[styles.container, { paddingTop: insets.top, backgroundColor: Colors.background }]}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Discover</Text>
+        {dealsMode ? (
+          <View style={styles.dealsTitleRow}>
+            <Flame size={22} color={Colors.error} />
+            <Text style={styles.headerTitle}>Last Call Deals</Text>
+          </View>
+        ) : (
+          <Text style={styles.headerTitle}>Discover</Text>
+        )}
       </View>
 
       <View style={styles.searchRow}>
@@ -144,9 +157,9 @@ export default function DiscoverScreen() {
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
           <View style={styles.emptyState}>
-            <Text style={styles.emptyEmoji}>🍽️</Text>
-            <Text style={styles.emptyTitle}>No restaurants found</Text>
-            <Text style={styles.emptySubtext}>Try adjusting your filters</Text>
+            <Text style={styles.emptyEmoji}>{dealsMode ? '🔥' : '🍽️'}</Text>
+            <Text style={styles.emptyTitle}>{dealsMode ? 'No deals right now' : 'No restaurants found'}</Text>
+            <Text style={styles.emptySubtext}>{dealsMode ? 'Check back closer to closing time' : 'Try adjusting your filters'}</Text>
           </View>
         }
       />
@@ -163,6 +176,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 12,
     paddingBottom: 4,
+  },
+  dealsTitleRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 8,
   },
   headerTitle: {
     fontSize: 28,

@@ -62,7 +62,7 @@ export default function HomeScreen() {
 
   if (isLoading) {
     return (
-      <View style={[styles.container, styles.centered]}>
+      <View style={[styles.container, styles.centered, { backgroundColor: Colors.background }]}>
         <ActivityIndicator size="large" color={Colors.primary} />
       </View>
     );
@@ -75,7 +75,7 @@ export default function HomeScreen() {
   const firstName = preferences.name.split(' ')[0] || 'there';
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <View style={[styles.container, { paddingTop: insets.top, backgroundColor: Colors.background }]}>
       <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }], flex: 1 }}>
         <ScrollView
           showsVerticalScrollIndicator={false}
@@ -159,7 +159,7 @@ export default function HomeScreen() {
                 <Flame size={18} color={Colors.error} />
                 <Text style={styles.sectionTitle}>Last Call Deals</Text>
               </View>
-              <Pressable style={styles.seeAllBtn} onPress={() => router.push('/(tabs)/discover')}>
+              <Pressable style={styles.seeAllBtn} onPress={() => router.push('/(tabs)/discover?filter=deals' as never)}>
                 <Text style={styles.seeAllText}>See all</Text>
                 <ChevronRight size={14} color={Colors.primary} />
               </Pressable>

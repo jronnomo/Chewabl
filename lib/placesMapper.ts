@@ -57,6 +57,40 @@ function getTodayHours(weekdayDescriptions?: string[]): string {
   return desc.replace(/^[^:]+:\s*/, '');
 }
 
+function getLastCallDeal(place: Place): string | undefined {
+  // Heuristic 1: closing within 2 hours based on today's hours string
+  const descs = place.regularOpeningHours?.weekdayDescriptions;
+  if (descs) {
+    const jsDay = new Date().getDay();
+    const idx = jsDay === 0 ? 6 : jsDay - 1;
+    const desc = descs[idx] || '';
+    // Match closing time "– HH:MM AM/PM" (en-dash or hyphen)
+    const closeMatch = desc.match(/[–\-]\s*(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+    if (closeMatch) {
+      const h = parseInt(closeMatch[1]);
+      const m = parseInt(closeMatch[2]);
+      const isPM = closeMatch[3].toUpperCase() === 'PM';
+      let close24 = h;
+      if (isPM && h !== 12) close24 = h + 12;
+      else if (!isPM && h === 12) close24 = 0;
+      const now = new Date();
+      const diffMins = (close24 * 60 + m) - (now.getHours() * 60 + now.getMinutes());
+      if (diffMins > 0 && diffMins <= 120) {
+        const hrs = Math.floor(diffMins / 60);
+        const mins = diffMins % 60;
+        const timeStr = hrs > 0 ? `${hrs}h${mins > 0 ? ` ${mins}m` : ''}` : `${mins}m`;
+        return `Last call! Closes in ${timeStr}`;
+      }
+    }
+  }
+  // Heuristic 2: inexpensive + well-rated + open = great deal
+  const priceLevel = PRICE_LEVEL_MAP[place.priceLevel ?? ''] ?? 2;
+  if (priceLevel === 1 && (place.rating ?? 0) >= 4.0 && place.regularOpeningHours?.openNow) {
+    return 'Great value – top-rated for the price';
+  }
+  return undefined;
+}
+
 const EXCLUDED_TYPES = new Set([
   'restaurant',
   'food',
@@ -125,5 +159,6 @@ export function mapToRestaurant(place: Place, userLocation?: Coords): Restaurant
     noiseLevel: 'moderate',
     busyLevel: 'moderate',
     seating: ['indoor'],
+    lastCallDeal: getLastCallDeal(place),
   };
 }
