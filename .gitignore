@@ -43,6 +43,9 @@ yarn-error.*
 .env
 rork-eslint.config.js
 
+# Claude Code
+.claude/
+
 # Session handoffs and test reports (generated, not committed)
 session-handoffs/
 test-reports/
