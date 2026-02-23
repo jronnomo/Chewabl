@@ -42,6 +42,10 @@ yarn-error.*
 
 .env
 rork-eslint.config.js
+
+# Session handoffs and test reports (generated, not committed)
+session-handoffs/
+test-reports/
 core
 node_modules
 .expo
