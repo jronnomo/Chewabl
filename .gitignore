@@ -46,6 +46,9 @@ rork-eslint.config.js
 # Claude Code
 .claude/
 
+# Maestro E2E tests
+maestro/
+
 # Session handoffs and test reports (generated, not committed)
 session-handoffs/
 test-reports/
