@@ -1,5 +1,5 @@
 import { api, setToken, clearToken } from './api';
-import { BackendUser } from '../types';
+import { BackendUser, UserPreferences } from '../types';
 
 interface AuthResponse {
   token: string;
@@ -25,6 +25,8 @@ export async function login(email: string, password: string): Promise<AuthRespon
 
 export async function logout(): Promise<void> {
   await clearToken();
+  // NOTE: React Query cache should be cleared by the caller (e.g. AuthContext.signOut)
+  // to avoid a circular dependency between services and context layers.
 }
 
 export async function getMe(): Promise<BackendUser> {
@@ -35,6 +37,8 @@ export async function updateProfile(updates: {
   name?: string;
   phone?: string;
   avatarUri?: string;
+  preferences?: UserPreferences;
+  favorites?: string[];
 }): Promise<BackendUser> {
   return api.put<BackendUser>('/users/me', updates);
 }

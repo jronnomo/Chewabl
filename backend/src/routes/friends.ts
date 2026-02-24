@@ -11,16 +11,29 @@ const router = Router();
 router.get('/', requireAuth, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const uid = new mongoose.Types.ObjectId(req.userId);
+
+    // Fetch without populate so requester/recipient are raw ObjectIds
     const friendships = await Friendship.find({
       $or: [{ requester: uid }, { recipient: uid }],
       status: 'accepted',
-    }).populate('requester recipient', 'id name phone avatarUri');
-
-    const friends = friendships.map(f => {
-      const other = f.requester.toString() === req.userId ? f.recipient : f.requester;
-      return other;
     });
-    res.json(friends);
+
+    // Extract the other person's ID from each friendship
+    const friendIds = friendships.map(f =>
+      f.requester.toString() === req.userId ? f.recipient : f.requester
+    );
+
+    // Fetch friend users directly and explicitly shape the response
+    const friends = await User.find({ _id: { $in: friendIds } })
+      .select('name phone avatarUri inviteCode');
+
+    res.json(friends.map(u => ({
+      id: u.id,
+      name: u.name,
+      phone: u.phone,
+      avatarUri: u.avatarUri,
+      inviteCode: u.inviteCode,
+    })));
   } catch {
     res.status(500).json({ error: 'Server error' });
   }
@@ -51,9 +64,16 @@ router.post('/request', requireAuth, async (req: AuthRequest, res: Response): Pr
         { requester: userId, recipient: req.userId },
       ],
     });
+
+    // F-007-006: Allow re-requesting after decline — delete declined friendship and create fresh
     if (existing) {
-      res.status(409).json({ error: 'Friend request already exists', status: existing.status });
-      return;
+      if (existing.status === 'declined') {
+        await Friendship.deleteOne({ _id: existing._id });
+        // Fall through to create a new pending request below
+      } else {
+        res.status(409).json({ error: 'Friend request already exists', status: existing.status });
+        return;
+      }
     }
 
     const friendship = await Friendship.create({ requester: req.userId, recipient: userId, status: 'pending' });
@@ -108,15 +128,33 @@ router.put('/request/:id', requireAuth, async (req: AuthRequest, res: Response):
   }
 });
 
-// Remove friend
+// F-007-005: Remove friend — accepts either friendship._id or friend userId
 router.delete('/:id', requireAuth, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const uid = req.userId;
-    await Friendship.deleteOne({
-      _id: req.params.id,
+    const paramId = req.params.id;
+
+    // Try to delete by friendship _id first
+    const byId = await Friendship.deleteOne({
+      _id: paramId,
       $or: [{ requester: uid }, { recipient: uid }],
     });
-    res.json({ ok: true });
+
+    if (byId.deletedCount > 0) {
+      res.json({ ok: true });
+      return;
+    }
+
+    // If not found by _id, try treating paramId as a friend's userId
+    const byUserId = await Friendship.deleteOne({
+      $or: [
+        { requester: uid, recipient: paramId },
+        { requester: paramId, recipient: uid },
+      ],
+      status: 'accepted',
+    });
+
+    res.json({ ok: true, deleted: byUserId.deletedCount > 0 });
   } catch {
     res.status(500).json({ error: 'Server error' });
   }

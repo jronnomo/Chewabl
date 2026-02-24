@@ -11,9 +11,10 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, Redirect } from 'expo-router';
-import { Zap, CalendarPlus, Flame, TrendingUp, Sparkles, ChevronRight, Heart, Users, Clock } from 'lucide-react-native';
+import { Zap, CalendarPlus, Flame, TrendingUp, Sparkles, ChevronRight, Heart, Users, Clock, MapPin } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useApp, useNearbyRestaurants } from '../../../context/AppContext';
+import { useAuth } from '../../../context/AuthContext';
 import RestaurantCard from '../../../components/RestaurantCard';
 import StaticColors from '../../../constants/colors';
 import { useColors } from '../../../context/ThemeContext';
@@ -24,7 +25,8 @@ export default function HomeScreen() {
   const Colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { preferences, isOnboarded, isLoading } = useApp();
+  const { preferences, isOnboarded, isLoading, locationPermission, requestLocation } = useApp();
+  const { user } = useAuth();
   const { data: allRestaurants = [] } = useNearbyRestaurants();
 
   const tonightNearYou = allRestaurants.filter(r => r.isOpenNow).slice(0, 5);
@@ -73,7 +75,8 @@ export default function HomeScreen() {
     return <Redirect href={'/onboarding' as never} />;
   }
 
-  const firstName = preferences.name.split(' ')[0] || 'there';
+  const displayName = user?.name || preferences.name;
+  const firstName = displayName.split(' ')[0] || 'there';
 
   return (
     <View style={[styles.container, { paddingTop: insets.top, backgroundColor: Colors.background }]}>
@@ -86,6 +89,22 @@ export default function HomeScreen() {
             <Text style={[styles.greetingText, { color: Colors.text }]}>Hey {firstName} 👋</Text>
             <Text style={[styles.greetingSubtext, { color: Colors.textSecondary }]}>Where are we eating?</Text>
           </View>
+
+          {locationPermission === 'denied' && (
+            <Pressable
+              style={[styles.locationBanner, { backgroundColor: Colors.card, borderColor: Colors.border }]}
+              onPress={requestLocation}
+              accessibilityLabel="Enable location access"
+              accessibilityRole="button"
+            >
+              <MapPin size={18} color={Colors.primary} />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.locationBannerTitle, { color: Colors.text }]}>Enable Location</Text>
+                <Text style={[styles.locationBannerSub, { color: Colors.textSecondary }]}>Get personalized nearby restaurant picks</Text>
+              </View>
+              <ChevronRight size={16} color={Colors.textTertiary} />
+            </Pressable>
+          )}
 
           <View style={styles.quickActions}>
             <Pressable
@@ -122,8 +141,8 @@ export default function HomeScreen() {
             testID="group-swipe-btn"
           >
             <View style={styles.groupSwipeInner}>
-              <View style={styles.groupSwipeIcon}>
-                <Users size={20} color="#FFF" />
+              <View style={[styles.groupSwipeIcon, { backgroundColor: Colors.text }]}>
+                <Users size={20} color={Colors.background} />
               </View>
               <View style={styles.groupSwipeText}>
                 <Text style={[styles.groupSwipeTitle, { color: Colors.text }]}>Group Swipe</Text>
@@ -144,14 +163,18 @@ export default function HomeScreen() {
                 <ChevronRight size={14} color={Colors.primary} />
               </Pressable>
             </View>
-            <FlatList
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              data={tonightNearYou}
-              keyExtractor={item => item.id}
-              renderItem={({ item }) => <RestaurantCard restaurant={item} variant="horizontal" />}
-              contentContainerStyle={styles.horizontalList}
-            />
+            {tonightNearYou.length > 0 ? (
+              <FlatList
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                data={tonightNearYou}
+                keyExtractor={item => item.id}
+                renderItem={({ item }) => <RestaurantCard restaurant={item} variant="horizontal" />}
+                contentContainerStyle={styles.horizontalList}
+              />
+            ) : (
+              <Text style={[styles.emptyText, { color: Colors.textSecondary }]}>No restaurants found nearby</Text>
+            )}
           </View>
 
           <View style={styles.section}>
@@ -165,14 +188,18 @@ export default function HomeScreen() {
                 <ChevronRight size={14} color={Colors.primary} />
               </Pressable>
             </View>
-            <FlatList
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              data={lastCallDeals}
-              keyExtractor={item => item.id}
-              renderItem={({ item }) => <RestaurantCard restaurant={item} variant="horizontal" />}
-              contentContainerStyle={styles.horizontalList}
-            />
+            {lastCallDeals.length > 0 ? (
+              <FlatList
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                data={lastCallDeals}
+                keyExtractor={item => item.id}
+                renderItem={({ item }) => <RestaurantCard restaurant={item} variant="horizontal" />}
+                contentContainerStyle={styles.horizontalList}
+              />
+            ) : (
+              <Text style={[styles.emptyText, { color: Colors.textSecondary }]}>No deals right now</Text>
+            )}
           </View>
 
           {closingSoon.length > 0 && (
@@ -198,12 +225,16 @@ export default function HomeScreen() {
             <View style={styles.sectionHeader}>
               <View style={styles.sectionTitleRow}>
                 <TrendingUp size={18} color={Colors.success} />
-                <Text style={[styles.sectionTitle, { color: Colors.text }]}>Trending with Friends</Text>
+                <Text style={[styles.sectionTitle, { color: Colors.text }]}>Popular Nearby</Text>
               </View>
             </View>
-            {trendingWithFriends.map(r => (
-              <RestaurantCard key={r.id} restaurant={r} variant="compact" />
-            ))}
+            {trendingWithFriends.length > 0 ? (
+              trendingWithFriends.map(r => (
+                <RestaurantCard key={r.id} restaurant={r} variant="compact" />
+              ))
+            ) : (
+              <Text style={[styles.emptyText, { color: Colors.textSecondary }]}>No popular spots found</Text>
+            )}
           </View>
 
           <View style={styles.section}>
@@ -213,9 +244,13 @@ export default function HomeScreen() {
                 <Text style={[styles.sectionTitle, { color: Colors.text }]}>Based on Your Picks</Text>
               </View>
             </View>
-            {basedOnPastPicks.map(r => (
-              <RestaurantCard key={r.id} restaurant={r} variant="compact" />
-            ))}
+            {basedOnPastPicks.length > 0 ? (
+              basedOnPastPicks.map(r => (
+                <RestaurantCard key={r.id} restaurant={r} variant="compact" />
+              ))
+            ) : (
+              <Text style={[styles.emptyText, { color: Colors.textSecondary }]}>No recommendations yet</Text>
+            )}
           </View>
 
           <View style={{ height: 20 }} />
@@ -251,6 +286,27 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: Colors.textSecondary,
     marginTop: 4,
+  },
+  locationBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: Colors.card,
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  locationBannerTitle: {
+    fontSize: 14,
+    fontWeight: '600' as const,
+    color: Colors.text,
+  },
+  locationBannerSub: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    marginTop: 1,
   },
   quickActions: {
     flexDirection: 'row',
@@ -381,5 +437,11 @@ const styles = StyleSheet.create({
   },
   horizontalList: {
     paddingRight: 20,
+  },
+  emptyText: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+    fontStyle: 'italic',
+    paddingVertical: 8,
   },
 });

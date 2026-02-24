@@ -1,5 +1,17 @@
 import mongoose, { Document, Schema } from 'mongoose';
 
+export interface IUserPreferences {
+  name: string;
+  cuisines: string[];
+  budget: string;
+  dietary: string[];
+  atmosphere: string;
+  groupSize: string;
+  distance: string;
+  isDarkMode?: boolean;
+  notificationsEnabled?: boolean;
+}
+
 export interface IUser extends Document {
   name: string;
   email: string;
@@ -8,6 +20,8 @@ export interface IUser extends Document {
   avatarUri?: string;
   pushToken?: string;
   inviteCode: string;
+  preferences?: IUserPreferences;
+  favorites: string[];
   createdAt: Date;
 }
 
@@ -20,8 +34,23 @@ const UserSchema = new Schema<IUser>(
     avatarUri: { type: String },
     pushToken: { type: String },
     inviteCode: { type: String, required: true, unique: true },
+    preferences: {
+      type: {
+        name: String,
+        cuisines: [String],
+        budget: String,
+        dietary: [String],
+        atmosphere: String,
+        groupSize: String,
+        distance: String,
+        isDarkMode: Boolean,
+        notificationsEnabled: Boolean,
+      },
+      default: undefined,
+    },
+    favorites: { type: [String], default: [] },
   },
-  { timestamps: true }
+  { timestamps: true, toJSON: { virtuals: true } }
 );
 
 export default mongoose.model<IUser>('User', UserSchema);

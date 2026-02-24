@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Mail, Lock, User, Phone, ChevronRight } from 'lucide-react-native';
+import { Mail, Lock, User, Phone, ChevronRight, Eye, EyeOff } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useAuth } from '../context/AuthContext';
 import StaticColors from '../constants/colors';
@@ -35,6 +35,11 @@ export default function AuthScreen() {
   const [password, setPassword] = useState('');
   const [phone, setPhone] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+
+  const emailRef = useRef<TextInput>(null);
+  const passwordRef = useRef<TextInput>(null);
+  const phoneRef = useRef<TextInput>(null);
 
   const handleSubmit = useCallback(async () => {
     if (!email.trim() || !password.trim()) {
@@ -43,6 +48,10 @@ export default function AuthScreen() {
     }
     if (tab === 'signup' && !name.trim()) {
       Alert.alert('Missing fields', 'Please enter your name.');
+      return;
+    }
+    if (password.length < 8) {
+      Alert.alert('Weak Password', 'Password must be at least 8 characters.');
       return;
     }
 
@@ -86,27 +95,27 @@ export default function AuthScreen() {
           keyboardShouldPersistTaps="handled"
         >
           <View style={styles.logoWrap}>
-            <View style={styles.logoCircle}>
+            <View style={[styles.logoCircle, { backgroundColor: Colors.primaryLight }]}>
               <Text style={styles.logoEmoji}>🍽️</Text>
             </View>
-            <Text style={styles.appName}>Chewabl</Text>
-            <Text style={styles.tagline}>Find your next great meal</Text>
+            <Text style={[styles.appName, { color: Colors.text }]}>Chewabl</Text>
+            <Text style={[styles.tagline, { color: Colors.textSecondary }]}>Find your next great meal</Text>
           </View>
 
-          <View style={styles.tabRow}>
+          <View style={[styles.tabRow, { backgroundColor: Colors.card }]}>
             <Pressable
               style={[styles.tab, tab === 'signin' && styles.tabActive]}
-              onPress={() => setTab('signin')}
+              onPress={() => { setTab('signin'); setName(''); setEmail(''); setPassword(''); setPhone(''); setShowPassword(false); }}
             >
-              <Text style={[styles.tabText, tab === 'signin' && styles.tabTextActive]}>
+              <Text style={[styles.tabText, { color: Colors.textSecondary }, tab === 'signin' && styles.tabTextActive]}>
                 Sign In
               </Text>
             </Pressable>
             <Pressable
               style={[styles.tab, tab === 'signup' && styles.tabActive]}
-              onPress={() => setTab('signup')}
+              onPress={() => { setTab('signup'); setName(''); setEmail(''); setPassword(''); setPhone(''); setShowPassword(false); }}
             >
-              <Text style={[styles.tabText, tab === 'signup' && styles.tabTextActive]}>
+              <Text style={[styles.tabText, { color: Colors.textSecondary }, tab === 'signup' && styles.tabTextActive]}>
                 Create Account
               </Text>
             </Pressable>
@@ -114,24 +123,26 @@ export default function AuthScreen() {
 
           <View style={styles.form}>
             {tab === 'signup' && (
-              <View style={styles.inputWrap}>
+              <View style={[styles.inputWrap, { backgroundColor: Colors.card, borderColor: Colors.border }]}>
                 <User size={18} color={Colors.textSecondary} style={styles.inputIcon} />
                 <TextInput
-                  style={styles.input}
+                  style={[styles.input, { color: Colors.text }]}
                   placeholder="Full name"
                   placeholderTextColor={Colors.textTertiary}
                   value={name}
                   onChangeText={setName}
                   autoCapitalize="words"
                   returnKeyType="next"
+                  onSubmitEditing={() => emailRef.current?.focus()}
                 />
               </View>
             )}
 
-            <View style={styles.inputWrap}>
+            <View style={[styles.inputWrap, { backgroundColor: Colors.card, borderColor: Colors.border }]}>
               <Mail size={18} color={Colors.textSecondary} style={styles.inputIcon} />
               <TextInput
-                style={styles.input}
+                ref={emailRef}
+                style={[styles.input, { color: Colors.text }]}
                 placeholder="Email address"
                 placeholderTextColor={Colors.textTertiary}
                 value={email}
@@ -140,28 +151,38 @@ export default function AuthScreen() {
                 autoCapitalize="none"
                 autoCorrect={false}
                 returnKeyType="next"
+                onSubmitEditing={() => passwordRef.current?.focus()}
               />
             </View>
 
-            <View style={styles.inputWrap}>
+            <View style={[styles.inputWrap, { backgroundColor: Colors.card, borderColor: Colors.border }]}>
               <Lock size={18} color={Colors.textSecondary} style={styles.inputIcon} />
               <TextInput
-                style={styles.input}
+                ref={passwordRef}
+                style={[styles.input, { color: Colors.text }]}
                 placeholder="Password"
                 placeholderTextColor={Colors.textTertiary}
                 value={password}
                 onChangeText={setPassword}
-                secureTextEntry
+                secureTextEntry={!showPassword}
                 returnKeyType={tab === 'signup' ? 'next' : 'done'}
-                onSubmitEditing={tab === 'signin' ? handleSubmit : undefined}
+                onSubmitEditing={tab === 'signin' ? handleSubmit : () => phoneRef.current?.focus()}
               />
+              <Pressable onPress={() => setShowPassword(!showPassword)} hitSlop={8} accessibilityLabel="Toggle password visibility" accessibilityRole="button">
+                {showPassword ? (
+                  <EyeOff size={18} color={Colors.textSecondary} />
+                ) : (
+                  <Eye size={18} color={Colors.textSecondary} />
+                )}
+              </Pressable>
             </View>
 
             {tab === 'signup' && (
-              <View style={styles.inputWrap}>
+              <View style={[styles.inputWrap, { backgroundColor: Colors.card, borderColor: Colors.border }]}>
                 <Phone size={18} color={Colors.textSecondary} style={styles.inputIcon} />
                 <TextInput
-                  style={styles.input}
+                  ref={phoneRef}
+                  style={[styles.input, { color: Colors.text }]}
                   placeholder="Phone number (optional)"
                   placeholderTextColor={Colors.textTertiary}
                   value={phone}
@@ -177,6 +198,7 @@ export default function AuthScreen() {
               style={[styles.submitBtn, loading && styles.submitBtnDisabled]}
               onPress={handleSubmit}
               disabled={loading}
+              accessibilityLabel={tab === 'signin' ? 'Sign In Button' : 'Create Account Button'}
             >
               {loading ? (
                 <ActivityIndicator color="#FFF" />

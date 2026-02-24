@@ -101,7 +101,7 @@ export default React.memo(function RestaurantCard({ restaurant, variant = 'verti
             {restaurant.isOpenNow && (
               <View style={styles.openBadge}>
                 <View style={styles.openDot} />
-                <Text style={styles.openText}>Open Now</Text>
+                <Text style={[styles.openText, { color: Colors.success }]}>Open Now</Text>
               </View>
             )}
           </View>
@@ -128,16 +128,16 @@ export default React.memo(function RestaurantCard({ restaurant, variant = 'verti
         <View style={styles.verticalInfo}>
           <View style={styles.verticalHeader}>
             <Text style={[styles.verticalName, { color: Colors.text }]} numberOfLines={1}>{restaurant.name}</Text>
-            <View style={styles.ratingBadge}>
+            <View style={[styles.ratingBadge, { backgroundColor: Colors.secondaryLight }]}>
               <Star size={12} color={Colors.star} fill={Colors.star} />
-              <Text style={styles.ratingBadgeText}>{restaurant.rating}</Text>
+              <Text style={[styles.ratingBadgeText, { color: Colors.secondary }]}>{restaurant.rating}</Text>
             </View>
           </View>
           <Text style={[styles.verticalCuisine, { color: Colors.textSecondary }]}>{restaurant.cuisine} · {priceString} · {restaurant.distance}</Text>
           <View style={styles.tagsRow}>
             {restaurant.tags.slice(0, 3).map(tag => (
-              <View key={tag} style={styles.tag}>
-                <Text style={styles.tagText}>{tag}</Text>
+              <View key={tag} style={[styles.tag, { backgroundColor: Colors.primaryLight }]}>
+                <Text style={[styles.tagText, { color: Colors.primary }]}>{tag}</Text>
               </View>
             ))}
           </View>
@@ -145,11 +145,11 @@ export default React.memo(function RestaurantCard({ restaurant, variant = 'verti
             <View style={styles.bottomRow}>
               <View style={styles.openBadge}>
                 <View style={styles.openDot} />
-                <Text style={styles.openText}>Open</Text>
+                <Text style={[styles.openText, { color: Colors.success }]}>Open</Text>
               </View>
               <View style={styles.busyBadge}>
                 <Clock size={11} color={Colors.textTertiary} />
-                <Text style={styles.busyText}>{restaurant.busyLevel} traffic</Text>
+                <Text style={[styles.busyText, { color: Colors.textTertiary }]}>{restaurant.busyLevel} traffic</Text>
               </View>
             </View>
           )}

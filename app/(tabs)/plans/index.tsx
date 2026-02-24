@@ -6,6 +6,7 @@ import {
   FlatList,
   Pressable,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -36,8 +37,12 @@ export default function PlansScreen() {
   const rsvpMutation = useMutation({
     mutationFn: ({ planId, action }: { planId: string; action: 'accept' | 'decline' }) =>
       rsvpPlan(planId, action),
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['plans'] });
+      Alert.alert('Done', variables.action === 'accept' ? 'You accepted the invite!' : 'Invite declined.');
+    },
+    onError: (err: Error) => {
+      Alert.alert('RSVP Failed', err.message || 'Something went wrong. Please try again.');
     },
   });
 
@@ -67,21 +72,23 @@ export default function PlansScreen() {
       }
     }
 
-    // For voting plans, offer to start group swipe to pick a restaurant
+    // Go directly to group swipe (skip lobby)
     if (plan.status === 'voting') {
-      Alert.alert(
-        plan.title,
-        `${plan.date} at ${plan.time}`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Group Swipe',
-            onPress: () => router.push(`/group-session?planId=${plan.id}` as never),
-          },
-        ]
-      );
+      router.push(`/group-session?planId=${plan.id}&autoStart=true` as never);
+      return;
     }
+
+    // F-005-008: onPress for non-voting plan cards — show info
+    Alert.alert(
+      plan.title,
+      `${plan.date} at ${plan.time}\nStatus: ${plan.status}\nCuisine: ${plan.cuisine ?? 'Any'} · Budget: ${plan.budget ?? 'Any'}`,
+    );
   }, [isAuthenticated, user, rsvpMutation, router]);
+
+  const handlePlanEdit = useCallback((plan: DiningPlan) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    router.push(`/plan-event?planId=${plan.id}` as never);
+  }, [router]);
 
   const filteredPlans = useMemo(() => {
     switch (activeTab) {
@@ -108,8 +115,8 @@ export default function PlansScreen() {
   return (
     <View style={[styles.container, { paddingTop: insets.top, backgroundColor: Colors.background }]}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>My Plans</Text>
-        <Pressable style={styles.addBtn} onPress={handleNewPlan} testID="new-plan-btn">
+        <Text style={[styles.headerTitle, { color: Colors.text }]}>My Plans</Text>
+        <Pressable style={styles.addBtn} onPress={handleNewPlan} testID="new-plan-btn" accessibilityLabel="Create new plan" accessibilityRole="button">
           <Plus size={20} color="#FFF" />
         </Pressable>
       </View>
@@ -118,13 +125,17 @@ export default function PlansScreen() {
         {tabs.map(tab => (
           <Pressable
             key={tab.key}
-            style={[styles.tab, activeTab === tab.key && styles.tabActive]}
+            style={[
+              styles.tab,
+              { backgroundColor: Colors.card, borderColor: Colors.border },
+              activeTab === tab.key && { backgroundColor: Colors.text, borderColor: Colors.text },
+            ]}
             onPress={() => {
               Haptics.selectionAsync();
               setActiveTab(tab.key);
             }}
           >
-            <Text style={[styles.tabText, activeTab === tab.key && styles.tabTextActive]}>
+            <Text style={[styles.tabText, { color: Colors.textSecondary }, activeTab === tab.key && styles.tabTextActive]}>
               {tab.label}
             </Text>
           </Pressable>
@@ -134,18 +145,31 @@ export default function PlansScreen() {
       <FlatList
         data={filteredPlans}
         keyExtractor={item => item.id}
-        renderItem={({ item }) => <PlanCard plan={item} onPress={() => handlePlanPress(item)} />}
+        renderItem={({ item }) => (
+          <PlanCard
+            plan={item}
+            onPress={() => handlePlanPress(item)}
+            onEdit={() => handlePlanEdit(item)}
+          />
+        )}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
           <View style={styles.emptyState}>
             <Text style={styles.emptyEmoji}>📅</Text>
-            <Text style={styles.emptyTitle}>No plans yet</Text>
-            <Text style={styles.emptySubtext}>Create a dining plan to get started</Text>
+            <Text style={[styles.emptyTitle, { color: Colors.text }]}>No plans yet</Text>
+            <Text style={[styles.emptySubtext, { color: Colors.textSecondary }]}>Create a dining plan to get started</Text>
             <Pressable style={styles.emptyBtn} onPress={handleNewPlan}>
               <Text style={styles.emptyBtnText}>Create Plan</Text>
             </Pressable>
           </View>
+        }
+        ListFooterComponent={
+          rsvpMutation.isPending ? (
+            <View style={{ alignItems: 'center', paddingVertical: 12 }}>
+              <ActivityIndicator color={Colors.primary} />
+            </View>
+          ) : null
         }
       />
     </View>

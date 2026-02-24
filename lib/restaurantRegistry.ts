@@ -9,3 +9,7 @@ export function registerRestaurants(restaurants: Restaurant[]): void {
 export function getRegisteredRestaurant(id: string): Restaurant | undefined {
   return registry.get(id);
 }
+
+export function clearRegistry(): void {
+  registry.clear();
+}

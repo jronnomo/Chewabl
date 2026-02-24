@@ -1,7 +1,7 @@
 import React, { useRef, useCallback } from 'react';
 import { View, Text, StyleSheet, Pressable, Animated } from 'react-native';
 import { Image } from 'expo-image';
-import { CalendarDays, Users, Check, Vote, Clock, X } from 'lucide-react-native';
+import { CalendarDays, Users, Check, Vote, Clock, X, Pencil } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { DiningPlan } from '../types';
 import StaticColors from '../constants/colors';
@@ -12,28 +12,46 @@ const Colors = StaticColors;
 interface PlanCardProps {
   plan: DiningPlan;
   onPress?: () => void;
+  onEdit?: () => void;
 }
 
-const statusConfig = {
-  voting: { label: 'Voting', color: Colors.secondary, icon: Vote, bg: Colors.secondaryLight },
-  confirmed: { label: 'Restaurant Set', color: Colors.success, icon: Check, bg: '#E8F9EE' },
-  completed: { label: 'Completed', color: Colors.textTertiary, icon: Clock, bg: '#F0F0F0' },
-  cancelled: { label: 'Cancelled', color: Colors.error, icon: X, bg: '#FFEBEE' },
+const statusConfigStatic = {
+  voting: { label: 'Voting', icon: Vote },
+  confirmed: { label: 'Restaurant Set', icon: Check },
+  completed: { label: 'Completed', icon: Clock },
+  cancelled: { label: 'Cancelled', icon: X },
 };
 
+function getStatusColors(status: string, Colors: ReturnType<typeof useColors>) {
+  switch (status) {
+    case 'voting':
+      return { color: Colors.secondary, bg: Colors.secondaryLight };
+    case 'confirmed':
+      return { color: Colors.success, bg: Colors.success + '18' };
+    case 'completed':
+      return { color: Colors.textTertiary, bg: Colors.textTertiary + '18' };
+    case 'cancelled':
+      return { color: Colors.error, bg: Colors.error + '18' };
+    default:
+      return { color: Colors.textTertiary, bg: Colors.textTertiary + '18' };
+  }
+}
+
 function PlanCardFooter({ plan }: { plan: DiningPlan }) {
+  const Colors = useColors(); // F-005-001: Module-level helper needs its own useColors()
   // Prefer the backend invites shape; fall back to legacy invitees
-  if (plan.invites && plan.invites.length > 0) {
+  if (plan.invites !== undefined) {
     const accepted = plan.invites.filter(i => i.status === 'accepted').length;
     const pending = plan.invites.filter(i => i.status === 'pending').length;
     return (
-      <View style={styles.footer}>
+      <View style={[styles.footer, { borderTopColor: Colors.borderLight }]}>
         <View style={styles.avatarsRow}>
           {plan.invites.slice(0, 4).map((invite, i) => (
             <View
               key={invite.userId}
               style={[
                 styles.avatarContainer,
+                { borderColor: Colors.card },
                 i > 0 && { marginLeft: -8 },
                 invite.status === 'accepted' && styles.avatarAccepted,
                 invite.status === 'declined' && styles.avatarDeclined,
@@ -42,21 +60,21 @@ function PlanCardFooter({ plan }: { plan: DiningPlan }) {
               {invite.avatarUri ? (
                 <Image source={{ uri: invite.avatarUri }} style={styles.avatar} contentFit="cover" />
               ) : (
-                <View style={[styles.avatar, styles.avatarFallback]}>
-                  <Text style={styles.avatarInitial}>{invite.name[0]?.toUpperCase()}</Text>
+                <View style={[styles.avatar, styles.avatarFallback, { backgroundColor: Colors.primaryLight }]}>
+                  <Text style={[styles.avatarInitial, { color: Colors.primary }]}>{invite.name[0]?.toUpperCase()}</Text>
                 </View>
               )}
             </View>
           ))}
           {plan.invites.length > 4 && (
             <View style={[styles.avatarContainer, { marginLeft: -8, backgroundColor: Colors.primaryLight }]}>
-              <Text style={styles.moreText}>+{plan.invites.length - 4}</Text>
+              <Text style={[styles.moreText, { color: Colors.primary }]}>+{plan.invites.length - 4}</Text>
             </View>
           )}
         </View>
         <View style={styles.inviteeInfo}>
           <Users size={13} color={Colors.textSecondary} />
-          <Text style={styles.inviteeText}>
+          <Text style={[styles.inviteeText, { color: Colors.textSecondary }]}>
             {accepted}/{plan.invites.length} accepted{pending > 0 ? ` · ${pending} pending` : ''}
           </Text>
         </View>
@@ -65,33 +83,36 @@ function PlanCardFooter({ plan }: { plan: DiningPlan }) {
   }
 
   // Legacy invitees fallback
+  const legacyInvitees = plan.invitees ?? [];
+  if (legacyInvitees.length === 0) return null;
   return (
-    <View style={styles.footer}>
+    <View style={[styles.footer, { borderTopColor: Colors.borderLight }]}>
       <View style={styles.avatarsRow}>
-        {plan.invitees.slice(0, 4).map((invitee, i) => (
-          <View key={invitee.id} style={[styles.avatarContainer, i > 0 && { marginLeft: -8 }]}>
+        {legacyInvitees.slice(0, 4).map((invitee, i) => (
+          <View key={invitee.id} style={[styles.avatarContainer, { borderColor: Colors.card }, i > 0 && { marginLeft: -8 }]}>
             <Image source={{ uri: invitee.avatar }} style={styles.avatar} contentFit="cover" />
           </View>
         ))}
-        {plan.invitees.length > 4 && (
+        {legacyInvitees.length > 4 && (
           <View style={[styles.avatarContainer, { marginLeft: -8, backgroundColor: Colors.primaryLight }]}>
-            <Text style={styles.moreText}>+{plan.invitees.length - 4}</Text>
+            <Text style={[styles.moreText, { color: Colors.primary }]}>+{legacyInvitees.length - 4}</Text>
           </View>
         )}
       </View>
       <View style={styles.inviteeInfo}>
         <Users size={13} color={Colors.textSecondary} />
-        <Text style={styles.inviteeText}>{plan.invitees.length} people</Text>
+        <Text style={[styles.inviteeText, { color: Colors.textSecondary }]}>{legacyInvitees.length} people</Text>
       </View>
     </View>
   );
 }
 
-export default React.memo(function PlanCard({ plan, onPress }: PlanCardProps) {
+export default React.memo(function PlanCard({ plan, onPress, onEdit }: PlanCardProps) {
   const Colors = useColors();
   const scaleAnim = useRef(new Animated.Value(1)).current;
-  const config = statusConfig[plan.status];
-  const StatusIcon = config.icon;
+  const configStatic = statusConfigStatic[plan.status];
+  const statusColors = getStatusColors(plan.status, Colors);
+  const StatusIcon = configStatic.icon;
 
   const handlePressIn = useCallback(() => {
     Animated.spring(scaleAnim, { toValue: 0.97, useNativeDriver: true }).start();
@@ -114,31 +135,44 @@ export default React.memo(function PlanCard({ plan, onPress }: PlanCardProps) {
 
   return (
     <Pressable onPress={handlePress} onPressIn={handlePressIn} onPressOut={handlePressOut} testID={`plan-card-${plan.id}`}>
-      <Animated.View style={[styles.card, { transform: [{ scale: scaleAnim }] }]}>
+      <Animated.View style={[styles.card, { transform: [{ scale: scaleAnim }], backgroundColor: Colors.card }]}>
         <View style={styles.header}>
           <View style={styles.titleRow}>
-            <Text style={styles.title} numberOfLines={1}>{plan.title}</Text>
-            <View style={[styles.statusBadge, { backgroundColor: config.bg }]}>
-              <StatusIcon size={11} color={config.color} />
-              <Text style={[styles.statusText, { color: config.color }]}>{config.label}</Text>
+            <Text style={[styles.title, { color: Colors.text }]} numberOfLines={1}>{plan.title}</Text>
+            <View style={styles.titleRowRight}>
+              <View style={[styles.statusBadge, { backgroundColor: statusColors.bg }]}>
+                <StatusIcon size={11} color={statusColors.color} />
+                <Text style={[styles.statusText, { color: statusColors.color }]}>{configStatic.label}</Text>
+              </View>
+              {onEdit && (
+                <Pressable
+                  style={[styles.editBtn, { backgroundColor: Colors.surfaceElevated }]}
+                  onPress={e => { e.stopPropagation?.(); onEdit(); }}
+                  hitSlop={8}
+                  accessibilityLabel="Edit plan"
+                  accessibilityRole="button"
+                >
+                  <Pencil size={14} color={Colors.textSecondary} />
+                </Pressable>
+              )}
             </View>
           </View>
           <View style={styles.metaRow}>
             <CalendarDays size={13} color={Colors.textSecondary} />
-            <Text style={styles.metaText}>{formattedDate} at {plan.time}</Text>
+            <Text style={[styles.metaText, { color: Colors.textSecondary }]}>{formattedDate} at {plan.time}</Text>
           </View>
           <View style={styles.metaRow}>
-            <Text style={styles.cuisineTag}>{plan.cuisine}</Text>
-            <Text style={styles.budgetTag}>{plan.budget}</Text>
+            <Text style={[styles.cuisineTag, { color: Colors.primary, backgroundColor: Colors.primaryLight }]}>{plan.cuisine}</Text>
+            <Text style={[styles.budgetTag, { color: Colors.secondary, backgroundColor: Colors.secondaryLight }]}>{plan.budget}</Text>
           </View>
         </View>
 
         {plan.restaurant && (
-          <View style={styles.restaurantPreview}>
+          <View style={[styles.restaurantPreview, { backgroundColor: Colors.surfaceElevated }]}>
             <Image source={{ uri: plan.restaurant.imageUrl }} style={styles.restaurantImage} contentFit="cover" />
             <View style={styles.restaurantInfo}>
-              <Text style={styles.restaurantName} numberOfLines={1}>{plan.restaurant.name}</Text>
-              <Text style={styles.restaurantAddress}>{plan.restaurant.address}</Text>
+              <Text style={[styles.restaurantName, { color: Colors.text }]} numberOfLines={1}>{plan.restaurant.name}</Text>
+              <Text style={[styles.restaurantAddress, { color: Colors.textSecondary }]}>{plan.restaurant.address}</Text>
             </View>
           </View>
         )}
@@ -168,6 +202,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+  },
+  titleRowRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  editBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: Colors.surfaceElevated,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   title: {
     fontSize: 17,

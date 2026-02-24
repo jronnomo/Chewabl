@@ -79,17 +79,24 @@ export default function GroupSessionScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const Colors = useColors();
-  const params = useLocalSearchParams<{ planId?: string; curveball?: string }>();
-  const { preferences, plans } = useApp();
+  const params = useLocalSearchParams<{ planId?: string; curveball?: string; autoStart?: string }>();
+  const { preferences, plans, localAvatarUri } = useApp();
   const { user } = useAuth();
 
   const sessionRestaurants = useMemo(() => {
     const plan = params.planId ? plans.find(p => p.id === params.planId) : null;
     const allowCurveball = params.curveball === 'true';
 
+    // F-006-010/F-005-018: Use plan.options (real restaurant data) when available
+    if (plan?.options && plan.options.length > 0) {
+      return plan.options;
+    }
+
     return [...restaurants].filter(r => {
       if (!plan || plan.cuisine === 'Any' || !plan.cuisine) return true;
-      if (r.cuisine === plan.cuisine) return true;
+      const planCuisines = plan.cuisine.split(', ');
+      if (planCuisines.includes(r.cuisine)) return true;
+      // F-006-016: Fix curveball — include deals only when flag is on
       if (allowCurveball && r.lastCallDeal) return true;
       return false;
     }).sort((a, b) => {
@@ -112,7 +119,7 @@ export default function GroupSessionScreen() {
           const meEntry: GroupMember = {
             id: user?.id ?? 'me',
             name: user?.name ? `${user.name} (You)` : 'You',
-            avatar: user?.avatarUri ?? FALLBACK_AVATAR,
+            avatar: localAvatarUri ?? user?.avatarUri ?? FALLBACK_AVATAR,
             completedSwiping: false,
           };
           const others: GroupMember[] = accepted.map(inv => ({
@@ -125,12 +132,21 @@ export default function GroupSessionScreen() {
         }
       }
     }
+    // Authenticated with no plan: start solo, just the current user
+    if (user) {
+      return [{
+        id: user.id,
+        name: `${user.name} (You)`,
+        avatar: localAvatarUri ?? user.avatarUri ?? FALLBACK_AVATAR,
+        completedSwiping: false,
+      }];
+    }
     return MOCK_MEMBERS;
   }, [params.planId, plans, user]);
 
   const myMemberId = initialMembers[0]?.id ?? 'me';
 
-  const [phase, setPhase] = useState<Phase>('lobby');
+  const [phase, setPhase] = useState<Phase>(params.autoStart === 'true' ? 'swiping' : 'lobby');
   const [members, setMembers] = useState<GroupMember[]>(initialMembers);
   const [showAddModal, setShowAddModal] = useState(false);
   const [currentIndex, setCurrentIndex] = useState<number>(0);
@@ -139,6 +155,7 @@ export default function GroupSessionScreen() {
     () => generateMockSwipes(initialMembers.map(m => m.id), sessionRestaurants, myMemberId)
   );
   const [results, setResults] = useState<SwipeResult[]>([]);
+  const [isAnimating, setIsAnimating] = useState(false);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(40)).current;
@@ -182,9 +199,29 @@ export default function GroupSessionScreen() {
   }, [friendSwipes, mySwipes, sessionRestaurants, members.length]);
 
   const handleRemoveMember = useCallback((memberId: string) => {
+    // F-006-017: Warn when removing the last non-host member
+    const nonHostMembers = members.filter(m => m.id !== myMemberId);
+    if (nonHostMembers.length === 1 && nonHostMembers[0].id === memberId) {
+      Alert.alert(
+        'Remove Last Member?',
+        'You\'ll be swiping solo. Continue?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Remove',
+            style: 'destructive',
+            onPress: () => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setMembers(prev => prev.filter(m => m.id !== memberId));
+            },
+          },
+        ]
+      );
+      return;
+    }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setMembers(prev => prev.filter(m => m.id !== memberId));
-  }, []);
+  }, [members, myMemberId]);
 
   const handleAddMember = useCallback(() => {
     setShowAddModal(true);
@@ -207,6 +244,8 @@ export default function GroupSessionScreen() {
   }, []);
 
   const handleSwipeRight = useCallback((restaurant: Restaurant) => {
+    if (isAnimating) return; // F-006-004: Prevent double-swipe
+    setIsAnimating(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setMySwipes(prev => ({ ...prev, [restaurant.id]: 'yes' }));
     setCurrentIndex(prev => {
@@ -214,7 +253,7 @@ export default function GroupSessionScreen() {
       if (next >= sessionRestaurants.length) {
         setTimeout(() => {
           setMembers(prev2 => prev2.map(m =>
-            m.id === 'me' ? { ...m, completedSwiping: true } : m
+            m.id === myMemberId ? { ...m, completedSwiping: true } : m
           ));
           const res = calculateResults();
           setResults(res);
@@ -223,9 +262,12 @@ export default function GroupSessionScreen() {
       }
       return next;
     });
-  }, [sessionRestaurants.length, calculateResults]);
+    setTimeout(() => setIsAnimating(false), 350);
+  }, [sessionRestaurants.length, calculateResults, myMemberId, isAnimating]);
 
   const handleSwipeLeft = useCallback((restaurant: Restaurant) => {
+    if (isAnimating) return; // F-006-004: Prevent double-swipe
+    setIsAnimating(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setMySwipes(prev => ({ ...prev, [restaurant.id]: 'no' }));
     setCurrentIndex(prev => {
@@ -233,7 +275,7 @@ export default function GroupSessionScreen() {
       if (next >= sessionRestaurants.length) {
         setTimeout(() => {
           setMembers(prev2 => prev2.map(m =>
-            m.id === 'me' ? { ...m, completedSwiping: true } : m
+            m.id === myMemberId ? { ...m, completedSwiping: true } : m
           ));
           const res = calculateResults();
           setResults(res);
@@ -242,7 +284,8 @@ export default function GroupSessionScreen() {
       }
       return next;
     });
-  }, [sessionRestaurants.length, calculateResults]);
+    setTimeout(() => setIsAnimating(false), 350);
+  }, [sessionRestaurants.length, calculateResults, isAnimating]);
 
   const topMatch = results.length > 0 ? results[0] : null;
   const perfectMatches = results.filter(r => r.isMatch);
@@ -252,44 +295,53 @@ export default function GroupSessionScreen() {
       <View style={[styles.container, { paddingTop: insets.top, backgroundColor: Colors.background }]}>
         <Animated.View style={[styles.phaseContent, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
           <View style={styles.lobbyHeader}>
-            <Pressable style={styles.backBtn} onPress={() => router.back()}>
+            <Pressable style={[styles.backBtn, { backgroundColor: Colors.card, borderColor: Colors.border }]} onPress={() => router.back()} accessibilityLabel="Go back" accessibilityRole="button">
               <ArrowLeft size={20} color={Colors.text} />
             </Pressable>
-            <Text style={styles.lobbyTitle}>Group Swipe</Text>
+            <Text style={[styles.lobbyTitle, { color: Colors.text }]}>Group Swipe</Text>
             <View style={{ width: 40 }} />
           </View>
 
+          {/* F-006-018: Prototype banner */}
+          <View style={{ backgroundColor: Colors.warning + '20', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8, marginHorizontal: 16, marginBottom: 8 }}>
+            <Text style={{ color: Colors.warning, fontSize: 13, textAlign: 'center', fontWeight: '500' }}>
+              Preview Mode — Group swiping is simulated locally
+            </Text>
+          </View>
+
           <View style={styles.lobbyHero}>
-            <View style={styles.lobbyIconWrap}>
+            <View style={[styles.lobbyIconWrap, { backgroundColor: Colors.primaryLight }]}>
               <Utensils size={32} color={Colors.primary} />
             </View>
-            <Text style={styles.lobbyHeroTitle}>Swipe Together</Text>
-            <Text style={styles.lobbyHeroSub}>
+            <Text style={[styles.lobbyHeroTitle, { color: Colors.text }]}>Swipe Together</Text>
+            <Text style={[styles.lobbyHeroSub, { color: Colors.textSecondary }]}>
               Everyone swipes on restaurants. The group's top match wins!
             </Text>
           </View>
 
-          <View style={styles.membersSection}>
+          <View style={[styles.membersSection, { backgroundColor: Colors.card }]}>
             <View style={styles.membersSectionHeader}>
               <Users size={16} color={Colors.textSecondary} />
-              <Text style={styles.membersSectionTitle}>
-                {members.length} members
+              <Text style={[styles.membersSectionTitle, { color: Colors.textSecondary }]}>
+                {members.length} {members.length === 1 ? 'member' : 'members'}
               </Text>
             </View>
             {members.map(member => (
               <View key={member.id} style={styles.memberRow}>
                 <Image source={{ uri: member.avatar }} style={styles.memberAvatar} contentFit="cover" />
-                <Text style={styles.memberName}>{member.name}</Text>
+                <Text style={[styles.memberName, { color: Colors.text }]}>{member.name}</Text>
                 {member.id === myMemberId ? (
-                  <View style={styles.hostBadge}>
-                    <Crown size={11} color="#B8860B" />
-                    <Text style={styles.hostBadgeText}>Host</Text>
+                  <View style={[styles.hostBadge, { backgroundColor: Colors.secondaryLight }]}>
+                    <Crown size={11} color={Colors.secondary} />
+                    <Text style={[styles.hostBadgeText, { color: Colors.secondary }]}>Host</Text>
                   </View>
                 ) : (
                   <Pressable
-                    style={styles.removeMemberBtn}
+                    style={[styles.removeMemberBtn, { backgroundColor: Colors.error + '18' }]}
                     onPress={() => handleRemoveMember(member.id)}
                     hitSlop={8}
+                    accessibilityLabel={`Remove ${member.name}`}
+                    accessibilityRole="button"
                   >
                     <XIcon size={16} color={Colors.error} />
                   </Pressable>
@@ -305,24 +357,33 @@ export default function GroupSessionScreen() {
             </Pressable>
           </View>
 
-          <View style={styles.sessionInfo}>
+          <View style={[styles.sessionInfo, { backgroundColor: Colors.card }]}>
             <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Restaurants</Text>
-              <Text style={styles.infoValue}>{sessionRestaurants.length} to swipe</Text>
+              <Text style={[styles.infoLabel, { color: Colors.textSecondary }]}>Restaurants</Text>
+              <Text style={[styles.infoValue, { color: Colors.text }]}>{sessionRestaurants.length} to swipe</Text>
             </View>
-            <View style={styles.infoDivider} />
+            <View style={[styles.infoDivider, { backgroundColor: Colors.borderLight }]} />
             <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>How it works</Text>
-              <Text style={styles.infoValue}>Swipe right = Yes</Text>
+              <Text style={[styles.infoLabel, { color: Colors.textSecondary }]}>How it works</Text>
+              <Text style={[styles.infoValue, { color: Colors.text }]}>Swipe right = Yes</Text>
             </View>
           </View>
         </Animated.View>
 
-        <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 12 }]}>
-          <Pressable style={styles.startBtn} onPress={handleStartSwiping} testID="start-swiping-btn">
-            <Text style={styles.startBtnText}>Start Swiping</Text>
-            <ChevronRight size={18} color="#FFF" />
-          </Pressable>
+        <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 12, backgroundColor: Colors.card, borderTopColor: Colors.borderLight }]}>
+          {sessionRestaurants.length === 0 ? (
+            // F-006-012: Zero restaurant edge case
+            <View style={{ alignItems: 'center', paddingVertical: 12 }}>
+              <Text style={{ color: Colors.textSecondary, fontSize: 14, textAlign: 'center' }}>
+                No restaurants match your filters. Try adjusting your preferences.
+              </Text>
+            </View>
+          ) : (
+            <Pressable style={styles.startBtn} onPress={handleStartSwiping} testID="start-swiping-btn">
+              <Text style={styles.startBtnText}>Start Swiping</Text>
+              <ChevronRight size={18} color="#FFF" />
+            </Pressable>
+          )}
         </View>
 
         <AddMemberModal
@@ -340,29 +401,36 @@ export default function GroupSessionScreen() {
       ? currentIndex / sessionRestaurants.length
       : 0;
 
+    // F-006-024: Only count members who actually completed (the host finishes at results phase)
+    const completedCount = members.filter(m => m.completedSwiping && m.id !== myMemberId).length;
+    const isSolo = members.length <= 1;
+
     return (
       <View style={[styles.container, { paddingTop: insets.top, backgroundColor: Colors.background }]}>
         <View style={styles.swipeHeader}>
-          <Pressable style={styles.backBtn} onPress={() => setPhase('lobby')}>
+          <Pressable style={[styles.backBtn, { backgroundColor: Colors.card, borderColor: Colors.border }]} onPress={() => params.autoStart === 'true' ? router.back() : setPhase('lobby')} accessibilityLabel="Go back" accessibilityRole="button">
             <ArrowLeft size={20} color={Colors.text} />
           </Pressable>
           <View style={styles.swipeHeaderCenter}>
-            <Text style={styles.swipeHeaderTitle}>Group Swipe</Text>
+            <Text style={[styles.swipeHeaderTitle, { color: Colors.text }]}>Group Swipe</Text>
             <View style={styles.membersAvatarRow}>
               {members.slice(0, 4).map(m => (
-                <Image key={m.id} source={{ uri: m.avatar }} style={styles.miniAvatar} contentFit="cover" />
+                <Image key={m.id} source={{ uri: m.avatar }} style={[styles.miniAvatar, { borderColor: Colors.card }]} contentFit="cover" />
               ))}
-              <Text style={styles.swipeCount}>
+              <Text style={[styles.swipeCount, { color: Colors.textTertiary }]}>
                 {currentIndex}/{sessionRestaurants.length}
               </Text>
             </View>
           </View>
-          <View style={styles.friendProgress}>
-            <Check size={14} color={Colors.success} />
-            <Text style={styles.friendProgressText}>
-              {members.filter(m => m.completedSwiping).length}/{members.length}
-            </Text>
-          </View>
+          {!isSolo && (
+            <View style={[styles.friendProgress, { backgroundColor: Colors.success + '18' }]}>
+              <Check size={14} color={Colors.success} />
+              <Text style={[styles.friendProgressText, { color: Colors.success }]}>
+                {completedCount}/{members.length - 1}
+              </Text>
+            </View>
+          )}
+          {isSolo && <View style={{ width: 40 }} />}
         </View>
 
         <View style={styles.progressBarContainer}>
@@ -392,6 +460,8 @@ export default function GroupSessionScreen() {
                 handleSwipeLeft(sessionRestaurants[currentIndex]);
               }
             }}
+            accessibilityLabel="Pass on restaurant"
+            accessibilityRole="button"
           >
             <XIcon size={28} color={Colors.error} />
           </Pressable>
@@ -402,6 +472,8 @@ export default function GroupSessionScreen() {
                 handleSwipeRight(sessionRestaurants[currentIndex]);
               }
             }}
+            accessibilityLabel="Like restaurant"
+            accessibilityRole="button"
           >
             <Heart size={28} color="#FFF" fill="#FFF" />
           </Pressable>
@@ -410,26 +482,33 @@ export default function GroupSessionScreen() {
     );
   }
 
+  const isSoloResults = members.length <= 1;
+
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <View style={[styles.container, { paddingTop: insets.top, backgroundColor: Colors.background }]}>
       <Animated.View style={[styles.resultsPhase, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
         <View style={styles.resultsHeader}>
-          <Pressable style={styles.backBtn} onPress={() => router.back()}>
+          <Pressable style={[styles.backBtn, { backgroundColor: Colors.card, borderColor: Colors.border }]} onPress={() => router.back()} accessibilityLabel="Go back" accessibilityRole="button">
             <ArrowLeft size={20} color={Colors.text} />
           </Pressable>
-          <Text style={styles.resultsTitle}>Results</Text>
-          <Pressable style={styles.shareBtn}>
+          <Text style={[styles.resultsTitle, { color: Colors.text }]}>Results</Text>
+          <Pressable
+            style={[styles.shareBtn, { backgroundColor: Colors.primaryLight }]}
+            onPress={() => Alert.alert('Coming Soon', 'Sharing will be available in a future update.')}
+            accessibilityLabel="Share results"
+            accessibilityRole="button"
+          >
             <Share2 size={18} color={Colors.primary} />
           </Pressable>
         </View>
 
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.resultsScroll}>
           {topMatch && (
-            <View style={styles.winnerCard}>
-              <View style={styles.winnerCrown}>
-                <Crown size={20} color="#FFB800" />
-                <Text style={styles.winnerLabel}>
-                  {topMatch.isMatch ? 'Perfect Match!' : 'Top Pick'}
+            <View style={[styles.winnerCard, { backgroundColor: Colors.card }]}>
+              <View style={[styles.winnerCrown, { backgroundColor: Colors.secondaryLight }]}>
+                <Crown size={20} color={Colors.star} />
+                <Text style={[styles.winnerLabel, { color: Colors.secondary }]}>
+                  {topMatch.isMatch ? (isSoloResults ? 'Your Top Pick!' : 'Perfect Match!') : 'Top Pick'}
                 </Text>
               </View>
               <Image
@@ -439,26 +518,28 @@ export default function GroupSessionScreen() {
               />
               <View style={styles.winnerOverlay} />
               <View style={styles.winnerContent}>
-                <Text style={styles.winnerName}>{topMatch.restaurant.name}</Text>
-                <Text style={styles.winnerCuisine}>
+                <Text style={[styles.winnerName, { color: Colors.text }]}>{topMatch.restaurant.name}</Text>
+                <Text style={[styles.winnerCuisine, { color: Colors.textSecondary }]}>
                   {topMatch.restaurant.cuisine} · {'$'.repeat(topMatch.restaurant.priceLevel)}
                 </Text>
-                <View style={styles.winnerVoteBar}>
-                  <View style={styles.winnerVotes}>
-                    {Array.from({ length: topMatch.totalMembers }).map((_, i) => (
-                      <View
-                        key={i}
-                        style={[
-                          styles.voteDot,
-                          i < topMatch.yesCount ? styles.voteDotYes : styles.voteDotNo,
-                        ]}
-                      />
-                    ))}
+                {!isSoloResults && (
+                  <View style={styles.winnerVoteBar}>
+                    <View style={styles.winnerVotes}>
+                      {Array.from({ length: topMatch.totalMembers }).map((_, i) => (
+                        <View
+                          key={i}
+                          style={[
+                            styles.voteDot,
+                            i < topMatch.yesCount ? styles.voteDotYes : styles.voteDotNo,
+                          ]}
+                        />
+                      ))}
+                    </View>
+                    <Text style={[styles.winnerVoteText, { color: Colors.textSecondary }]}>
+                      {topMatch.yesCount}/{topMatch.totalMembers} said yes
+                    </Text>
                   </View>
-                  <Text style={styles.winnerVoteText}>
-                    {topMatch.yesCount}/{topMatch.totalMembers} said yes
-                  </Text>
-                </View>
+                )}
               </View>
               <Pressable
                 style={styles.winnerBtn}
@@ -472,19 +553,19 @@ export default function GroupSessionScreen() {
             </View>
           )}
 
-          {perfectMatches.length > 1 && (
+          {!isSoloResults && perfectMatches.length > 1 && (
             <View style={styles.matchesSection}>
-              <Text style={styles.matchesSectionTitle}>All Perfect Matches</Text>
+              <Text style={[styles.matchesSectionTitle, { color: Colors.text }]}>All Perfect Matches</Text>
               {perfectMatches.map(m => (
                 <Pressable
                   key={m.restaurantId}
-                  style={styles.matchCard}
+                  style={[styles.matchCard, { backgroundColor: Colors.card }]}
                   onPress={() => router.push(`/restaurant/${m.restaurantId}` as never)}
                 >
                   <Image source={{ uri: m.restaurant.imageUrl }} style={styles.matchImage} contentFit="cover" />
                   <View style={styles.matchInfo}>
-                    <Text style={styles.matchName}>{m.restaurant.name}</Text>
-                    <Text style={styles.matchCuisine}>{m.restaurant.cuisine}</Text>
+                    <Text style={[styles.matchName, { color: Colors.text }]}>{m.restaurant.name}</Text>
+                    <Text style={[styles.matchCuisine, { color: Colors.textSecondary }]}>{m.restaurant.cuisine}</Text>
                   </View>
                   <View style={styles.matchBadge}>
                     <Heart size={12} color="#FFF" fill="#FFF" />
@@ -496,67 +577,71 @@ export default function GroupSessionScreen() {
           )}
 
           <View style={styles.allResultsSection}>
-            <Text style={styles.allResultsTitle}>All Rankings</Text>
+            <Text style={[styles.allResultsTitle, { color: Colors.text }]}>All Rankings</Text>
             {results.map((r, i) => (
               <Pressable
                 key={r.restaurantId}
-                style={styles.rankCard}
+                style={[styles.rankCard, { backgroundColor: Colors.card }]}
                 onPress={() => router.push(`/restaurant/${r.restaurantId}` as never)}
               >
                 <View style={[
                   styles.rankBadge,
+                  { backgroundColor: Colors.borderLight },
                   i === 0 && styles.rankBadgeGold,
                   i === 1 && styles.rankBadgeSilver,
                   i === 2 && styles.rankBadgeBronze,
                 ]}>
                   <Text style={[
                     styles.rankNumber,
-                    i < 3 && styles.rankNumberTop,
+                    { color: Colors.textSecondary },
+                    i < 3 && { color: Colors.text },
                   ]}>
                     {i + 1}
                   </Text>
                 </View>
                 <Image source={{ uri: r.restaurant.imageUrl }} style={styles.rankImage} contentFit="cover" />
                 <View style={styles.rankInfo}>
-                  <Text style={styles.rankName} numberOfLines={1}>{r.restaurant.name}</Text>
+                  <Text style={[styles.rankName, { color: Colors.text }]} numberOfLines={1}>{r.restaurant.name}</Text>
                   <View style={styles.rankMeta}>
                     <Star size={11} color={Colors.star} fill={Colors.star} />
-                    <Text style={styles.rankRating}>{r.restaurant.rating}</Text>
+                    <Text style={[styles.rankRating, { color: Colors.text }]}>{r.restaurant.rating}</Text>
                     <MapPin size={11} color={Colors.textTertiary} />
-                    <Text style={styles.rankDistance}>{r.restaurant.distance}</Text>
+                    <Text style={[styles.rankDistance, { color: Colors.textTertiary }]}>{r.restaurant.distance}</Text>
                   </View>
                 </View>
                 <View style={styles.rankVotesWrap}>
                   <View style={styles.rankVoteBar}>
                     <View style={[styles.rankVoteFill, { width: `${(r.yesCount / r.totalMembers) * 100}%` }]} />
                   </View>
-                  <Text style={styles.rankVoteLabel}>{r.yesCount}/{r.totalMembers}</Text>
+                  <Text style={[styles.rankVoteLabel, { color: Colors.textSecondary }]}>{r.yesCount}/{r.totalMembers}</Text>
                 </View>
               </Pressable>
             ))}
           </View>
 
-          <View style={styles.memberVoteSummary}>
-            <Text style={styles.memberVoteTitle}>Who voted what</Text>
-            {members.map(m => {
-              const memberSwipeData = m.id === myMemberId ? mySwipes : (friendSwipes[m.id] ?? {});
-              const yesCount = Object.values(memberSwipeData).filter(v => v === 'yes').length;
-              return (
-                <View key={m.id} style={styles.memberVoteRow}>
-                  <Image source={{ uri: m.avatar }} style={styles.memberVoteAvatar} contentFit="cover" />
-                  <View style={styles.memberVoteInfo}>
-                    <Text style={styles.memberVoteName}>{m.name}</Text>
-                    <Text style={styles.memberVoteStat}>
-                      Liked {yesCount} of {sessionRestaurants.length}
-                    </Text>
+          {!isSoloResults && (
+            <View style={[styles.memberVoteSummary, { backgroundColor: Colors.card }]}>
+              <Text style={[styles.memberVoteTitle, { color: Colors.text }]}>Who voted what</Text>
+              {members.map(m => {
+                const memberSwipeData = m.id === myMemberId ? mySwipes : (friendSwipes[m.id] ?? {});
+                const yesCount = Object.values(memberSwipeData).filter(v => v === 'yes').length;
+                return (
+                  <View key={m.id} style={styles.memberVoteRow}>
+                    <Image source={{ uri: m.avatar }} style={styles.memberVoteAvatar} contentFit="cover" />
+                    <View style={styles.memberVoteInfo}>
+                      <Text style={[styles.memberVoteName, { color: Colors.text }]}>{m.name}</Text>
+                      <Text style={[styles.memberVoteStat, { color: Colors.textTertiary }]}>
+                        Liked {yesCount} of {sessionRestaurants.length}
+                      </Text>
+                    </View>
+                    <View style={styles.memberVoteBarWrap}>
+                      <View style={[styles.memberVoteBar, { width: `${(yesCount / sessionRestaurants.length) * 100}%` }]} />
+                    </View>
                   </View>
-                  <View style={styles.memberVoteBarWrap}>
-                    <View style={[styles.memberVoteBar, { width: `${(yesCount / sessionRestaurants.length) * 100}%` }]} />
-                  </View>
-                </View>
-              );
-            })}
-          </View>
+                );
+              })}
+            </View>
+          )}
 
           <View style={{ height: 40 }} />
         </ScrollView>
@@ -1154,6 +1239,7 @@ function AddMemberModal({
     queryKey: ['friends'],
     queryFn: getFriends,
     enabled: isAuthenticated && visible,
+    staleTime: 60 * 1000,
     retry: false,
   });
 
@@ -1242,9 +1328,9 @@ function AddMemberModal({
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={{ flex: 1, backgroundColor: Colors.background }}>
-        <View style={modalStyles.header}>
+        <View style={[modalStyles.header, { borderBottomColor: Colors.borderLight }]}>
           <Text style={[modalStyles.title, { color: Colors.text }]}>Add to Group</Text>
-          <Pressable onPress={onClose} style={modalStyles.closeBtn}>
+          <Pressable onPress={onClose} style={[modalStyles.closeBtn, { backgroundColor: Colors.card }]} accessibilityLabel="Close" accessibilityRole="button">
             <XIcon size={22} color={Colors.textSecondary} />
           </Pressable>
         </View>

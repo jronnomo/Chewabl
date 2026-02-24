@@ -127,7 +127,8 @@ export default function FriendsScreen() {
       }
 
       const matches = await lookupByPhones(unique);
-      const filtered = matches.filter(m => m.id !== user?.id);
+      const friendIds = new Set(friends.map(f => f.id));
+      const filtered = matches.filter(m => m.id !== user?.id && !friendIds.has(m.id));
       setContactMatches(filtered);
 
       if (filtered.length === 0) {
@@ -139,7 +140,7 @@ export default function FriendsScreen() {
     } finally {
       setScanLoading(false);
     }
-  }, [user?.id]);
+  }, [user?.id, friends]);
 
   const handleInviteLink = useCallback(async () => {
     if (!user?.inviteCode) return;
@@ -161,46 +162,58 @@ export default function FriendsScreen() {
         Alert.alert('Not Found', 'No user found with that invite code.');
         setCodeResult(null);
       } else {
-        setCodeResult(result);
+        const friendIds = new Set(friends.map(f => f.id));
+        if (friendIds.has(result.id)) {
+          Alert.alert('Already Friends', 'You are already friends with this user.');
+          setCodeResult(null);
+        } else {
+          setCodeResult(result);
+        }
       }
     } finally {
       setCodeLoading(false);
     }
-  }, [inviteCode, user?.id]);
+  }, [inviteCode, user?.id, friends]);
 
   const renderFriend = ({ item }: { item: Friend }) => (
-    <View style={styles.personRow}>
+    <View style={[styles.personRow, { backgroundColor: Colors.card }]}>
       {item.avatarUri ? (
         <Image source={{ uri: item.avatarUri }} style={styles.avatar} contentFit="cover" />
       ) : (
-        <View style={styles.avatarFallback}>
-          <Text style={styles.avatarInitial}>{item.name[0]?.toUpperCase()}</Text>
+        <View style={[styles.avatarFallback, { backgroundColor: Colors.primaryLight }]}>
+          <Text style={[styles.avatarInitial, { color: Colors.primary }]}>{item.name[0]?.toUpperCase()}</Text>
         </View>
       )}
-      <Text style={styles.personName}>{item.name}</Text>
-      {item.phone && <Text style={styles.personSub}>{item.phone}</Text>}
+      <Text style={[styles.personName, { color: Colors.text }]}>{item.name}</Text>
+      {item.phone && <Text style={[styles.personSub, { color: Colors.textSecondary }]}>{item.phone}</Text>}
     </View>
   );
 
   const renderRequest = ({ item }: { item: FriendRequest }) => (
-    <View style={styles.personRow}>
+    <View style={[styles.personRow, { backgroundColor: Colors.card }]}>
       {item.from.avatarUri ? (
         <Image source={{ uri: item.from.avatarUri }} style={styles.avatar} contentFit="cover" />
       ) : (
-        <View style={styles.avatarFallback}>
-          <Text style={styles.avatarInitial}>{item.from.name[0]?.toUpperCase()}</Text>
+        <View style={[styles.avatarFallback, { backgroundColor: Colors.primaryLight }]}>
+          <Text style={[styles.avatarInitial, { color: Colors.primary }]}>{item.from.name[0]?.toUpperCase()}</Text>
         </View>
       )}
-      <Text style={[styles.personName, { flex: 1 }]}>{item.from.name}</Text>
+      <Text style={[styles.personName, { flex: 1, color: Colors.text }]}>{item.from.name}</Text>
       <Pressable
         style={[styles.respondBtn, styles.respondBtnAccept]}
         onPress={() => respondMutation.mutate({ id: item.id, action: 'accept' })}
+        disabled={respondMutation.isPending}
+        accessibilityLabel="Accept friend request"
+        accessibilityRole="button"
       >
         <Check size={16} color="#FFF" />
       </Pressable>
       <Pressable
-        style={[styles.respondBtn, styles.respondBtnDecline]}
+        style={[styles.respondBtn, styles.respondBtnDecline, { borderColor: Colors.error }]}
         onPress={() => respondMutation.mutate({ id: item.id, action: 'decline' })}
+        disabled={respondMutation.isPending}
+        accessibilityLabel="Decline friend request"
+        accessibilityRole="button"
       >
         <X size={16} color={Colors.error} />
       </Pressable>
@@ -210,21 +223,25 @@ export default function FriendsScreen() {
   return (
     <View style={[styles.container, { paddingTop: insets.top, backgroundColor: Colors.background }]}>
       <View style={styles.header}>
-        <Pressable style={styles.backBtn} onPress={() => router.back()}>
+        <Pressable style={[styles.backBtn, { backgroundColor: Colors.card, borderColor: Colors.border }]} onPress={() => router.back()} accessibilityLabel="Go back" accessibilityRole="button">
           <ArrowLeft size={20} color={Colors.text} />
         </Pressable>
-        <Text style={styles.headerTitle}>Friends</Text>
+        <Text style={[styles.headerTitle, { color: Colors.text }]}>Friends</Text>
         <View style={{ width: 40 }} />
       </View>
 
-      <View style={styles.tabRow}>
+      <View style={[styles.tabRow, { backgroundColor: Colors.card }]}>
         {(['friends', 'requests', 'add'] as Tab[]).map(t => (
           <Pressable
             key={t}
             style={[styles.tab, tab === t && styles.tabActive]}
             onPress={() => setTab(t)}
           >
-            <Text style={[styles.tabText, tab === t && styles.tabTextActive]}>
+            <Text style={[
+              styles.tabText,
+              { color: Colors.textSecondary },
+              tab === t && styles.tabTextActive,
+            ]}>
               {t === 'friends' ? `Friends${friends.length > 0 ? ` (${friends.length})` : ''}`
                 : t === 'requests' ? `Requests${requests.length > 0 ? ` (${requests.length})` : ''}`
                 : 'Add'}
@@ -245,8 +262,8 @@ export default function FriendsScreen() {
             ) : (
               <View style={styles.emptyState}>
                 <Users size={40} color={Colors.border} />
-                <Text style={styles.emptyText}>No friends yet</Text>
-                <Text style={styles.emptySub}>Add friends to start group swiping</Text>
+                <Text style={[styles.emptyText, { color: Colors.text }]}>No friends yet</Text>
+                <Text style={[styles.emptySub, { color: Colors.textSecondary }]}>Add friends to start group swiping</Text>
               </View>
             )
           }
@@ -265,7 +282,7 @@ export default function FriendsScreen() {
             ) : (
               <View style={styles.emptyState}>
                 <UserPlus size={40} color={Colors.border} />
-                <Text style={styles.emptyText}>No pending requests</Text>
+                <Text style={[styles.emptyText, { color: Colors.text }]}>No pending requests</Text>
               </View>
             )
           }
@@ -279,33 +296,33 @@ export default function FriendsScreen() {
           contentContainerStyle={styles.listContent}
           ListHeaderComponent={(
             <View>
-              <Pressable style={styles.actionCard} onPress={handleScanContacts} disabled={scanLoading}>
+              <Pressable style={[styles.actionCard, { backgroundColor: Colors.card }]} onPress={handleScanContacts} disabled={scanLoading}>
                 {scanLoading ? (
                   <ActivityIndicator color={Colors.primary} />
                 ) : (
                   <Smartphone size={22} color={Colors.primary} />
                 )}
                 <View style={styles.actionCardContent}>
-                  <Text style={styles.actionCardTitle}>Scan Contacts</Text>
-                  <Text style={styles.actionCardSub}>Find friends already on Chewabl</Text>
+                  <Text style={[styles.actionCardTitle, { color: Colors.text }]}>Scan Contacts</Text>
+                  <Text style={[styles.actionCardSub, { color: Colors.textSecondary }]}>Find friends already on Chewabl</Text>
                 </View>
               </Pressable>
 
-              <Pressable style={styles.actionCard} onPress={handleInviteLink}>
+              <Pressable style={[styles.actionCard, { backgroundColor: Colors.card }]} onPress={handleInviteLink}>
                 <Link size={22} color={Colors.secondary} />
                 <View style={styles.actionCardContent}>
-                  <Text style={styles.actionCardTitle}>Invite by Link</Text>
-                  <Text style={styles.actionCardSub}>
-                    Your code: {user?.inviteCode ?? '—'}
+                  <Text style={[styles.actionCardTitle, { color: Colors.text }]}>Invite by Link</Text>
+                  <Text style={[styles.actionCardSub, { color: Colors.textSecondary }]}>
+                    Your code: {user?.inviteCode ?? '\u2014'}
                   </Text>
                 </View>
               </Pressable>
 
               <View style={styles.codeSection}>
-                <Text style={styles.codeSectionTitle}>Enter Invite Code</Text>
+                <Text style={[styles.codeSectionTitle, { color: Colors.text }]}>Enter Invite Code</Text>
                 <View style={styles.codeRow}>
                   <TextInput
-                    style={styles.codeInput}
+                    style={[styles.codeInput, { backgroundColor: Colors.card, color: Colors.text, borderColor: Colors.border }]}
                     placeholder="e.g. AB3K9X2M"
                     placeholderTextColor={Colors.textTertiary}
                     value={inviteCode}
@@ -313,7 +330,7 @@ export default function FriendsScreen() {
                     autoCapitalize="characters"
                     maxLength={8}
                   />
-                  <Pressable style={styles.codeBtn} onPress={handleLookupCode} disabled={codeLoading}>
+                  <Pressable style={styles.codeBtn} onPress={handleLookupCode} disabled={codeLoading} accessibilityLabel="Look up invite code" accessibilityRole="button">
                     {codeLoading ? (
                       <ActivityIndicator color="#FFF" size="small" />
                     ) : (
@@ -323,15 +340,15 @@ export default function FriendsScreen() {
                 </View>
 
                 {codeResult && (
-                  <View style={styles.personRow}>
+                  <View style={[styles.personRow, { backgroundColor: Colors.card }]}>
                     {codeResult.avatarUri ? (
                       <Image source={{ uri: codeResult.avatarUri }} style={styles.avatar} contentFit="cover" />
                     ) : (
-                      <View style={styles.avatarFallback}>
-                        <Text style={styles.avatarInitial}>{codeResult.name[0]?.toUpperCase()}</Text>
+                      <View style={[styles.avatarFallback, { backgroundColor: Colors.primaryLight }]}>
+                        <Text style={[styles.avatarInitial, { color: Colors.primary }]}>{codeResult.name[0]?.toUpperCase()}</Text>
                       </View>
                     )}
-                    <Text style={[styles.personName, { flex: 1 }]}>{codeResult.name}</Text>
+                    <Text style={[styles.personName, { flex: 1, color: Colors.text }]}>{codeResult.name}</Text>
                     <Pressable
                       style={styles.addBtn}
                       onPress={() => {
@@ -348,22 +365,22 @@ export default function FriendsScreen() {
               </View>
 
               {contactMatches.length > 0 && (
-                <Text style={styles.matchesHeader}>Contacts on Chewabl</Text>
+                <Text style={[styles.matchesHeader, { color: Colors.text }]}>Contacts on Chewabl</Text>
               )}
             </View>
           )}
           renderItem={({ item }) => (
-            <View style={styles.personRow}>
+            <View style={[styles.personRow, { backgroundColor: Colors.card }]}>
               {item.avatarUri ? (
                 <Image source={{ uri: item.avatarUri }} style={styles.avatar} contentFit="cover" />
               ) : (
-                <View style={styles.avatarFallback}>
-                  <Text style={styles.avatarInitial}>{item.name[0]?.toUpperCase()}</Text>
+                <View style={[styles.avatarFallback, { backgroundColor: Colors.primaryLight }]}>
+                  <Text style={[styles.avatarInitial, { color: Colors.primary }]}>{item.name[0]?.toUpperCase()}</Text>
                 </View>
               )}
               <View style={{ flex: 1 }}>
-                <Text style={styles.personName}>{item.name}</Text>
-                {item.phone && <Text style={styles.personSub}>{item.phone}</Text>}
+                <Text style={[styles.personName, { color: Colors.text }]}>{item.name}</Text>
+                {item.phone && <Text style={[styles.personSub, { color: Colors.textSecondary }]}>{item.phone}</Text>}
               </View>
               <Pressable
                 style={styles.addBtn}

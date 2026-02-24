@@ -21,24 +21,11 @@ router.get('/', requireAuth, async (req: AuthRequest, res: Response): Promise<vo
   }
 });
 
-// Get single plan — auto-decline expired pending invites
+// F-005-007: Get single plan (removed auto-decline logic)
 router.get('/:id', requireAuth, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const plan = await Plan.findById(req.params.id);
     if (!plan) { res.status(404).json({ error: 'Plan not found' }); return; }
-
-    if (plan.rsvpDeadline && new Date() > plan.rsvpDeadline) {
-      let changed = false;
-      plan.invites.forEach(invite => {
-        if (invite.status === 'pending') {
-          invite.status = 'declined';
-          invite.respondedAt = new Date();
-          changed = true;
-        }
-      });
-      if (changed) await plan.save();
-    }
-
     res.json(plan);
   } catch {
     res.status(500).json({ error: 'Server error' });
@@ -58,6 +45,23 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response): Promise<v
       rsvpDeadline?: string;
       options?: string[];
     };
+
+    // Input length validation
+    if (!title || typeof title !== 'string' || title.length > 100) {
+      res.status(400).json({ error: 'Title is required and must be 100 characters or less' }); return;
+    }
+    if (!date || !time) {
+      res.status(400).json({ error: 'Date and time are required' }); return;
+    }
+    if (cuisine && cuisine.length > 50) {
+      res.status(400).json({ error: 'Cuisine must be 50 characters or less' }); return;
+    }
+    if (inviteeIds && inviteeIds.length > 50) {
+      res.status(400).json({ error: 'Cannot invite more than 50 people' }); return;
+    }
+    if (options && options.length > 20) {
+      res.status(400).json({ error: 'Cannot have more than 20 options' }); return;
+    }
 
     const owner = await User.findById(req.userId).select('name avatarUri');
     if (!owner) { res.status(404).json({ error: 'User not found' }); return; }
@@ -96,29 +100,9 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response): Promise<v
       );
     }
 
-    // Schedule 24h reminder before rsvpDeadline
-    if (rsvpDeadline && pushTokens.length > 0) {
-      const deadlineMs = new Date(rsvpDeadline).getTime();
-      const reminderMs = deadlineMs - 24 * 60 * 60 * 1000;
-      const delay = reminderMs - Date.now();
-      if (delay > 0) {
-        setTimeout(async () => {
-          try {
-            const freshPlan = await Plan.findById(plan.id);
-            if (!freshPlan) return;
-            const pendingUserIds = freshPlan.invites
-              .filter(i => i.status === 'pending')
-              .map(i => i.userId.toString());
-            if (pendingUserIds.length === 0) return;
-            const pendingUsers = await User.find({ _id: { $in: pendingUserIds }, pushToken: { $exists: true } });
-            const tokens = pendingUsers.map(u => u.pushToken!).filter(Boolean);
-            await sendPushToMany(tokens, 'RSVP Reminder', `24 hours left to respond to "${title}"`, { type: 'rsvp_reminder', planId: plan.id });
-          } catch (e) {
-            console.error('Reminder push error:', e);
-          }
-        }, delay);
-      }
-    }
+    // F-005-004: RSVP reminders need a proper job scheduler (e.g. Bull, Agenda).
+    // The previous setTimeout-based approach is unreliable (lost on restart).
+    // TODO: Implement with a job scheduler when infrastructure supports it.
 
     res.status(201).json(plan);
   } catch (err) {
@@ -134,8 +118,38 @@ router.post('/:id/rsvp', requireAuth, async (req: AuthRequest, res: Response): P
     const plan = await Plan.findById(req.params.id);
     if (!plan) { res.status(404).json({ error: 'Plan not found' }); return; }
 
+    // F-005-015: Reject RSVP if plan date+time has passed
+    // Combine date and time fields for accurate comparison
+    let planDateTime: Date;
+    if (plan.time) {
+      const timeMatch = plan.time.match(/^(\d+):(\d+)\s*(AM|PM)$/i);
+      if (timeMatch) {
+        let h = parseInt(timeMatch[1], 10);
+        const m = parseInt(timeMatch[2], 10);
+        const isPM = timeMatch[3].toUpperCase() === 'PM';
+        if (isPM && h !== 12) h += 12;
+        if (!isPM && h === 12) h = 0;
+        const [year, month, day] = plan.date.split('-').map(Number);
+        planDateTime = new Date(year, month - 1, day, h, m);
+      } else {
+        planDateTime = new Date(plan.date);
+      }
+    } else {
+      planDateTime = new Date(plan.date);
+    }
+    if (planDateTime.getTime() < Date.now()) {
+      res.status(400).json({ error: 'Cannot RSVP to a past plan' });
+      return;
+    }
+
     const invite = plan.invites.find(i => i.userId.toString() === req.userId);
     if (!invite) { res.status(403).json({ error: 'You are not invited to this plan' }); return; }
+
+    // F-005-019: Prevent re-RSVP if already responded
+    if (invite.status !== 'pending') {
+      res.status(400).json({ error: 'You have already responded to this invite' });
+      return;
+    }
 
     invite.status = action === 'accept' ? 'accepted' : 'declined';
     invite.respondedAt = new Date();
@@ -155,6 +169,93 @@ router.post('/:id/rsvp', requireAuth, async (req: AuthRequest, res: Response): P
     }
 
     res.json({ ok: true, status: invite.status });
+  } catch {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Update plan (owner only)
+router.put('/:id', requireAuth, async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const plan = await Plan.findById(req.params.id);
+    if (!plan) { res.status(404).json({ error: 'Plan not found' }); return; }
+    if (plan.ownerId.toString() !== req.userId) {
+      res.status(403).json({ error: 'Only the plan owner can update this plan' });
+      return;
+    }
+
+    const { title, date, time, cuisine, budget, options, rsvpDeadline } = req.body;
+    if (title !== undefined && (typeof title !== 'string' || title.length > 100)) {
+      res.status(400).json({ error: 'Title must be 100 characters or less' }); return;
+    }
+    if (cuisine !== undefined && typeof cuisine === 'string' && cuisine.length > 50) {
+      res.status(400).json({ error: 'Cuisine must be 50 characters or less' }); return;
+    }
+    if (options !== undefined && Array.isArray(options) && options.length > 20) {
+      res.status(400).json({ error: 'Cannot have more than 20 options' }); return;
+    }
+    if (title !== undefined) plan.title = title;
+    if (date !== undefined) plan.date = date;
+    if (time !== undefined) plan.time = time;
+    if (cuisine !== undefined) plan.cuisine = cuisine;
+    if (budget !== undefined) plan.budget = budget;
+    if (options !== undefined) plan.options = options;
+    if (rsvpDeadline !== undefined) plan.rsvpDeadline = rsvpDeadline ? new Date(rsvpDeadline) : undefined;
+
+    await plan.save();
+    res.json(plan);
+  } catch {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// F-005-020: Update plan status (owner only)
+router.put('/:id/status', requireAuth, async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { status } = req.body as { status: 'confirmed' | 'completed' | 'cancelled' };
+    if (!['confirmed', 'completed', 'cancelled'].includes(status)) {
+      res.status(400).json({ error: 'Invalid status. Must be confirmed, completed, or cancelled' });
+      return;
+    }
+
+    const plan = await Plan.findById(req.params.id);
+    if (!plan) { res.status(404).json({ error: 'Plan not found' }); return; }
+    if (plan.ownerId.toString() !== req.userId) {
+      res.status(403).json({ error: 'Only the plan owner can update status' });
+      return;
+    }
+
+    // State machine: only allow valid transitions
+    const validTransitions: Record<string, string[]> = {
+      voting: ['confirmed', 'cancelled'],
+      confirmed: ['completed', 'cancelled'],
+    };
+    const allowed = validTransitions[plan.status ?? 'voting'] ?? [];
+    if (!allowed.includes(status)) {
+      res.status(400).json({ error: `Cannot transition from ${plan.status ?? 'voting'} to ${status}` });
+      return;
+    }
+
+    plan.status = status;
+    await plan.save();
+    res.json(plan);
+  } catch {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// F-005-021: Delete plan (owner only)
+router.delete('/:id', requireAuth, async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const plan = await Plan.findById(req.params.id);
+    if (!plan) { res.status(404).json({ error: 'Plan not found' }); return; }
+    if (plan.ownerId.toString() !== req.userId) {
+      res.status(403).json({ error: 'Only the plan owner can delete this plan' });
+      return;
+    }
+
+    await Plan.deleteOne({ _id: plan._id });
+    res.json({ ok: true });
   } catch {
     res.status(500).json({ error: 'Server error' });
   }

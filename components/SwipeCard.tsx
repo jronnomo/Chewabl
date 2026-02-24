@@ -231,7 +231,6 @@ const styles = StyleSheet.create({
     right: 0,
     height: '65%',
     backgroundColor: 'transparent',
-    backgroundImage: undefined,
   },
   stampYes: {
     position: 'absolute',
