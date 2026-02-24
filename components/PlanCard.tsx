@@ -11,6 +11,7 @@ const Colors = StaticColors;
 
 interface PlanCardProps {
   plan: DiningPlan;
+  currentUserId?: string;
   onPress?: () => void;
   onEdit?: () => void;
   onRestaurantPress?: () => void;
@@ -108,7 +109,7 @@ function PlanCardFooter({ plan }: { plan: DiningPlan }) {
   );
 }
 
-export default React.memo(function PlanCard({ plan, onPress, onEdit, onRestaurantPress }: PlanCardProps) {
+export default React.memo(function PlanCard({ plan, currentUserId, onPress, onEdit, onRestaurantPress }: PlanCardProps) {
   const Colors = useColors();
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const configStatic = statusConfigStatic[plan.status];
@@ -177,6 +178,13 @@ export default React.memo(function PlanCard({ plan, onPress, onEdit, onRestauran
             <Text style={[styles.cuisineTag, { color: Colors.primary, backgroundColor: Colors.primaryLight }]}>{plan.cuisine}</Text>
             <Text style={[styles.budgetTag, { color: Colors.secondary, backgroundColor: Colors.secondaryLight }]}>{plan.budget}</Text>
           </View>
+          {plan.type === 'group-swipe' && plan.status === 'voting' && currentUserId && (
+            <Text style={{ fontSize: 12, color: Colors.textTertiary, marginTop: 2 }}>
+              {plan.swipesCompleted?.includes(currentUserId)
+                ? `Waiting for ${((plan.invites?.filter(i => i.status === 'accepted').length ?? 0) + 1) - (plan.swipesCompleted?.length ?? 0)} others...`
+                : 'Tap to swipe'}
+            </Text>
+          )}
         </View>
 
         {plan.restaurant && (

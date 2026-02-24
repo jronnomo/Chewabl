@@ -134,3 +134,176 @@ describe('POST /plans/:id/rsvp', () => {
     expect(res.status).toBe(403);
   });
 });
+
+// ─── Group Swipe Tests ──────────────────────────────────────────────────────
+
+const mockRestaurantOptions = [
+  { id: 'r1', name: 'Pizza Place', imageUrl: 'http://img/1', address: '1 Main St', cuisine: 'Italian', priceLevel: 2, rating: 4.5, distance: '0.5mi', tags: [], isOpenNow: true, phone: '', hours: '', description: '', photos: [], reviewCount: 10, hasReservation: false, noiseLevel: 'moderate', seating: [], busyLevel: 'moderate' },
+  { id: 'r2', name: 'Sushi Bar', imageUrl: 'http://img/2', address: '2 Main St', cuisine: 'Japanese', priceLevel: 3, rating: 4.8, distance: '1mi', tags: [], isOpenNow: true, phone: '', hours: '', description: '', photos: [], reviewCount: 20, hasReservation: false, noiseLevel: 'moderate', seating: [], busyLevel: 'moderate' },
+  { id: 'r3', name: 'Taco Shop', imageUrl: 'http://img/3', address: '3 Main St', cuisine: 'Mexican', priceLevel: 1, rating: 4.2, distance: '0.3mi', tags: [], isOpenNow: true, phone: '', hours: '', description: '', photos: [], reviewCount: 5, hasReservation: false, noiseLevel: 'moderate', seating: [], busyLevel: 'moderate' },
+];
+
+const groupSwipePlan = {
+  type: 'group-swipe' as const,
+  title: 'Group Pick',
+  cuisine: 'Any',
+  budget: '$$',
+  status: 'voting',
+  restaurantOptions: mockRestaurantOptions,
+};
+
+describe('POST /plans/:id/swipe', () => {
+  it('owner submits swipes — solo group (no invitees) → plan confirmed immediately', async () => {
+    const alice = await createTestUser({ name: 'Alice' });
+    const bob = await createTestUser({ name: 'Bob' });
+
+    // Create plan with Bob invited, but Bob never accepts → only Alice is a participant
+    const createRes = await request(app)
+      .post('/plans')
+      .set(authHeader(alice.token))
+      .send({ ...groupSwipePlan, inviteeIds: [bob.userId] });
+    const planId = createRes.body.id ?? createRes.body._id;
+    expect(createRes.body.restaurantOptions.length).toBe(3);
+
+    // Alice submits swipes — she's the only participant (Bob is pending, not accepted)
+    const swipeRes = await request(app)
+      .post(`/plans/${planId}/swipe`)
+      .set(authHeader(alice.token))
+      .send({ votes: ['r1', 'r2'] });
+    expect(swipeRes.status).toBe(200);
+    expect(swipeRes.body.status).toBe('confirmed');
+    expect(swipeRes.body.restaurant).toBeDefined();
+    expect(swipeRes.body.restaurant.name).toBe('Sushi Bar'); // r2 has higher rating in tie
+  });
+
+  it('group swipe — both members submit → plan confirmed with winner', async () => {
+    const alice = await createTestUser({ name: 'Alice' });
+    const bob = await createTestUser({ name: 'Bob' });
+
+    const createRes = await request(app)
+      .post('/plans')
+      .set(authHeader(alice.token))
+      .send({ ...groupSwipePlan, inviteeIds: [bob.userId] });
+    const planId = createRes.body.id ?? createRes.body._id;
+
+    // Bob accepts invite
+    await request(app)
+      .post(`/plans/${planId}/rsvp`)
+      .set(authHeader(bob.token))
+      .send({ action: 'accept' });
+
+    // Alice swipes — plan stays voting
+    const aliceSwipe = await request(app)
+      .post(`/plans/${planId}/swipe`)
+      .set(authHeader(alice.token))
+      .send({ votes: ['r1', 'r2'] });
+    expect(aliceSwipe.status).toBe(200);
+    expect(aliceSwipe.body.status).toBe('voting');
+    expect(aliceSwipe.body.swipesCompleted).toContain(alice.userId);
+
+    // Bob swipes — plan confirmed
+    const bobSwipe = await request(app)
+      .post(`/plans/${planId}/swipe`)
+      .set(authHeader(bob.token))
+      .send({ votes: ['r1', 'r3'] });
+    expect(bobSwipe.status).toBe(200);
+    expect(bobSwipe.body.status).toBe('confirmed');
+    // r1 got 2 votes (both), r2 got 1 (alice), r3 got 1 (bob) → r1 wins
+    expect(bobSwipe.body.restaurant.id).toBe('r1');
+  });
+
+  it('rejects duplicate swipe submission', async () => {
+    const alice = await createTestUser({ name: 'Alice' });
+    const bob = await createTestUser({ name: 'Bob' });
+
+    // Create group plan with Bob so Alice's first swipe doesn't auto-confirm
+    const createRes = await request(app)
+      .post('/plans')
+      .set(authHeader(alice.token))
+      .send({ ...groupSwipePlan, inviteeIds: [bob.userId] });
+    const planId = createRes.body.id ?? createRes.body._id;
+
+    // Bob accepts
+    await request(app).post(`/plans/${planId}/rsvp`).set(authHeader(bob.token)).send({ action: 'accept' });
+
+    // First swipe succeeds (plan stays voting because Bob hasn't swiped)
+    await request(app)
+      .post(`/plans/${planId}/swipe`)
+      .set(authHeader(alice.token))
+      .send({ votes: ['r1'] });
+
+    // Second swipe rejected
+    const res = await request(app)
+      .post(`/plans/${planId}/swipe`)
+      .set(authHeader(alice.token))
+      .send({ votes: ['r2'] });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/already submitted/i);
+  });
+
+  it('rejects non-participant', async () => {
+    const alice = await createTestUser({ name: 'Alice' });
+    const carol = await createTestUser({ name: 'Carol' });
+
+    const createRes = await request(app)
+      .post('/plans')
+      .set(authHeader(alice.token))
+      .send(groupSwipePlan);
+    const planId = createRes.body.id ?? createRes.body._id;
+
+    const res = await request(app)
+      .post(`/plans/${planId}/swipe`)
+      .set(authHeader(carol.token))
+      .send({ votes: ['r1'] });
+    expect(res.status).toBe(403);
+  });
+
+  it('rejects invalid restaurant IDs in votes', async () => {
+    const alice = await createTestUser({ name: 'Alice' });
+
+    const createRes = await request(app)
+      .post('/plans')
+      .set(authHeader(alice.token))
+      .send(groupSwipePlan);
+    const planId = createRes.body.id ?? createRes.body._id;
+
+    const res = await request(app)
+      .post(`/plans/${planId}/swipe`)
+      .set(authHeader(alice.token))
+      .send({ votes: ['r1', 'nonexistent'] });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/not in restaurantOptions/i);
+  });
+
+  it('decline triggers completion when remaining participants are done', async () => {
+    const alice = await createTestUser({ name: 'Alice' });
+    const bob = await createTestUser({ name: 'Bob' });
+    const carol = await createTestUser({ name: 'Carol' });
+
+    const createRes = await request(app)
+      .post('/plans')
+      .set(authHeader(alice.token))
+      .send({ ...groupSwipePlan, inviteeIds: [bob.userId, carol.userId] });
+    const planId = createRes.body.id ?? createRes.body._id;
+
+    // Bob accepts, Carol stays pending
+    await request(app).post(`/plans/${planId}/rsvp`).set(authHeader(bob.token)).send({ action: 'accept' });
+
+    // Alice and Bob swipe — plan stays voting (Carol is pending invitee, not counted)
+    // Actually: pending invitees are NOT counted as participants, only accepted ones
+    // So participants = [Alice, Bob], and both swipe → plan should confirm
+    await request(app).post(`/plans/${planId}/swipe`).set(authHeader(alice.token)).send({ votes: ['r1'] });
+    const bobSwipe = await request(app).post(`/plans/${planId}/swipe`).set(authHeader(bob.token)).send({ votes: ['r2'] });
+    // Both participants done → confirmed
+    expect(bobSwipe.body.status).toBe('confirmed');
+
+    // Carol declines after — it's already confirmed, decline just updates invite status
+    const carolDecline = await request(app).post(`/plans/${planId}/rsvp`).set(authHeader(carol.token)).send({ action: 'decline' });
+    expect(carolDecline.status).toBe(200);
+
+    // Verify plan stays confirmed
+    const getRes = await request(app).get(`/plans/${planId}`).set(authHeader(alice.token));
+    expect(getRes.body.status).toBe('confirmed');
+    expect(getRes.body.restaurant).toBeDefined();
+  });
+});

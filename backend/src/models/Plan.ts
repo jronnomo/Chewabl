@@ -20,6 +20,28 @@ export interface IPlanRestaurant {
   rating: number;
 }
 
+export interface IPlanRestaurantOption {
+  id: string;
+  name: string;
+  imageUrl: string;
+  address: string;
+  cuisine: string;
+  priceLevel: number;
+  rating: number;
+  distance: string;
+  tags: string[];
+  isOpenNow: boolean;
+  phone: string;
+  hours: string;
+  description: string;
+  photos: string[];
+  reviewCount: number;
+  hasReservation: boolean;
+  noiseLevel: string;
+  seating: string[];
+  busyLevel: string;
+}
+
 export interface IPlan extends Document {
   type: 'planned' | 'group-swipe';
   title: string;
@@ -34,6 +56,8 @@ export interface IPlan extends Document {
   rsvpDeadline?: Date;
   options: string[];
   votes: Record<string, string[]>;
+  restaurantOptions: IPlanRestaurantOption[];
+  swipesCompleted: string[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -62,6 +86,31 @@ const PlanRestaurantSchema = new Schema(
   { _id: false }
 );
 
+const PlanRestaurantOptionSchema = new Schema(
+  {
+    id: { type: String, required: true },
+    name: { type: String, required: true },
+    imageUrl: { type: String, required: true },
+    address: { type: String, required: true },
+    cuisine: { type: String, required: true },
+    priceLevel: { type: Number, required: true },
+    rating: { type: Number, required: true },
+    distance: { type: String, default: '' },
+    tags: { type: [String], default: [] },
+    isOpenNow: { type: Boolean, default: false },
+    phone: { type: String, default: '' },
+    hours: { type: String, default: '' },
+    description: { type: String, default: '' },
+    photos: { type: [String], default: [] },
+    reviewCount: { type: Number, default: 0 },
+    hasReservation: { type: Boolean, default: false },
+    noiseLevel: { type: String, default: 'moderate' },
+    seating: { type: [String], default: [] },
+    busyLevel: { type: String, default: 'moderate' },
+  },
+  { _id: false }
+);
+
 const PlanSchema = new Schema<IPlan>(
   {
     type: { type: String, enum: ['planned', 'group-swipe'], default: 'planned' },
@@ -77,6 +126,8 @@ const PlanSchema = new Schema<IPlan>(
     rsvpDeadline: { type: Date },
     options: { type: [String], default: [] },
     votes: { type: Map, of: [String], default: {} },
+    restaurantOptions: { type: [PlanRestaurantOptionSchema], default: [] },
+    swipesCompleted: { type: [String], default: [] },
   },
   {
     timestamps: true,

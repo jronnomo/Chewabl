@@ -6,7 +6,6 @@ import {
   Pressable,
   Animated,
   ScrollView,
-  Dimensions,
   Alert,
   Modal,
   ActivityIndicator,
@@ -34,27 +33,13 @@ import SwipeCard from '@/components/SwipeCard';
 import { useApp, useNearbyRestaurants } from '@/context/AppContext';
 import { useAuth } from '@/context/AuthContext';
 import { getFriends } from '@/services/friends';
-import { createPlan } from '@/services/plans';
+import { createPlan, submitSwipes, getPlan } from '@/services/plans';
 import { Restaurant, GroupMember, SwipeResult, Friend, DiningPlan } from '@/types';
 import StaticColors from '@/constants/colors';
 import { useColors } from '@/context/ThemeContext';
 
 const Colors = StaticColors;
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-
 const FALLBACK_AVATAR = 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100';
-
-const generateMockSwipes = (memberIds: string[], restaurantList: Restaurant[], myId: string): Record<string, Record<string, 'yes' | 'no'>> => {
-  const swipes: Record<string, Record<string, 'yes' | 'no'>> = {};
-  memberIds.forEach(memberId => {
-    if (memberId === myId) return;
-    swipes[memberId] = {};
-    restaurantList.forEach(r => {
-      swipes[memberId][r.id] = Math.random() > 0.4 ? 'yes' : 'no';
-    });
-  });
-  return swipes;
-};
 
 type Phase = 'lobby' | 'swiping' | 'waiting' | 'results';
 
@@ -63,16 +48,27 @@ export default function GroupSessionScreen() {
   const router = useRouter();
   const Colors = useColors();
   const params = useLocalSearchParams<{ planId?: string; curveball?: string; autoStart?: string }>();
-  const { preferences, plans, localAvatarUri, addPlan } = useApp();
+  const { preferences, plans, localAvatarUri } = useApp();
   const { user, isAuthenticated } = useAuth();
   const { data: nearbyRestaurants = [] } = useNearbyRestaurants();
 
-  const sessionRestaurants = useMemo(() => {
-    const plan = params.planId ? plans.find(p => p.id === params.planId) : null;
+  // Active plan state — set when creating or fetching an existing plan
+  const [activePlan, setActivePlan] = useState<DiningPlan | null>(() => {
+    if (params.planId) {
+      return plans.find(p => p.id === params.planId) ?? null;
+    }
+    return null;
+  });
 
-    // Use plan.options (real restaurant data) when available
-    if (plan?.options && plan.options.length > 0) {
-      return plan.options;
+  const sessionRestaurants = useMemo(() => {
+    // Prioritize restaurantOptions from active plan (real group-swipe deck)
+    if (activePlan?.restaurantOptions && activePlan.restaurantOptions.length > 0) {
+      return activePlan.restaurantOptions;
+    }
+
+    // Fall back to plan.options (legacy)
+    if (activePlan?.options && activePlan.options.length > 0) {
+      return activePlan.options;
     }
 
     // Use live nearby restaurants from Google Places
@@ -84,7 +80,7 @@ export default function GroupSessionScreen() {
       if (b.isOpenNow) scoreB += 1;
       return scoreB - scoreA;
     });
-  }, [preferences.cuisines, params.planId, plans, nearbyRestaurants]);
+  }, [preferences.cuisines, activePlan, nearbyRestaurants]);
 
   // Derive members from plan invites if available, otherwise start with just the host
   const initialMembers = useMemo((): GroupMember[] => {
@@ -92,42 +88,46 @@ export default function GroupSessionScreen() {
       id: user?.id ?? 'me',
       name: user?.name ? `${user.name} (You)` : 'You',
       avatar: localAvatarUri ?? user?.avatarUri ?? FALLBACK_AVATAR,
-      completedSwiping: false,
+      completedSwiping: activePlan?.swipesCompleted?.includes(user?.id ?? '') ?? false,
     };
 
-    if (params.planId) {
-      const plan = plans.find(p => p.id === params.planId);
-      if (plan?.invites && plan.invites.length > 0) {
-        const accepted = plan.invites.filter(i => i.status === 'accepted');
-        if (accepted.length > 0) {
-          const others: GroupMember[] = accepted.map(inv => ({
-            id: inv.userId,
-            name: inv.name,
-            avatar: inv.avatarUri ?? FALLBACK_AVATAR,
-            completedSwiping: false,
-          }));
-          return [meEntry, ...others];
-        }
+    const plan = activePlan;
+    if (plan?.invites && plan.invites.length > 0) {
+      const accepted = plan.invites.filter(i => i.status === 'accepted');
+      if (accepted.length > 0) {
+        const others: GroupMember[] = accepted.map(inv => ({
+          id: inv.userId,
+          name: inv.name,
+          avatar: inv.avatarUri ?? FALLBACK_AVATAR,
+          completedSwiping: plan.swipesCompleted?.includes(inv.userId) ?? false,
+        }));
+        return [meEntry, ...others];
       }
     }
 
     return [meEntry];
-  }, [params.planId, plans, user, localAvatarUri]);
+  }, [activePlan, user, localAvatarUri]);
 
   const myMemberId = initialMembers[0]?.id ?? 'me';
 
-  const [phase, setPhase] = useState<Phase>(params.autoStart === 'true' ? 'swiping' : 'lobby');
+  // Determine initial phase based on plan state when entering from My Plans
+  const getInitialPhase = (): Phase => {
+    if (activePlan) {
+      if (activePlan.status === 'confirmed') return 'results';
+      if (activePlan.swipesCompleted?.includes(user?.id ?? '')) return 'waiting';
+      if (params.autoStart === 'true') return 'swiping';
+    }
+    return params.autoStart === 'true' ? 'swiping' : 'lobby';
+  };
+
+  const [phase, setPhase] = useState<Phase>(getInitialPhase);
   const [members, setMembers] = useState<GroupMember[]>(initialMembers);
   const [showAddModal, setShowAddModal] = useState(false);
   const [currentIndex, setCurrentIndex] = useState<number>(0);
   const [mySwipes, setMySwipes] = useState<Record<string, 'yes' | 'no'>>({});
-  const [friendSwipes] = useState<Record<string, Record<string, 'yes' | 'no'>>>(
-    () => generateMockSwipes(initialMembers.map(m => m.id), sessionRestaurants, myMemberId)
-  );
   const [results, setResults] = useState<SwipeResult[]>([]);
   const [isAnimating, setIsAnimating] = useState(false);
-
-  const savedPlanRef = useRef(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(40)).current;
 
@@ -144,67 +144,21 @@ export default function GroupSessionScreen() {
     animateIn();
   }, [phase, animateIn]);
 
-  // Auto-save group swipe result as a plan
-  useEffect(() => {
-    if (phase !== 'results' || results.length === 0 || savedPlanRef.current) return;
-    savedPlanRef.current = true;
+  // Build results from plan votes data (used when plan is confirmed)
+  const buildResultsFromPlan = useCallback((plan: DiningPlan): SwipeResult[] => {
+    const restaurants = plan.restaurantOptions ?? [];
+    const planVotes = plan.votes ?? {};
+    const totalMembers = 1 + (plan.invites?.filter(i => i.status === 'accepted').length ?? 0);
 
-    const winner = results[0].restaurant;
-    const title = `Group Pick: ${winner.name}`;
-    const budget = '$'.repeat(winner.priceLevel);
-
-    if (isAuthenticated) {
-      const inviteeIds = members
-        .filter(m => m.id !== myMemberId)
-        .map(m => m.id);
-      createPlan({
-        type: 'group-swipe',
-        title,
-        cuisine: winner.cuisine,
-        budget,
-        status: 'confirmed',
-        restaurant: {
-          id: winner.id,
-          name: winner.name,
-          imageUrl: winner.imageUrl,
-          address: winner.address,
-          cuisine: winner.cuisine,
-          priceLevel: winner.priceLevel,
-          rating: winner.rating,
-        },
-        inviteeIds: inviteeIds.length > 0 ? inviteeIds : undefined,
-      }).catch(() => {
-        // Silently fail — the user still sees results
-      });
-    } else {
-      const localPlan: DiningPlan = {
-        id: `gs-${Date.now()}`,
-        type: 'group-swipe',
-        title,
-        status: 'confirmed',
-        restaurant: winner,
-        cuisine: winner.cuisine,
-        budget,
-        options: [],
-        votes: {},
-        createdAt: new Date().toISOString(),
-      };
-      addPlan(localPlan);
+    const voteCounts: Record<string, number> = {};
+    for (const userVotes of Object.values(planVotes)) {
+      for (const rid of userVotes) {
+        voteCounts[rid] = (voteCounts[rid] || 0) + 1;
+      }
     }
-  }, [phase, results, members, myMemberId, isAuthenticated, addPlan]);
 
-  const calculateResults = useCallback(() => {
-    const allSwipes: Record<string, Record<string, 'yes' | 'no'>> = {
-      ...friendSwipes,
-      [myMemberId]: mySwipes,
-    };
-
-    const resultList: SwipeResult[] = sessionRestaurants.map(r => {
-      let yesCount = 0;
-      const totalMembers = members.length;
-      Object.values(allSwipes).forEach(memberSwipes => {
-        if (memberSwipes[r.id] === 'yes') yesCount++;
-      });
+    const resultList: SwipeResult[] = restaurants.map(r => {
+      const yesCount = voteCounts[r.id] || 0;
       return {
         restaurantId: r.id,
         restaurant: r,
@@ -214,9 +168,46 @@ export default function GroupSessionScreen() {
       };
     });
 
-    resultList.sort((a, b) => b.yesCount - a.yesCount);
+    resultList.sort((a, b) => b.yesCount - a.yesCount || b.restaurant.rating - a.restaurant.rating);
     return resultList;
-  }, [friendSwipes, mySwipes, sessionRestaurants, members.length]);
+  }, []);
+
+  // Build results on mount if plan is already confirmed
+  useEffect(() => {
+    if (phase === 'results' && results.length === 0 && activePlan?.status === 'confirmed') {
+      setResults(buildResultsFromPlan(activePlan));
+    }
+  }, [phase, results.length, activePlan, buildResultsFromPlan]);
+
+  // Poll for plan completion when in waiting phase
+  useEffect(() => {
+    if (phase !== 'waiting' || !activePlan?.id) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const freshPlan = await getPlan(activePlan.id);
+        setActivePlan(freshPlan);
+
+        // Update member completion status
+        if (freshPlan.swipesCompleted) {
+          setMembers(prev => prev.map(m => ({
+            ...m,
+            completedSwiping: freshPlan.swipesCompleted!.includes(m.id),
+          })));
+        }
+
+        if (freshPlan.status === 'confirmed') {
+          const res = buildResultsFromPlan(freshPlan);
+          setResults(res);
+          setPhase('results');
+        }
+      } catch {
+        // Silently ignore polling errors
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [phase, activePlan?.id, buildResultsFromPlan]);
 
   const handleRemoveMember = useCallback((memberId: string) => {
     // F-006-017: Warn when removing the last non-host member
@@ -255,52 +246,109 @@ export default function GroupSessionScreen() {
     setShowAddModal(false);
   }, []);
 
-  const handleStartSwiping = useCallback(() => {
+  const handleStartSwiping = useCallback(async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+
+    if (isAuthenticated && !activePlan) {
+      try {
+        setIsSubmitting(true);
+        const inviteeIds = members
+          .filter(m => m.id !== myMemberId)
+          .map(m => m.id);
+        const plan = await createPlan({
+          type: 'group-swipe',
+          title: 'Group Pick',
+          cuisine: preferences.cuisines[0] || 'Any',
+          budget: preferences.budget || '$$',
+          status: 'voting',
+          restaurantOptions: sessionRestaurants,
+          inviteeIds: inviteeIds.length > 0 ? inviteeIds : undefined,
+        });
+        setActivePlan(plan);
+      } catch {
+        Alert.alert('Error', 'Failed to start group swipe. Please try again.');
+        setIsSubmitting(false);
+        return;
+      } finally {
+        setIsSubmitting(false);
+      }
+    }
+
     setPhase('swiping');
-  }, []);
+  }, [isAuthenticated, activePlan, members, myMemberId, preferences, sessionRestaurants]);
+
+  // Submit swipes to backend and handle result
+  const finishSwiping = useCallback(async (allMySwipes: Record<string, 'yes' | 'no'>) => {
+    const yesVotes = Object.entries(allMySwipes)
+      .filter(([, v]) => v === 'yes')
+      .map(([id]) => id);
+
+    setMembers(prev => prev.map(m =>
+      m.id === myMemberId ? { ...m, completedSwiping: true } : m
+    ));
+
+    if (isAuthenticated && activePlan) {
+      try {
+        setIsSubmitting(true);
+        const updatedPlan = await submitSwipes(activePlan.id, yesVotes);
+        setActivePlan(updatedPlan);
+
+        if (updatedPlan.status === 'confirmed') {
+          const res = buildResultsFromPlan(updatedPlan);
+          setResults(res);
+          setPhase('results');
+        } else {
+          // Plan still voting — go to waiting phase
+          setPhase('waiting');
+        }
+      } catch {
+        Alert.alert('Error', 'Failed to submit votes. Please try again.');
+        setPhase('lobby');
+      } finally {
+        setIsSubmitting(false);
+      }
+    } else {
+      // Offline / not authenticated — build results locally from own swipes
+      const resultList: SwipeResult[] = sessionRestaurants.map(r => ({
+        restaurantId: r.id,
+        restaurant: r,
+        yesCount: allMySwipes[r.id] === 'yes' ? 1 : 0,
+        totalMembers: 1,
+        isMatch: allMySwipes[r.id] === 'yes',
+      }));
+      resultList.sort((a, b) => b.yesCount - a.yesCount || b.restaurant.rating - a.restaurant.rating);
+      setResults(resultList);
+      setPhase('results');
+    }
+  }, [myMemberId, isAuthenticated, activePlan, sessionRestaurants, buildResultsFromPlan]);
 
   const handleSwipeRight = useCallback((restaurant: Restaurant) => {
     setIsAnimating(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setMySwipes(prev => ({ ...prev, [restaurant.id]: 'yes' }));
-    setCurrentIndex(prev => {
-      const next = prev + 1;
-      if (next >= sessionRestaurants.length) {
-        setTimeout(() => {
-          setMembers(prev2 => prev2.map(m =>
-            m.id === myMemberId ? { ...m, completedSwiping: true } : m
-          ));
-          const res = calculateResults();
-          setResults(res);
-          setPhase('results');
-        }, 400);
+    setMySwipes(prev => {
+      const updated = { ...prev, [restaurant.id]: 'yes' as const };
+      if (Object.keys(updated).length >= sessionRestaurants.length) {
+        setTimeout(() => finishSwiping(updated), 400);
       }
-      return next;
+      return updated;
     });
+    setCurrentIndex(prev => prev + 1);
     setTimeout(() => setIsAnimating(false), 350);
-  }, [sessionRestaurants.length, calculateResults, myMemberId]);
+  }, [sessionRestaurants.length, finishSwiping]);
 
   const handleSwipeLeft = useCallback((restaurant: Restaurant) => {
     setIsAnimating(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setMySwipes(prev => ({ ...prev, [restaurant.id]: 'no' }));
-    setCurrentIndex(prev => {
-      const next = prev + 1;
-      if (next >= sessionRestaurants.length) {
-        setTimeout(() => {
-          setMembers(prev2 => prev2.map(m =>
-            m.id === myMemberId ? { ...m, completedSwiping: true } : m
-          ));
-          const res = calculateResults();
-          setResults(res);
-          setPhase('results');
-        }, 400);
+    setMySwipes(prev => {
+      const updated = { ...prev, [restaurant.id]: 'no' as const };
+      if (Object.keys(updated).length >= sessionRestaurants.length) {
+        setTimeout(() => finishSwiping(updated), 400);
       }
-      return next;
+      return updated;
     });
+    setCurrentIndex(prev => prev + 1);
     setTimeout(() => setIsAnimating(false), 350);
-  }, [sessionRestaurants.length, calculateResults]);
+  }, [sessionRestaurants.length, finishSwiping]);
 
   const topMatch = results.length > 0 ? results[0] : null;
   const perfectMatches = results.filter(r => r.isMatch);
@@ -315,13 +363,6 @@ export default function GroupSessionScreen() {
             </Pressable>
             <Text style={[styles.lobbyTitle, { color: Colors.text }]}>Group Swipe</Text>
             <View style={{ width: 40 }} />
-          </View>
-
-          {/* F-006-018: Prototype banner */}
-          <View style={{ backgroundColor: Colors.warning + '20', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8, marginHorizontal: 16, marginBottom: 8 }}>
-            <Text style={{ color: Colors.warning, fontSize: 13, textAlign: 'center', fontWeight: '500' }}>
-              Preview Mode — Group swiping is simulated locally
-            </Text>
           </View>
 
           <View style={styles.lobbyHero}>
@@ -389,9 +430,15 @@ export default function GroupSessionScreen() {
               </Text>
             </View>
           ) : (
-            <Pressable style={styles.startBtn} onPress={handleStartSwiping} testID="start-swiping-btn">
-              <Text style={styles.startBtnText}>Start Swiping</Text>
-              <ChevronRight size={18} color="#FFF" />
+            <Pressable style={styles.startBtn} onPress={handleStartSwiping} disabled={isSubmitting} testID="start-swiping-btn">
+              {isSubmitting ? (
+                <ActivityIndicator color="#FFF" />
+              ) : (
+                <>
+                  <Text style={styles.startBtnText}>Start Swiping</Text>
+                  <ChevronRight size={18} color="#FFF" />
+                </>
+              )}
             </Pressable>
           )}
         </View>
@@ -491,6 +538,66 @@ export default function GroupSessionScreen() {
             <Heart size={28} color="#FFF" fill="#FFF" />
           </Pressable>
         </View>
+      </View>
+    );
+  }
+
+  if (phase === 'waiting') {
+    const completedMembers = members.filter(m => m.completedSwiping);
+    const pendingMembers = members.filter(m => !m.completedSwiping);
+    return (
+      <View style={[styles.container, { paddingTop: insets.top, backgroundColor: Colors.background }]}>
+        <Animated.View style={[styles.phaseContent, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
+          <View style={styles.lobbyHeader}>
+            <Pressable style={[styles.backBtn, { backgroundColor: Colors.card, borderColor: Colors.border }]} onPress={() => router.back()} accessibilityLabel="Go back" accessibilityRole="button">
+              <ArrowLeft size={20} color={Colors.text} />
+            </Pressable>
+            <Text style={[styles.lobbyTitle, { color: Colors.text }]}>Group Swipe</Text>
+            <View style={{ width: 40 }} />
+          </View>
+
+          <View style={{ alignItems: 'center', paddingHorizontal: 40, paddingTop: 48, paddingBottom: 32 }}>
+            <View style={[styles.lobbyIconWrap, { backgroundColor: Colors.success + '18' }]}>
+              <Check size={36} color={Colors.success} />
+            </View>
+            <Text style={[styles.lobbyHeroTitle, { color: Colors.text, marginTop: 16 }]}>Your votes are in!</Text>
+            <Text style={[styles.lobbyHeroSub, { color: Colors.textSecondary, marginTop: 8 }]}>
+              Waiting for others to finish swiping...
+            </Text>
+          </View>
+
+          <View style={[styles.membersSection, { backgroundColor: Colors.card }]}>
+            <View style={styles.membersSectionHeader}>
+              <Users size={16} color={Colors.textSecondary} />
+              <Text style={[styles.membersSectionTitle, { color: Colors.textSecondary }]}>
+                {completedMembers.length}/{members.length} finished
+              </Text>
+            </View>
+            {members.map(member => (
+              <View key={member.id} style={styles.memberRow}>
+                <Image source={{ uri: member.avatar }} style={styles.memberAvatar} contentFit="cover" />
+                <Text style={[styles.memberName, { color: Colors.text }]}>{member.name}</Text>
+                {member.completedSwiping ? (
+                  <View style={[styles.hostBadge, { backgroundColor: Colors.success + '18' }]}>
+                    <Check size={11} color={Colors.success} />
+                    <Text style={[styles.hostBadgeText, { color: Colors.success }]}>Done</Text>
+                  </View>
+                ) : (
+                  <ActivityIndicator size="small" color={Colors.textTertiary} />
+                )}
+              </View>
+            ))}
+          </View>
+
+          {pendingMembers.length > 0 && (
+            <View style={{ alignItems: 'center', paddingVertical: 16 }}>
+              <ActivityIndicator color={Colors.primary} />
+              <Text style={{ color: Colors.textTertiary, fontSize: 13, marginTop: 8 }}>
+                Checking every 5 seconds...
+              </Text>
+            </View>
+          )}
+        </Animated.View>
       </View>
     );
   }
@@ -636,8 +743,10 @@ export default function GroupSessionScreen() {
             <View style={[styles.memberVoteSummary, { backgroundColor: Colors.card }]}>
               <Text style={[styles.memberVoteTitle, { color: Colors.text }]}>Who voted what</Text>
               {members.map(m => {
-                const memberSwipeData = m.id === myMemberId ? mySwipes : (friendSwipes[m.id] ?? {});
-                const yesCount = Object.values(memberSwipeData).filter(v => v === 'yes').length;
+                const planVotes = activePlan?.votes ?? {};
+                const memberVotes = planVotes[m.id] ?? (m.id === myMemberId ? Object.entries(mySwipes).filter(([, v]) => v === 'yes').map(([id]) => id) : []);
+                const yesCount = memberVotes.length;
+                const total = sessionRestaurants.length || 1;
                 return (
                   <View key={m.id} style={styles.memberVoteRow}>
                     <Image source={{ uri: m.avatar }} style={styles.memberVoteAvatar} contentFit="cover" />
@@ -648,7 +757,7 @@ export default function GroupSessionScreen() {
                       </Text>
                     </View>
                     <View style={styles.memberVoteBarWrap}>
-                      <View style={[styles.memberVoteBar, { width: `${(yesCount / sessionRestaurants.length) * 100}%` }]} />
+                      <View style={[styles.memberVoteBar, { width: `${(yesCount / total) * 100}%` }]} />
                     </View>
                   </View>
                 );

@@ -35,7 +35,7 @@ router.get('/:id', requireAuth, async (req: AuthRequest, res: Response): Promise
 // Create plan
 router.post('/', requireAuth, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { title, date, time, cuisine, budget, inviteeIds, rsvpDeadline, options, type, status: reqStatus, restaurant } = req.body as {
+    const { title, date, time, cuisine, budget, inviteeIds, rsvpDeadline, options, type, status: reqStatus, restaurant, restaurantOptions } = req.body as {
       title: string;
       date?: string;
       time?: string;
@@ -47,6 +47,7 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response): Promise<v
       type?: 'planned' | 'group-swipe';
       status?: 'voting' | 'confirmed';
       restaurant?: { id: string; name: string; imageUrl: string; address: string; cuisine: string; priceLevel: number; rating: number };
+      restaurantOptions?: Array<Record<string, unknown>>;
     };
 
     // Input length validation
@@ -94,6 +95,8 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response): Promise<v
       rsvpDeadline: rsvpDeadline ? new Date(rsvpDeadline) : undefined,
       options: options || [],
       votes: {},
+      restaurantOptions: restaurantOptions || [],
+      swipesCompleted: [],
     });
 
     // Notify invitees
@@ -176,8 +179,144 @@ router.post('/:id/rsvp', requireAuth, async (req: AuthRequest, res: Response): P
       );
     }
 
+    // When an invitee declines a voting group-swipe plan, check if remaining participants are all done
+    if (action === 'decline' && plan.type === 'group-swipe' && plan.status === 'voting') {
+      const allParticipantIds = [
+        plan.ownerId.toString(),
+        ...plan.invites.filter(i => i.status === 'accepted').map(i => i.userId.toString()),
+      ];
+      const allDone = allParticipantIds.length > 0 && allParticipantIds.every(pid => plan.swipesCompleted.includes(pid));
+      if (allDone) {
+        // Tally votes and pick winner
+        const voteCounts: Record<string, number> = {};
+        const votesObj: Record<string, string[]> = plan.votes instanceof Map ? Object.fromEntries(plan.votes) : (plan.votes as Record<string, string[]>);
+        for (const userVotes of Object.values(votesObj)) {
+          for (const rid of userVotes) {
+            voteCounts[rid] = (voteCounts[rid] || 0) + 1;
+          }
+        }
+        const sorted = plan.restaurantOptions
+          .map(r => ({ restaurant: r, count: voteCounts[r.id] || 0 }))
+          .sort((a, b) => b.count - a.count || b.restaurant.rating - a.restaurant.rating);
+
+        if (sorted.length > 0) {
+          const winner = sorted[0].restaurant;
+          plan.restaurant = {
+            id: winner.id,
+            name: winner.name,
+            imageUrl: winner.imageUrl,
+            address: winner.address,
+            cuisine: winner.cuisine,
+            priceLevel: winner.priceLevel,
+            rating: winner.rating,
+          };
+          plan.status = 'confirmed';
+          await plan.save();
+        }
+      }
+    }
+
     res.json({ ok: true, status: invite.status });
   } catch {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Submit swipe votes for a group-swipe plan
+router.post('/:id/swipe', requireAuth, async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { votes } = req.body as { votes: string[] };
+    if (!Array.isArray(votes)) {
+      res.status(400).json({ error: 'votes must be an array of restaurant IDs' }); return;
+    }
+
+    const plan = await Plan.findById(req.params.id);
+    if (!plan) { res.status(404).json({ error: 'Plan not found' }); return; }
+    if (plan.status !== 'voting') {
+      res.status(400).json({ error: 'Plan is not in voting status' }); return;
+    }
+
+    // Check user is owner or accepted invitee
+    const userId = req.userId!;
+    const isOwner = plan.ownerId.toString() === userId;
+    const isAcceptedInvitee = plan.invites.some(i => i.userId.toString() === userId && i.status === 'accepted');
+    if (!isOwner && !isAcceptedInvitee) {
+      res.status(403).json({ error: 'You are not a participant in this plan' }); return;
+    }
+
+    // Check user hasn't already swiped
+    if (plan.swipesCompleted.includes(userId)) {
+      res.status(400).json({ error: 'You have already submitted swipes for this plan' }); return;
+    }
+
+    // Validate vote IDs exist in restaurantOptions
+    const validIds = new Set(plan.restaurantOptions.map(r => r.id));
+    const invalidVotes = votes.filter(v => !validIds.has(v));
+    if (invalidVotes.length > 0) {
+      res.status(400).json({ error: 'Some vote IDs are not in restaurantOptions' }); return;
+    }
+
+    // Store votes using Map set method
+    if (plan.votes instanceof Map) {
+      plan.votes.set(userId, votes);
+    } else {
+      (plan.votes as unknown as Map<string, string[]>).set(userId, votes);
+    }
+    plan.swipesCompleted.push(userId);
+
+    // Check if all participants have swiped
+    const allParticipantIds = [
+      plan.ownerId.toString(),
+      ...plan.invites.filter(i => i.status === 'accepted').map(i => i.userId.toString()),
+    ];
+    const allDone = allParticipantIds.every(pid => plan.swipesCompleted.includes(pid));
+
+    if (allDone) {
+      // Tally votes and pick winner
+      const voteCounts: Record<string, number> = {};
+      const votesObj2: Record<string, string[]> = plan.votes instanceof Map ? Object.fromEntries(plan.votes) : (plan.votes as Record<string, string[]>);
+      for (const userVotes of Object.values(votesObj2)) {
+        for (const rid of userVotes) {
+          voteCounts[rid] = (voteCounts[rid] || 0) + 1;
+        }
+      }
+      const sorted = plan.restaurantOptions
+        .map(r => ({ restaurant: r, count: voteCounts[r.id] || 0 }))
+        .sort((a, b) => b.count - a.count || b.restaurant.rating - a.restaurant.rating);
+
+      if (sorted.length > 0) {
+        const winner = sorted[0].restaurant;
+        plan.restaurant = {
+          id: winner.id,
+          name: winner.name,
+          imageUrl: winner.imageUrl,
+          address: winner.address,
+          cuisine: winner.cuisine,
+          priceLevel: winner.priceLevel,
+          rating: winner.rating,
+        };
+        plan.status = 'confirmed';
+
+        // Send push notification to all participants
+        const participantUsers = await User.find({ _id: { $in: allParticipantIds } }).select('pushToken');
+        const pushTokens = participantUsers
+          .filter(u => u.pushToken && u.id !== userId)
+          .map(u => u.pushToken!);
+        if (pushTokens.length > 0) {
+          await sendPushToMany(
+            pushTokens,
+            'Group Pick Decided!',
+            `The group picked ${winner.name} for "${plan.title}"`,
+            { type: 'group_swipe_result', planId: plan.id }
+          );
+        }
+      }
+    }
+
+    await plan.save();
+    res.json(plan);
+  } catch (err) {
+    console.error('POST /plans/:id/swipe error:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });
