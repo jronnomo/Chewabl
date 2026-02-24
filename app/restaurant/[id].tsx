@@ -8,6 +8,7 @@ import {
   Animated,
   Linking,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -31,11 +32,15 @@ import * as Haptics from 'expo-haptics';
 import { restaurants } from '../../mocks/restaurants';
 import { getRegisteredRestaurant } from '../../lib/restaurantRegistry';
 import { useApp } from '../../context/AppContext';
-import Colors from '../../constants/colors';
+import StaticColors from '../../constants/colors';
+import { useColors } from '../../context/ThemeContext';
+
+const Colors = StaticColors;
 
 export default function RestaurantDetailScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const Colors = useColors();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { favorites, toggleFavorite } = useApp();
   const heartScale = useRef(new Animated.Value(1)).current;
@@ -58,7 +63,7 @@ export default function RestaurantDetailScreen() {
   }, [restaurant, toggleFavorite, heartScale]);
 
   const handleCall = useCallback(() => {
-    if (!restaurant) return;
+    if (!restaurant?.phone) return;
     Linking.openURL(`tel:${restaurant.phone}`);
   }, [restaurant]);
 
@@ -68,6 +73,10 @@ export default function RestaurantDetailScreen() {
     Linking.openURL(url);
   }, [restaurant]);
 
+  const handleShare = useCallback(() => {
+    Alert.alert('Coming Soon', 'Sharing will be available in a future update.');
+  }, []);
+
   const handlePlanEvent = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     router.push(`/plan-event?restaurantId=${id}` as never);
@@ -75,30 +84,47 @@ export default function RestaurantDetailScreen() {
 
   if (!restaurant) {
     return (
-      <View style={[styles.container, { paddingTop: insets.top }]}>
-        <Text style={styles.errorText}>Restaurant not found</Text>
+      <View style={[styles.container, { paddingTop: insets.top, backgroundColor: Colors.background }]}>
+        <View style={styles.errorHeader}>
+          <Pressable
+            style={[styles.errorBackBtn, { backgroundColor: Colors.card, borderColor: Colors.border }]}
+            onPress={() => router.back()}
+            accessibilityLabel="Go back"
+            accessibilityRole="button"
+          >
+            <ArrowLeft size={20} color={Colors.text} />
+          </Pressable>
+        </View>
+        <Text style={[styles.errorText, { color: Colors.textSecondary }]}>Restaurant not found</Text>
       </View>
     );
   }
 
   const priceString = '$'.repeat(restaurant.priceLevel);
+  const hasPhone = !!restaurant.phone;
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: Colors.background }]}>
       <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
         <View style={styles.heroContainer}>
-          <Image source={{ uri: restaurant.imageUrl }} style={styles.heroImage} contentFit="cover" />
+          <Image
+            source={{ uri: restaurant.imageUrl }}
+            style={styles.heroImage}
+            contentFit="cover"
+            placeholder={{ uri: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mN88P/BfwAJhAPkE6SXOAAAAABJRU5ErkJggg==' }}
+            transition={300}
+          />
           <View style={styles.heroOverlay} />
 
           <View style={[styles.heroActions, { top: insets.top + 8 }]}>
-            <Pressable style={styles.heroBtn} onPress={() => router.back()}>
+            <Pressable style={styles.heroBtn} onPress={() => router.back()} accessibilityLabel="Go back" accessibilityRole="button">
               <ArrowLeft size={20} color="#FFF" />
             </Pressable>
             <View style={styles.heroActionsRight}>
-              <Pressable style={styles.heroBtn} onPress={() => Alert.alert('Share', 'Sharing coming soon!')}>
+              <Pressable style={styles.heroBtn} onPress={handleShare} accessibilityLabel="Share restaurant" accessibilityRole="button">
                 <Share2 size={18} color="#FFF" />
               </Pressable>
-              <Pressable style={styles.heroBtn} onPress={handleFavorite}>
+              <Pressable style={styles.heroBtn} onPress={handleFavorite} accessibilityLabel={isFavorite ? "Remove from favorites" : "Add to favorites"} accessibilityRole="button">
                 <Animated.View style={{ transform: [{ scale: heartScale }] }}>
                   <Heart size={20} color="#FFF" fill={isFavorite ? Colors.primary : 'transparent'} />
                 </Animated.View>
@@ -114,24 +140,24 @@ export default function RestaurantDetailScreen() {
           )}
         </View>
 
-        <View style={styles.content}>
+        <View style={[styles.content, { backgroundColor: Colors.background }]}>
           <View style={styles.titleSection}>
-            <Text style={styles.name}>{restaurant.name}</Text>
+            <Text style={[styles.name, { color: Colors.text }]}>{restaurant.name}</Text>
             <View style={styles.metaRow}>
-              <Text style={styles.cuisine}>{restaurant.cuisine}</Text>
-              <View style={styles.metaDot} />
-              <Text style={styles.price}>{priceString}</Text>
-              <View style={styles.metaDot} />
+              <Text style={[styles.cuisine, { color: Colors.textSecondary }]}>{restaurant.cuisine}</Text>
+              <View style={[styles.metaDot, { backgroundColor: Colors.textTertiary }]} />
+              <Text style={[styles.price, { color: Colors.success }]}>{priceString}</Text>
+              <View style={[styles.metaDot, { backgroundColor: Colors.textTertiary }]} />
               <MapPin size={13} color={Colors.textSecondary} />
-              <Text style={styles.distance}>{restaurant.distance}</Text>
+              <Text style={[styles.distance, { color: Colors.textSecondary }]}>{restaurant.distance}</Text>
             </View>
           </View>
 
-          <View style={styles.ratingCard}>
+          <View style={[styles.ratingCard, { backgroundColor: Colors.card }]}>
             <View style={styles.ratingMain}>
               <Star size={22} color={Colors.star} fill={Colors.star} />
-              <Text style={styles.ratingValue}>{restaurant.rating}</Text>
-              <Text style={styles.reviewCount}>({restaurant.reviewCount} reviews)</Text>
+              <Text style={[styles.ratingValue, { color: Colors.text }]}>{restaurant.rating}</Text>
+              <Text style={[styles.reviewCount, { color: Colors.textSecondary }]}>({restaurant.reviewCount} reviews)</Text>
             </View>
             <View style={styles.ratingDetails}>
               <InfoPill icon={Volume2} label={restaurant.noiseLevel} />
@@ -143,41 +169,52 @@ export default function RestaurantDetailScreen() {
             </View>
           </View>
 
-          <Text style={styles.description}>{restaurant.description}</Text>
+          <Text style={[styles.description, { color: Colors.textSecondary }]}>{restaurant.description}</Text>
 
           <View style={styles.quickActions}>
-            <Pressable style={styles.actionBtn} onPress={handleCall}>
+            <Pressable
+              style={[styles.actionBtn, { backgroundColor: Colors.primaryLight, opacity: hasPhone ? 1 : 0.4 }]}
+              onPress={handleCall}
+              disabled={!hasPhone}
+            >
               <Phone size={18} color={Colors.primary} />
-              <Text style={styles.actionText}>Call</Text>
+              <Text style={[styles.actionText, { color: Colors.primary }]}>Call</Text>
             </Pressable>
-            <Pressable style={styles.actionBtn} onPress={handleDirections}>
+            <Pressable style={[styles.actionBtn, { backgroundColor: Colors.primaryLight }]} onPress={handleDirections}>
               <Navigation size={18} color={Colors.primary} />
-              <Text style={styles.actionText}>Directions</Text>
+              <Text style={[styles.actionText, { color: Colors.primary }]}>Directions</Text>
             </Pressable>
-            <Pressable style={styles.actionBtn} onPress={handlePlanEvent}>
+            <Pressable style={[styles.actionBtn, { backgroundColor: Colors.primaryLight }]} onPress={handlePlanEvent}>
               <CalendarPlus size={18} color={Colors.primary} />
-              <Text style={styles.actionText}>Plan</Text>
+              <Text style={[styles.actionText, { color: Colors.primary }]}>Plan</Text>
             </Pressable>
           </View>
 
           <View style={styles.infoSection}>
-            <Text style={styles.sectionTitle}>Details</Text>
-            <View style={styles.infoCard}>
+            <Text style={[styles.sectionTitle, { color: Colors.text }]}>Details</Text>
+            <View style={[styles.infoCard, { backgroundColor: Colors.card }]}>
               <DetailRow icon={MapPin} label="Address" value={restaurant.address} />
-              <View style={styles.infoDivider} />
+              <View style={[styles.infoDivider, { backgroundColor: Colors.borderLight }]} />
               <DetailRow icon={Clock} label="Hours" value={restaurant.hours} />
-              <View style={styles.infoDivider} />
-              <DetailRow icon={Phone} label="Phone" value={restaurant.phone} />
-              <View style={styles.infoDivider} />
+              <View style={[styles.infoDivider, { backgroundColor: Colors.borderLight }]} />
+              <DetailRow icon={Phone} label="Phone" value={restaurant.phone || 'Not available'} />
+              <View style={[styles.infoDivider, { backgroundColor: Colors.borderLight }]} />
               <DetailRow icon={ChefHat} label="Tags" value={restaurant.tags.join(', ')} />
             </View>
           </View>
 
           <View style={styles.photosSection}>
-            <Text style={styles.sectionTitle}>Photos</Text>
+            <Text style={[styles.sectionTitle, { color: Colors.text }]}>Photos</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
               {restaurant.photos.map((photo, idx) => (
-                <Image key={idx} source={{ uri: photo }} style={styles.photoThumb} contentFit="cover" />
+                <Image
+                  key={idx}
+                  source={{ uri: photo }}
+                  style={styles.photoThumb}
+                  contentFit="cover"
+                  placeholder={{ uri: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mN88P/BfwAJhAPkE6SXOAAAAABJRU5ErkJggg==' }}
+                  transition={200}
+                />
               ))}
             </ScrollView>
           </View>
@@ -186,7 +223,7 @@ export default function RestaurantDetailScreen() {
         </View>
       </ScrollView>
 
-      <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 12 }]}>
+      <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 12, backgroundColor: Colors.card, borderTopColor: Colors.borderLight }]}>
         {restaurant.isOpenNow && (
           <View style={styles.openIndicator}>
             <View style={styles.openDot} />
@@ -197,7 +234,7 @@ export default function RestaurantDetailScreen() {
           style={styles.reserveBtn}
           onPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-            Alert.alert('Reserve', restaurant.hasReservation ? 'Opening reservation...' : 'This restaurant does not take reservations.');
+            Alert.alert('Coming Soon', 'Reservations will be available in a future update.');
           }}
           testID="reserve-btn"
         >
@@ -211,23 +248,25 @@ export default function RestaurantDetailScreen() {
 }
 
 function InfoPill({ icon: Icon, label }: { icon: React.ElementType; label: string }) {
+  const Colors = useColors();
   return (
-    <View style={styles.infoPill}>
+    <View style={[styles.infoPill, { backgroundColor: Colors.surfaceElevated }]}>
       <Icon size={13} color={Colors.textSecondary} />
-      <Text style={styles.infoPillText}>{label}</Text>
+      <Text style={[styles.infoPillText, { color: Colors.textSecondary }]}>{label}</Text>
     </View>
   );
 }
 
 function DetailRow({ icon: Icon, label, value }: { icon: React.ElementType; label: string; value: string }) {
+  const Colors = useColors();
   return (
     <View style={styles.detailRow}>
-      <View style={styles.detailIconCircle}>
+      <View style={[styles.detailIconCircle, { backgroundColor: Colors.primaryLight }]}>
         <Icon size={14} color={Colors.primary} />
       </View>
       <View style={styles.detailContent}>
-        <Text style={styles.detailLabel}>{label}</Text>
-        <Text style={styles.detailValue}>{value}</Text>
+        <Text style={[styles.detailLabel, { color: Colors.textTertiary }]}>{label}</Text>
+        <Text style={[styles.detailValue, { color: Colors.text }]}>{value}</Text>
       </View>
     </View>
   );
@@ -237,6 +276,20 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.background,
+  },
+  errorHeader: {
+    paddingHorizontal: 16,
+    paddingTop: 8,
+  },
+  errorBackBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
   errorText: {
     fontSize: 16,

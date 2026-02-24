@@ -5,6 +5,9 @@ import createContextHook from '@nkzw/create-context-hook';
 import * as Location from 'expo-location';
 import { UserPreferences, DiningPlan, Restaurant } from '../types';
 import { samplePlans } from '../mocks/plans';
+import { useAuth } from './AuthContext';
+import { updateProfile } from '../services/auth';
+import { getPlans } from '../services/plans';
 import {
   searchNearby,
   searchText,
@@ -31,6 +34,7 @@ const BUDGET_MAP: Record<string, string[]> = {
 
 export const [AppProvider, useApp] = createContextHook(() => {
   const queryClient = useQueryClient();
+  const { isAuthenticated, isLoading: authLoading, user } = useAuth();
   const [isOnboarded, setIsOnboarded] = useState<boolean>(false);
   const [preferences, setPreferences] = useState<UserPreferences>({
     name: '',
@@ -41,7 +45,7 @@ export const [AppProvider, useApp] = createContextHook(() => {
     groupSize: '2',
     distance: '5',
   });
-  const [plans, setPlans] = useState<DiningPlan[]>(samplePlans);
+  const [localPlans, setLocalPlans] = useState<DiningPlan[]>([]);
   const [favorites, setFavorites] = useState<string[]>([]);
   const [localAvatarUri, setLocalAvatarUri] = useState<string | null>(null);
   const [userLocation, setUserLocation] = useState<Coords | null>(null);
@@ -87,24 +91,45 @@ export const [AppProvider, useApp] = createContextHook(() => {
     }
   }, [onboardedQuery.data]);
 
+  // Hydrate preferences from server when authenticated, otherwise from AsyncStorage
   useEffect(() => {
-    if (prefsQuery.data) {
-      // Merge with defaults so legacy stored prefs without `distance` still work
+    if (isAuthenticated && user?.preferences) {
+      setPreferences(prev => ({
+        ...prev,
+        ...user.preferences,
+        distance: user.preferences!.distance ?? '5',
+      }));
+    } else if (!isAuthenticated && prefsQuery.data) {
       setPreferences(prev => ({ ...prev, ...prefsQuery.data, distance: prefsQuery.data!.distance ?? '5' }));
     }
-  }, [prefsQuery.data]);
+  }, [isAuthenticated, user, prefsQuery.data]);
 
+  // Hydrate favorites from server when authenticated, otherwise from AsyncStorage
   useEffect(() => {
-    if (favoritesQuery.data) {
+    if (isAuthenticated && user?.favorites) {
+      setFavorites(user.favorites);
+    } else if (!isAuthenticated && favoritesQuery.data) {
       setFavorites(favoritesQuery.data);
     }
-  }, [favoritesQuery.data]);
+  }, [isAuthenticated, user, favoritesQuery.data]);
 
   useEffect(() => {
     if (avatarQuery.data !== undefined) {
       setLocalAvatarUri(avatarQuery.data);
     }
   }, [avatarQuery.data]);
+
+  // Fetch plans from backend when authenticated
+  const plansQuery = useQuery({
+    queryKey: ['plans'],
+    queryFn: getPlans,
+    enabled: isAuthenticated,
+    staleTime: 60 * 1000,
+  });
+
+  const plans = isAuthenticated
+    ? (plansQuery.data ?? [])
+    : localPlans.length > 0 ? localPlans : samplePlans;
 
   const requestLocation = useCallback(async () => {
     try {
@@ -131,12 +156,15 @@ export const [AppProvider, useApp] = createContextHook(() => {
     if (isOnboarded && !userLocation && locationPermission === 'undetermined') {
       requestLocation();
     }
-  }, [isOnboarded]);
+  }, [isOnboarded, userLocation, locationPermission, requestLocation]);
 
   const saveOnboarding = useMutation({
     mutationFn: async (prefs: UserPreferences) => {
       await AsyncStorage.setItem(ONBOARDED_KEY, 'true');
       await AsyncStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
+      if (isAuthenticated) {
+        await updateProfile({ preferences: prefs });
+      }
       return prefs;
     },
     onSuccess: (prefs) => {
@@ -150,6 +178,9 @@ export const [AppProvider, useApp] = createContextHook(() => {
   const updatePreferences = useMutation({
     mutationFn: async (prefs: UserPreferences) => {
       await AsyncStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
+      if (isAuthenticated) {
+        await updateProfile({ preferences: prefs });
+      }
       return prefs;
     },
     onSuccess: (prefs) => {
@@ -162,21 +193,41 @@ export const [AppProvider, useApp] = createContextHook(() => {
       const updated = prev.includes(restaurantId)
         ? prev.filter(id => id !== restaurantId)
         : [...prev, restaurantId];
-      AsyncStorage.setItem(FAVORITES_KEY, JSON.stringify(updated));
+      (async () => {
+        try {
+          await AsyncStorage.setItem(FAVORITES_KEY, JSON.stringify(updated));
+        } catch (err) {
+          console.error('[Favorites] AsyncStorage write failed:', err);
+        }
+        if (isAuthenticated) {
+          try {
+            await updateProfile({ favorites: updated });
+          } catch (err) {
+            console.error('[Favorites] Backend sync failed:', err);
+          }
+        }
+      })();
       return updated;
     });
-  }, []);
+  }, [isAuthenticated]);
 
   const addPlan = useCallback((plan: DiningPlan) => {
-    setPlans(prev => [plan, ...prev]);
-  }, []);
+    if (isAuthenticated) {
+      // Optimistic update: add plan to cache immediately, then refetch
+      queryClient.setQueryData<DiningPlan[]>(['plans'], old => [plan, ...(old ?? [])]);
+      queryClient.invalidateQueries({ queryKey: ['plans'] });
+    } else {
+      setLocalPlans(prev => [plan, ...prev]);
+    }
+  }, [isAuthenticated, queryClient]);
 
   const setLocalAvatar = useCallback(async (uri: string) => {
     await AsyncStorage.setItem(AVATAR_KEY, uri);
     setLocalAvatarUri(uri);
   }, []);
 
-  const isLoading = onboardedQuery.isLoading || prefsQuery.isLoading;
+  const isLoading = authLoading || onboardedQuery.isLoading || prefsQuery.isLoading
+    || (isAuthenticated && plansQuery.isLoading);
 
   return {
     isOnboarded,
@@ -210,31 +261,23 @@ export function useNearbyRestaurants() {
       preferences.budget,
       preferences.atmosphere,
       preferences.distance,
-      userLocation,
+      userLocation?.latitude,
+      userLocation?.longitude,
     ],
     queryFn: async () => {
       if (!userLocation) {
-        console.log('[Places] No location yet, using mock data');
         return mockRestaurants;
       }
-      console.log('[Places] Fetching nearby restaurants for', userLocation);
-      try {
-        const params = buildSearchNearbyParams(preferences, userLocation);
-        // Always include at least 'restaurant' so the query is meaningful
-        if (!params.includedTypes || params.includedTypes.length === 0) {
-          params.includedTypes = ['restaurant'];
-        }
-        console.log('[Places] searchNearby params:', JSON.stringify(params));
-        const places = await searchNearby(params);
-        console.log('[Places] Got', places.length, 'results');
-        if (places.length === 0) return mockRestaurants;
-        const mapped = places.map(p => mapToRestaurant(p, userLocation));
-        registerRestaurants(mapped);
-        return mapped;
-      } catch (err) {
-        console.error('[Places] searchNearby failed:', err);
-        return mockRestaurants;
+      const params = buildSearchNearbyParams(preferences, userLocation);
+      // Always include at least 'restaurant' so the query is meaningful
+      if (!params.includedTypes || params.includedTypes.length === 0) {
+        params.includedTypes = ['restaurant'];
       }
+      const places = await searchNearby(params);
+      if (places.length === 0) return mockRestaurants;
+      const mapped = places.map(p => mapToRestaurant(p, userLocation));
+      registerRestaurants(mapped);
+      return mapped;
     },
     staleTime: 5 * 60 * 1000,
     placeholderData: mockRestaurants,
@@ -249,45 +292,44 @@ export function useSearchRestaurants(
   const { preferences, userLocation } = useApp();
 
   return useQuery<Restaurant[]>({
-    queryKey: ['searchRestaurants', query, cuisine, budget, userLocation],
+    queryKey: ['searchRestaurants', query, cuisine, budget, userLocation?.latitude, userLocation?.longitude],
     queryFn: async () => {
-      try {
-        const distanceMiles = parseFloat(preferences.distance || '5');
-        const radiusMeters = Math.round(distanceMiles * 1609.34);
-        const priceLevels = budget !== 'All' ? (BUDGET_MAP[budget] || []) : [];
+      const distanceMiles = parseFloat(preferences.distance || '5');
+      const radiusMeters = Math.round(distanceMiles * 1609.34);
+      const priceLevels = budget !== 'All' ? (BUDGET_MAP[budget] || []) : [];
 
-        // Build text query: use typed query, or cuisine filter, or generic fallback
-        let textQuery = query.trim();
-        if (!textQuery) {
-          textQuery = cuisine !== 'All' ? `${cuisine} restaurant` : 'restaurant';
-        }
-
-        // Map selected cuisine chip to an includedType for the API
-        const includedType =
-          cuisine !== 'All' && CUISINE_TYPE_MAP[cuisine]
-            ? CUISINE_TYPE_MAP[cuisine][0]
-            : undefined;
-
-        console.log('[Places] searchText query:', textQuery, '| cuisine:', cuisine, '| budget:', budget);
-        const places = await searchText({
-          textQuery,
-          location: userLocation || undefined,
-          radiusMeters: userLocation ? radiusMeters : undefined,
-          priceLevels: priceLevels.length > 0 ? priceLevels : undefined,
-          includedType,
-          maxResultCount: 20,
-        });
-
-        console.log('[Places] searchText got', places.length, 'results');
-        if (places.length === 0) return mockRestaurants;
-        const mapped = places.map(p => mapToRestaurant(p, userLocation || undefined));
-        registerRestaurants(mapped);
-        return mapped;
-      } catch (err) {
-        console.error('[Places] searchText failed:', err);
-        return mockRestaurants;
+      // Build text query: use typed query, or cuisine filter, or generic fallback
+      let textQuery = query.trim();
+      if (!textQuery) {
+        textQuery = cuisine !== 'All' ? `${cuisine} restaurant` : 'restaurant';
       }
+
+      // Map selected cuisine chip to an includedType for the API
+      // Only use includedType when the cuisine maps to a single type;
+      // when multiple types exist, rely on the text query for filtering
+      const cuisineTypes =
+        cuisine !== 'All' && CUISINE_TYPE_MAP[cuisine]
+          ? CUISINE_TYPE_MAP[cuisine]
+          : [];
+      const includedType = cuisineTypes.length === 1 ? cuisineTypes[0] : undefined;
+
+      const places = await searchText({
+        textQuery,
+        location: userLocation || undefined,
+        radiusMeters: userLocation ? radiusMeters : undefined,
+        priceLevels: priceLevels.length > 0 ? priceLevels : undefined,
+        includedType,
+        maxResultCount: 20,
+      });
+
+      // Return actual results — empty array for zero results, not mock data
+      if (places.length === 0) return [];
+      const mapped = places.map(p => mapToRestaurant(p, userLocation || undefined));
+      registerRestaurants(mapped);
+      return mapped;
     },
+    // Only fire when we have a location or a search query
+    enabled: !!(userLocation || query.trim()),
     staleTime: 5 * 60 * 1000,
     placeholderData: mockRestaurants,
   });

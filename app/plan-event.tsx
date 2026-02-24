@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -15,7 +15,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Image } from 'expo-image';
-import { X, CalendarDays, Clock, MapPin, UtensilsCrossed, DollarSign, Users, Sparkles, UserCheck } from 'lucide-react-native';
+import { X, CalendarDays, Clock, MapPin, UtensilsCrossed, DollarSign, Users, Sparkles, UserCheck, Timer } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../context/AppContext';
@@ -24,7 +24,7 @@ import { CUISINES, BUDGET_OPTIONS, restaurants } from '../mocks/restaurants';
 import { getRegisteredRestaurant } from '../lib/restaurantRegistry';
 import { DiningPlan } from '../types';
 import { getFriends } from '../services/friends';
-import { createPlan } from '../services/plans';
+import { createPlan, updatePlan } from '../services/plans';
 import StaticColors from '../constants/colors';
 import { useColors } from '../context/ThemeContext';
 
@@ -36,15 +36,17 @@ const TIME_OPTIONS = [
   '8:00 PM', '8:30 PM', '9:00 PM',
 ];
 
-const today = new Date();
-const DATE_OPTIONS = Array.from({ length: 5 }, (_, i) => {
-  const d = new Date(today);
-  d.setDate(today.getDate() + i);
-  const label = i === 0 ? 'Today' : i === 1 ? 'Tomorrow'
-    : d.toLocaleDateString('en-US', { weekday: 'short' });
-  const value = d.toISOString().split('T')[0];
-  return { label, value };
-});
+function buildDateOptions() {
+  const today = new Date();
+  return Array.from({ length: 5 }, (_, i) => {
+    const d = new Date(today);
+    d.setDate(today.getDate() + i);
+    const label = i === 0 ? 'Today' : i === 1 ? 'Tomorrow'
+      : d.toLocaleDateString('en-US', { weekday: 'short' });
+    const value = d.toISOString().split('T')[0];
+    return { label, value };
+  });
+}
 
 const RSVP_DEADLINE_OPTIONS = [
   { label: '12 hrs', hours: 12 },
@@ -57,29 +59,48 @@ export default function PlanEventScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const Colors = useColors();
-  const { addPlan } = useApp();
+  const { addPlan, plans } = useApp();
   const { isAuthenticated } = useAuth();
-  const { restaurantId } = useLocalSearchParams<{ restaurantId?: string }>();
+  const { restaurantId, planId } = useLocalSearchParams<{ restaurantId?: string; planId?: string }>();
+
+  const existingPlan = planId ? plans.find(p => p.id === planId) : undefined;
 
   const pinnedRestaurant = restaurantId
     ? (getRegisteredRestaurant(restaurantId) ?? restaurants.find(r => r.id === restaurantId))
     : undefined;
 
-  const [title, setTitle] = useState<string>('');
-  const [selectedDate, setSelectedDate] = useState<string>(DATE_OPTIONS[0].value);
+  // Recompute date options each time the screen mounts (avoids stale "Today" past midnight)
+  const DATE_OPTIONS = useMemo(() => buildDateOptions(), []);
+  const submittingRef = useRef(false);
+
+  const [title, setTitle] = useState<string>(existingPlan?.title ?? '');
+  const [selectedDate, setSelectedDate] = useState<string>(() => existingPlan?.date ?? buildDateOptions()[0].value);
   const [allowCurveball, setAllowCurveball] = useState(false);
-  const [selectedTime, setSelectedTime] = useState<string>('7:00 PM');
-  const [selectedCuisine, setSelectedCuisine] = useState<string>('');
-  const [selectedBudget, setSelectedBudget] = useState<string>('$$');
-  const [selectedFriendIds, setSelectedFriendIds] = useState<string[]>([]);
+  const [selectedTime, setSelectedTime] = useState<string>(existingPlan?.time ?? '7:00 PM');
+  const [selectedCuisines, setSelectedCuisines] = useState<string[]>(
+    existingPlan?.cuisine && existingPlan.cuisine !== 'Any' ? existingPlan.cuisine.split(', ') : []
+  );
+  const [selectedBudget, setSelectedBudget] = useState<string>(existingPlan?.budget ?? '$$');
+  const [selectedFriendIds, setSelectedFriendIds] = useState<string[]>(
+    existingPlan?.invites?.map(i => i.userId) ?? []
+  );
   const [rsvpHours, setRsvpHours] = useState<number | null>(24);
   const [loading, setLoading] = useState(false);
+  const isEditMode = !!existingPlan;
 
   const { data: friends = [] } = useQuery({
     queryKey: ['friends'],
     queryFn: getFriends,
     enabled: isAuthenticated,
+    staleTime: 0,
   });
+
+  const toggleCuisine = useCallback((cuisine: string) => {
+    Haptics.selectionAsync();
+    setSelectedCuisines(prev =>
+      prev.includes(cuisine) ? prev.filter(c => c !== cuisine) : [...prev, cuisine]
+    );
+  }, []);
 
   const toggleFriend = useCallback((id: string) => {
     Haptics.selectionAsync();
@@ -89,22 +110,52 @@ export default function PlanEventScreen() {
   }, []);
 
   const handleCreate = useCallback(async () => {
+    // Prevent double-tap: ref check is synchronous, catches rapid taps before re-render
+    if (submittingRef.current) return;
     if (!title.trim()) {
       Alert.alert('Missing title', 'Give your dining plan a name');
       return;
     }
 
+    // Validate that the RSVP deadline falls before the event date+time
+    if (rsvpHours !== null) {
+      const deadline = new Date();
+      deadline.setHours(deadline.getHours() + rsvpHours);
+
+      const [year, month, day] = selectedDate.split('-').map(Number);
+      const timeMatch = selectedTime.match(/^(\d+):(\d+)\s*(AM|PM)$/i);
+      if (timeMatch) {
+        let h = parseInt(timeMatch[1], 10);
+        const m = parseInt(timeMatch[2], 10);
+        const isPM = timeMatch[3].toUpperCase() === 'PM';
+        if (isPM && h !== 12) h += 12;
+        if (!isPM && h === 12) h = 0;
+        const eventDateTime = new Date(year, month - 1, day, h, m);
+
+        if (deadline >= eventDateTime) {
+          Alert.alert(
+            'Invalid RSVP Deadline',
+            'The RSVP deadline must be before the event starts. Choose a shorter deadline or a later event date.'
+          );
+          return;
+        }
+      }
+    }
+
+    submittingRef.current = true;
     setLoading(true);
 
     try {
-      const effectiveCuisine = pinnedRestaurant ? pinnedRestaurant.cuisine : (selectedCuisine || 'Any');
+      const effectiveCuisine = pinnedRestaurant
+        ? pinnedRestaurant.cuisine
+        : selectedCuisines.length > 0 ? selectedCuisines.join(', ') : 'Any';
       const effectiveBudget = pinnedRestaurant ? '$'.repeat(pinnedRestaurant.priceLevel) : selectedBudget;
 
       const suggestedOptions = pinnedRestaurant
         ? [pinnedRestaurant]
         : restaurants
             .filter(r => {
-              const matchesCuisine = !selectedCuisine || r.cuisine === selectedCuisine;
+              const matchesCuisine = selectedCuisines.length === 0 || selectedCuisines.includes(r.cuisine);
               const matchesBudget = '$'.repeat(r.priceLevel) === selectedBudget;
               return matchesCuisine || matchesBudget;
             })
@@ -117,10 +168,9 @@ export default function PlanEventScreen() {
         rsvpDeadline = dl.toISOString();
       }
 
-      let planId: string;
-      if (isAuthenticated && selectedFriendIds.length > 0) {
-        // Use backend
-        const plan = await createPlan({
+      let resultPlanId: string;
+      if (isAuthenticated) {
+        const payload = {
           title: title.trim(),
           date: selectedDate,
           time: selectedTime,
@@ -129,15 +179,23 @@ export default function PlanEventScreen() {
           inviteeIds: selectedFriendIds,
           rsvpDeadline,
           options: suggestedOptions.map(r => r.id),
-        });
+        };
+        let plan: DiningPlan;
+        if (isEditMode && existingPlan) {
+          plan = await updatePlan(existingPlan.id, payload);
+        } else {
+          plan = await createPlan(payload);
+        }
         // Merge options for local display
         const localPlan: DiningPlan = {
           ...plan,
           invitees: [],
           options: suggestedOptions,
         };
-        addPlan(localPlan);
-        planId = plan.id;
+        if (!isEditMode) {
+          addPlan(localPlan);
+        }
+        resultPlanId = plan.id;
       } else {
         const newPlan: DiningPlan = {
           id: `p${Date.now()}`,
@@ -155,14 +213,17 @@ export default function PlanEventScreen() {
           createdAt: new Date().toISOString().split('T')[0],
         };
         addPlan(newPlan);
-        planId = newPlan.id;
+        resultPlanId = newPlan.id;
       }
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-      if (pinnedRestaurant) {
-        // Restaurant already selected — go straight to group swipe lobby to invite friends
-        router.replace(`/group-session?planId=${planId}` as never);
+      // F-005-027: In edit mode, navigate back instead of to group-session
+      if (isEditMode) {
+        router.back();
+      } else if (pinnedRestaurant) {
+        // Restaurant already selected — skip lobby, go straight to swiping
+        router.replace(`/group-session?planId=${resultPlanId}&autoStart=true` as never);
       } else {
         Alert.alert(
           'Plan Created!',
@@ -171,7 +232,7 @@ export default function PlanEventScreen() {
             { text: 'Later', onPress: () => router.back() },
             {
               text: 'Start Swipe',
-              onPress: () => router.replace(`/group-session?planId=${planId}&curveball=${allowCurveball}` as never),
+              onPress: () => router.replace(`/group-session?planId=${resultPlanId}&curveball=${allowCurveball}&autoStart=true` as never),
             },
           ]
         );
@@ -180,9 +241,10 @@ export default function PlanEventScreen() {
       const msg = err instanceof Error ? err.message : 'Failed to create plan';
       Alert.alert('Error', msg);
     } finally {
+      submittingRef.current = false;
       setLoading(false);
     }
-  }, [title, selectedDate, selectedTime, selectedCuisine, selectedBudget, selectedFriendIds, rsvpHours, isAuthenticated, addPlan, router, allowCurveball, pinnedRestaurant]);
+  }, [title, selectedDate, selectedTime, selectedCuisines, selectedBudget, selectedFriendIds, rsvpHours, isAuthenticated, isEditMode, existingPlan, addPlan, router, allowCurveball, pinnedRestaurant]);
 
   return (
     <KeyboardAvoidingView
@@ -191,10 +253,10 @@ export default function PlanEventScreen() {
     >
       <View style={[styles.container, { paddingTop: insets.top, backgroundColor: Colors.background }]}>
         <View style={styles.header}>
-          <View style={styles.headerHandle} />
+          <View style={[styles.headerHandle, { backgroundColor: Colors.border }]} />
           <View style={styles.headerRow}>
-            <Text style={styles.headerTitle}>New Dining Plan</Text>
-            <Pressable style={styles.closeBtn} onPress={() => router.back()}>
+            <Text style={[styles.headerTitle, { color: Colors.text }]}>{isEditMode ? 'Edit Plan' : 'New Dining Plan'}</Text>
+            <Pressable style={[styles.closeBtn, { backgroundColor: Colors.card, borderColor: Colors.border }]} onPress={() => router.back()} accessibilityLabel="Close" accessibilityRole="button">
               <X size={20} color={Colors.text} />
             </Pressable>
           </View>
@@ -206,9 +268,9 @@ export default function PlanEventScreen() {
           keyboardShouldPersistTaps="handled"
         >
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>Plan Name</Text>
+            <Text style={[styles.label, { color: Colors.text }]}>Plan Name</Text>
             <TextInput
-              style={styles.input}
+              style={[styles.input, { backgroundColor: Colors.card, borderColor: Colors.border, color: Colors.text }]}
               placeholder="e.g. Friday Night Dinner"
               placeholderTextColor={Colors.textTertiary}
               value={title}
@@ -220,17 +282,17 @@ export default function PlanEventScreen() {
           <View style={styles.inputGroup}>
             <View style={styles.labelRow}>
               <CalendarDays size={16} color={Colors.primary} />
-              <Text style={styles.label}>Date</Text>
+              <Text style={[styles.label, { color: Colors.text }]}>Date</Text>
             </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
               <View style={styles.chipRow}>
                 {DATE_OPTIONS.map(d => (
                   <Pressable
                     key={d.value}
-                    style={[styles.dateChip, selectedDate === d.value && styles.chipActive]}
+                    style={[styles.dateChip, { backgroundColor: Colors.card, borderColor: Colors.border }, selectedDate === d.value && [styles.chipActive, { backgroundColor: Colors.primary, borderColor: Colors.primary }]]}
                     onPress={() => { Haptics.selectionAsync(); setSelectedDate(d.value); }}
                   >
-                    <Text style={[styles.dateChipText, selectedDate === d.value && styles.chipTextActive]}>
+                    <Text style={[styles.dateChipText, { color: Colors.text }, selectedDate === d.value && styles.chipTextActive]}>
                       {d.label}
                     </Text>
                   </Pressable>
@@ -242,17 +304,17 @@ export default function PlanEventScreen() {
           <View style={styles.inputGroup}>
             <View style={styles.labelRow}>
               <Clock size={16} color={Colors.primary} />
-              <Text style={styles.label}>Time</Text>
+              <Text style={[styles.label, { color: Colors.text }]}>Time</Text>
             </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
               <View style={styles.chipRow}>
                 {TIME_OPTIONS.map(t => (
                   <Pressable
                     key={t}
-                    style={[styles.timeChip, selectedTime === t && styles.chipActive]}
+                    style={[styles.timeChip, { backgroundColor: Colors.card, borderColor: Colors.border }, selectedTime === t && [styles.chipActive, { backgroundColor: Colors.primary, borderColor: Colors.primary }]]}
                     onPress={() => { Haptics.selectionAsync(); setSelectedTime(t); }}
                   >
-                    <Text style={[styles.timeChipText, selectedTime === t && styles.chipTextActive]}>{t}</Text>
+                    <Text style={[styles.timeChipText, { color: Colors.text }, selectedTime === t && styles.chipTextActive]}>{t}</Text>
                   </Pressable>
                 ))}
               </View>
@@ -260,12 +322,12 @@ export default function PlanEventScreen() {
           </View>
 
           {pinnedRestaurant ? (
-            <View style={styles.pinnedCard}>
+            <View style={[styles.pinnedCard, { backgroundColor: Colors.card, borderColor: Colors.primary }]}>
               <Image source={{ uri: pinnedRestaurant.imageUrl }} style={styles.pinnedImage} contentFit="cover" />
               <View style={styles.pinnedInfo}>
-                <Text style={styles.pinnedLabel}>Restaurant</Text>
-                <Text style={styles.pinnedName}>{pinnedRestaurant.name}</Text>
-                <Text style={styles.pinnedMeta}>
+                <Text style={[styles.pinnedLabel, { color: Colors.primary }]}>Restaurant</Text>
+                <Text style={[styles.pinnedName, { color: Colors.text }]}>{pinnedRestaurant.name}</Text>
+                <Text style={[styles.pinnedMeta, { color: Colors.textSecondary }]}>
                   {pinnedRestaurant.cuisine} · {'$'.repeat(pinnedRestaurant.priceLevel)} · {pinnedRestaurant.distance}
                 </Text>
               </View>
@@ -275,22 +337,22 @@ export default function PlanEventScreen() {
               <View style={styles.inputGroup}>
                 <View style={styles.labelRow}>
                   <UtensilsCrossed size={16} color={Colors.primary} />
-                  <Text style={styles.label}>Cuisine Vibe</Text>
+                  <Text style={[styles.label, { color: Colors.text }]}>Cuisine Vibe</Text>
                 </View>
                 <View style={styles.wrapRow}>
                   <Pressable
-                    style={[styles.cuisineChip, !selectedCuisine && styles.chipActive]}
-                    onPress={() => { Haptics.selectionAsync(); setSelectedCuisine(''); }}
+                    style={[styles.cuisineChip, { backgroundColor: Colors.card, borderColor: Colors.border }, selectedCuisines.length === 0 && [styles.chipActive, { backgroundColor: Colors.primary, borderColor: Colors.primary }]]}
+                    onPress={() => { Haptics.selectionAsync(); setSelectedCuisines([]); }}
                   >
-                    <Text style={[styles.cuisineChipText, !selectedCuisine && styles.chipTextActive]}>Any</Text>
+                    <Text style={[styles.cuisineChipText, { color: Colors.text }, selectedCuisines.length === 0 && styles.chipTextActive]}>Any</Text>
                   </Pressable>
                   {CUISINES.slice(0, 8).map(c => (
                     <Pressable
                       key={c}
-                      style={[styles.cuisineChip, selectedCuisine === c && styles.chipActive]}
-                      onPress={() => { Haptics.selectionAsync(); setSelectedCuisine(c); }}
+                      style={[styles.cuisineChip, { backgroundColor: Colors.card, borderColor: Colors.border }, selectedCuisines.includes(c) && [styles.chipActive, { backgroundColor: Colors.primary, borderColor: Colors.primary }]]}
+                      onPress={() => toggleCuisine(c)}
                     >
-                      <Text style={[styles.cuisineChipText, selectedCuisine === c && styles.chipTextActive]}>{c}</Text>
+                      <Text style={[styles.cuisineChipText, { color: Colors.text }, selectedCuisines.includes(c) && styles.chipTextActive]}>{c}</Text>
                     </Pressable>
                   ))}
                 </View>
@@ -299,16 +361,16 @@ export default function PlanEventScreen() {
               <View style={styles.inputGroup}>
                 <View style={styles.labelRow}>
                   <DollarSign size={16} color={Colors.primary} />
-                  <Text style={styles.label}>Budget</Text>
+                  <Text style={[styles.label, { color: Colors.text }]}>Budget</Text>
                 </View>
                 <View style={styles.budgetRow}>
                   {BUDGET_OPTIONS.map(b => (
                     <Pressable
                       key={b}
-                      style={[styles.budgetChip, selectedBudget === b && styles.chipActive]}
+                      style={[styles.budgetChip, { backgroundColor: Colors.card, borderColor: Colors.border }, selectedBudget === b && [styles.chipActive, { backgroundColor: Colors.primary, borderColor: Colors.primary }]]}
                       onPress={() => { Haptics.selectionAsync(); setSelectedBudget(b); }}
                     >
-                      <Text style={[styles.budgetChipText, selectedBudget === b && styles.chipTextActive]}>{b}</Text>
+                      <Text style={[styles.budgetChipText, { color: Colors.text }, selectedBudget === b && styles.chipTextActive]}>{b}</Text>
                     </Pressable>
                   ))}
                 </View>
@@ -318,7 +380,7 @@ export default function PlanEventScreen() {
                 <View style={[styles.labelRow, { justifyContent: 'space-between' }]}>
                   <View style={styles.labelRow}>
                     <Sparkles size={16} color={Colors.secondary} />
-                    <Text style={styles.label}>Allow Curveball Deals 🎲</Text>
+                    <Text style={[styles.label, { color: Colors.text }]}>Allow Curveball Deals 🎲</Text>
                   </View>
                   <Switch
                     value={allowCurveball}
@@ -334,11 +396,16 @@ export default function PlanEventScreen() {
             </>
           )}
 
+          {!isAuthenticated && (
+            <Text style={{ fontSize: 12, color: Colors.textTertiary, textAlign: 'center', marginBottom: 16 }}>
+              Sign in to invite friends and set RSVP deadlines
+            </Text>
+          )}
           {isAuthenticated && friends.length > 0 && (
             <View style={styles.inputGroup}>
               <View style={styles.labelRow}>
                 <UserCheck size={16} color={Colors.primary} />
-                <Text style={styles.label}>Invite Friends</Text>
+                <Text style={[styles.label, { color: Colors.text }]}>Invite Friends</Text>
               </View>
               <View style={styles.wrapRow}>
                 {friends.map(f => {
@@ -346,19 +413,19 @@ export default function PlanEventScreen() {
                   return (
                     <Pressable
                       key={f.id}
-                      style={[styles.friendChip, selected && styles.chipActive]}
+                      style={[styles.friendChip, { backgroundColor: Colors.card, borderColor: Colors.border }, selected && [styles.chipActive, { backgroundColor: Colors.primary, borderColor: Colors.primary }]]}
                       onPress={() => toggleFriend(f.id)}
                     >
                       {f.avatarUri ? (
                         <Image source={{ uri: f.avatarUri }} style={styles.friendChipAvatar} contentFit="cover" />
                       ) : (
-                        <View style={styles.friendChipAvatarFallback}>
-                          <Text style={[styles.friendChipInitial, selected && { color: '#FFF' }]}>
+                        <View style={[styles.friendChipAvatarFallback, { backgroundColor: Colors.primaryLight }]}>
+                          <Text style={[styles.friendChipInitial, { color: Colors.primary }, selected && { color: '#FFF' }]}>
                             {f.name[0]?.toUpperCase()}
                           </Text>
                         </View>
                       )}
-                      <Text style={[styles.friendChipText, selected && styles.chipTextActive]}>
+                      <Text style={[styles.friendChipText, { color: Colors.text }, selected && styles.chipTextActive]}>
                         {f.name.split(' ')[0]}
                       </Text>
                     </Pressable>
@@ -371,23 +438,23 @@ export default function PlanEventScreen() {
           {isAuthenticated && (
             <View style={styles.inputGroup}>
               <View style={styles.labelRow}>
-                <MapPin size={16} color={Colors.primary} />
-                <Text style={styles.label}>RSVP Deadline</Text>
+                <Timer size={16} color={Colors.primary} />
+                <Text style={[styles.label, { color: Colors.text }]}>RSVP Deadline</Text>
               </View>
               <View style={styles.chipRow}>
                 <Pressable
-                  style={[styles.timeChip, rsvpHours === null && styles.chipActive]}
+                  style={[styles.timeChip, { backgroundColor: Colors.card, borderColor: Colors.border }, rsvpHours === null && [styles.chipActive, { backgroundColor: Colors.primary, borderColor: Colors.primary }]]}
                   onPress={() => { Haptics.selectionAsync(); setRsvpHours(null); }}
                 >
-                  <Text style={[styles.timeChipText, rsvpHours === null && styles.chipTextActive]}>None</Text>
+                  <Text style={[styles.timeChipText, { color: Colors.text }, rsvpHours === null && styles.chipTextActive]}>None</Text>
                 </Pressable>
                 {RSVP_DEADLINE_OPTIONS.map(opt => (
                   <Pressable
                     key={opt.hours}
-                    style={[styles.timeChip, rsvpHours === opt.hours && styles.chipActive]}
+                    style={[styles.timeChip, { backgroundColor: Colors.card, borderColor: Colors.border }, rsvpHours === opt.hours && [styles.chipActive, { backgroundColor: Colors.primary, borderColor: Colors.primary }]]}
                     onPress={() => { Haptics.selectionAsync(); setRsvpHours(opt.hours); }}
                   >
-                    <Text style={[styles.timeChipText, rsvpHours === opt.hours && styles.chipTextActive]}>
+                    <Text style={[styles.timeChipText, { color: Colors.text }, rsvpHours === opt.hours && styles.chipTextActive]}>
                       {opt.label}
                     </Text>
                   </Pressable>
@@ -396,13 +463,13 @@ export default function PlanEventScreen() {
             </View>
           )}
 
-          <View style={styles.infoCard}>
+          <View style={[styles.infoCard, { backgroundColor: Colors.secondaryLight }]}>
             <Sparkles size={18} color={Colors.secondary} />
             <View style={styles.infoCardContent}>
-              <Text style={styles.infoCardTitle}>
+              <Text style={[styles.infoCardTitle, { color: Colors.text }]}>
                 {pinnedRestaurant ? 'Restaurant Locked In' : 'Smart Suggestions'}
               </Text>
-              <Text style={styles.infoCardText}>
+              <Text style={[styles.infoCardText, { color: Colors.textSecondary }]}>
                 {pinnedRestaurant
                   ? `This plan is set for ${pinnedRestaurant.name}. Invite friends and pick a time that works for everyone!`
                   : "We'll suggest 3-5 curated restaurants based on your preferences. Friends can vote on their favorites!"}
@@ -413,7 +480,7 @@ export default function PlanEventScreen() {
           <View style={{ height: 20 }} />
         </ScrollView>
 
-        <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 12 }]}>
+        <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 12, backgroundColor: Colors.card, borderTopColor: Colors.borderLight }]}>
           <Pressable
             style={[styles.createBtn, (!title.trim() || loading) && styles.createBtnDisabled]}
             onPress={handleCreate}
@@ -423,7 +490,7 @@ export default function PlanEventScreen() {
             {loading ? (
               <ActivityIndicator color="#FFF" />
             ) : (
-              <Text style={styles.createBtnText}>Create Plan</Text>
+              <Text style={styles.createBtnText}>{isEditMode ? 'Update Plan' : 'Create Plan'}</Text>
             )}
           </Pressable>
         </View>

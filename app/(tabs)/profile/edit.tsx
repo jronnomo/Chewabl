@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   ScrollView,
   Pressable,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -37,6 +38,18 @@ export default function EditPreferencesScreen() {
   const [atmosphere, setAtmosphere] = useState(preferences.atmosphere);
   const [groupSize, setGroupSize] = useState(preferences.groupSize);
   const [distance, setDistance] = useState(preferences.distance);
+  const [saving, setSaving] = useState(false);
+
+  const hasChanges = useMemo(() => {
+    return (
+      JSON.stringify(cuisines) !== JSON.stringify(preferences.cuisines) ||
+      budget !== preferences.budget ||
+      JSON.stringify(dietary) !== JSON.stringify(preferences.dietary) ||
+      atmosphere !== preferences.atmosphere ||
+      groupSize !== preferences.groupSize ||
+      distance !== preferences.distance
+    );
+  }, [cuisines, budget, dietary, atmosphere, groupSize, distance, preferences]);
 
   const toggleCuisine = useCallback((c: string) => {
     Haptics.selectionAsync();
@@ -57,30 +70,58 @@ export default function EditPreferencesScreen() {
     );
   }, []);
 
-  const handleSave = useCallback(() => {
+  const handleSave = useCallback(async () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    updatePreferences.mutate({
-      ...preferences,
-      cuisines,
-      budget,
-      dietary,
-      atmosphere,
-      groupSize,
-      distance,
-    });
-    router.back();
+    setSaving(true);
+    try {
+      await updatePreferences.mutateAsync({
+        ...preferences,
+        cuisines,
+        budget,
+        dietary,
+        atmosphere,
+        groupSize,
+        distance,
+      });
+      router.back();
+    } catch {
+      Alert.alert('Error', 'Failed to save preferences. Please try again.');
+    } finally {
+      setSaving(false);
+    }
   }, [preferences, cuisines, budget, dietary, atmosphere, groupSize, distance, updatePreferences, router]);
+
+  const handleBack = useCallback(() => {
+    if (hasChanges) {
+      Alert.alert(
+        'Discard Changes?',
+        'You have unsaved changes. Are you sure you want to go back?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Discard', style: 'destructive', onPress: () => router.back() },
+        ]
+      );
+    } else {
+      router.back();
+    }
+  }, [hasChanges, router]);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top, backgroundColor: Colors.background }]}>
       <View style={styles.header}>
-        <Pressable style={styles.backBtn} onPress={() => router.back()}>
+        <Pressable style={[styles.backBtn, { backgroundColor: Colors.card, borderColor: Colors.border }]} onPress={handleBack}>
           <ArrowLeft size={20} color={Colors.text} />
         </Pressable>
-        <Text style={styles.headerTitle}>Edit Preferences</Text>
-        <Pressable style={styles.saveBtn} onPress={handleSave}>
-          <Check size={18} color="#FFF" />
-          <Text style={styles.saveBtnText}>Save</Text>
+        <Text style={[styles.headerTitle, { color: Colors.text }]}>Edit Preferences</Text>
+        <Pressable style={styles.saveBtn} onPress={handleSave} disabled={saving}>
+          {saving ? (
+            <ActivityIndicator size="small" color="#FFF" />
+          ) : (
+            <>
+              <Check size={18} color="#FFF" />
+              <Text style={styles.saveBtnText}>Save</Text>
+            </>
+          )}
         </Pressable>
       </View>
 
@@ -101,10 +142,18 @@ export default function EditPreferencesScreen() {
             {CUISINES.map(c => (
               <Pressable
                 key={c}
-                style={[styles.chip, cuisines.includes(c) && styles.chipActive]}
+                style={[
+                  styles.chip,
+                  { backgroundColor: Colors.card, borderColor: Colors.border },
+                  cuisines.includes(c) && { backgroundColor: Colors.primary, borderColor: Colors.primary },
+                ]}
                 onPress={() => toggleCuisine(c)}
               >
-                <Text style={[styles.chipText, cuisines.includes(c) && styles.chipTextActive]}>{c}</Text>
+                <Text style={[
+                  styles.chipText,
+                  { color: Colors.text },
+                  cuisines.includes(c) && styles.chipTextActive,
+                ]}>{c}</Text>
               </Pressable>
             ))}
           </View>
@@ -115,10 +164,19 @@ export default function EditPreferencesScreen() {
             {BUDGET_OPTIONS.map(b => (
               <Pressable
                 key={b}
-                style={[styles.chip, styles.chipFlex, budget === b && styles.chipActive]}
+                style={[
+                  styles.chip,
+                  styles.chipFlex,
+                  { backgroundColor: Colors.card, borderColor: Colors.border },
+                  budget === b && { backgroundColor: Colors.primary, borderColor: Colors.primary },
+                ]}
                 onPress={() => { Haptics.selectionAsync(); setBudget(b); }}
               >
-                <Text style={[styles.chipText, budget === b && styles.chipTextActive]}>{b}</Text>
+                <Text style={[
+                  styles.chipText,
+                  { color: Colors.text },
+                  budget === b && styles.chipTextActive,
+                ]}>{b}</Text>
               </Pressable>
             ))}
           </View>
@@ -129,10 +187,18 @@ export default function EditPreferencesScreen() {
             {(DIETARY_OPTIONS as string[]).map(d => (
               <Pressable
                 key={d}
-                style={[styles.chip, dietary.includes(d) && styles.chipActive]}
+                style={[
+                  styles.chip,
+                  { backgroundColor: Colors.card, borderColor: Colors.border },
+                  dietary.includes(d) && { backgroundColor: Colors.primary, borderColor: Colors.primary },
+                ]}
                 onPress={() => toggleDietary(d)}
               >
-                <Text style={[styles.chipText, dietary.includes(d) && styles.chipTextActive]}>{d}</Text>
+                <Text style={[
+                  styles.chipText,
+                  { color: Colors.text },
+                  dietary.includes(d) && styles.chipTextActive,
+                ]}>{d}</Text>
               </Pressable>
             ))}
           </View>
@@ -143,10 +209,19 @@ export default function EditPreferencesScreen() {
             {ATMOSPHERE_OPTIONS.map(a => (
               <Pressable
                 key={a}
-                style={[styles.chip, styles.chipFlex, atmosphere === a && styles.chipActive]}
+                style={[
+                  styles.chip,
+                  styles.chipFlex,
+                  { backgroundColor: Colors.card, borderColor: Colors.border },
+                  atmosphere === a && { backgroundColor: Colors.primary, borderColor: Colors.primary },
+                ]}
                 onPress={() => { Haptics.selectionAsync(); setAtmosphere(a); }}
               >
-                <Text style={[styles.chipText, atmosphere === a && styles.chipTextActive]}>{a}</Text>
+                <Text style={[
+                  styles.chipText,
+                  { color: Colors.text },
+                  atmosphere === a && styles.chipTextActive,
+                ]}>{a}</Text>
               </Pressable>
             ))}
           </View>
@@ -157,10 +232,19 @@ export default function EditPreferencesScreen() {
             {GROUP_SIZE_OPTIONS.map(g => (
               <Pressable
                 key={g}
-                style={[styles.chip, styles.chipFlex, groupSize === g && styles.chipActive]}
+                style={[
+                  styles.chip,
+                  styles.chipFlex,
+                  { backgroundColor: Colors.card, borderColor: Colors.border },
+                  groupSize === g && { backgroundColor: Colors.primary, borderColor: Colors.primary },
+                ]}
                 onPress={() => { Haptics.selectionAsync(); setGroupSize(g); }}
               >
-                <Text style={[styles.chipText, groupSize === g && styles.chipTextActive]}>{g}</Text>
+                <Text style={[
+                  styles.chipText,
+                  { color: Colors.text },
+                  groupSize === g && styles.chipTextActive,
+                ]}>{g}</Text>
               </Pressable>
             ))}
           </View>
@@ -171,10 +255,19 @@ export default function EditPreferencesScreen() {
             {DISTANCE_OPTIONS.map(d => (
               <Pressable
                 key={d}
-                style={[styles.chip, styles.chipFlex, distance === d && styles.chipActive]}
+                style={[
+                  styles.chip,
+                  styles.chipFlex,
+                  { backgroundColor: Colors.card, borderColor: Colors.border },
+                  distance === d && { backgroundColor: Colors.primary, borderColor: Colors.primary },
+                ]}
                 onPress={() => { Haptics.selectionAsync(); setDistance(d); }}
               >
-                <Text style={[styles.chipText, distance === d && styles.chipTextActive]}>{d} mi</Text>
+                <Text style={[
+                  styles.chipText,
+                  { color: Colors.text },
+                  distance === d && styles.chipTextActive,
+                ]}>{d} mi</Text>
               </Pressable>
             ))}
           </View>
@@ -197,12 +290,13 @@ function Section({
   action?: React.ReactNode;
   children: React.ReactNode;
 }) {
+  const Colors = useColors();
   return (
     <View style={styles.section}>
       <View style={styles.sectionHeader}>
         <View>
-          <Text style={styles.sectionTitle}>{title}</Text>
-          {subtitle && <Text style={styles.sectionSubtitle}>{subtitle}</Text>}
+          <Text style={[styles.sectionTitle, { color: Colors.text }]}>{title}</Text>
+          {subtitle && <Text style={[styles.sectionSubtitle, { color: Colors.textSecondary }]}>{subtitle}</Text>}
         </View>
         {action}
       </View>
@@ -302,10 +396,6 @@ const styles = StyleSheet.create({
   chipFlex: {
     flex: 1,
     alignItems: 'center',
-  },
-  chipActive: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
   },
   chipText: {
     fontSize: 13,

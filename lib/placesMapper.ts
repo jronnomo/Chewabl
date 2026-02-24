@@ -73,17 +73,35 @@ function getClosingSoon(place: Place): string | undefined {
   const jsDay = new Date().getDay();
   const idx = jsDay === 0 ? 6 : jsDay - 1;
   const desc = descs[idx] || '';
-  // Match closing time "– HH:MM AM/PM" (en-dash or hyphen)
-  const closeMatch = desc.match(/[–\-]\s*(\d{1,2}):(\d{2})\s*(AM|PM)/i);
-  if (closeMatch) {
-    const h = parseInt(closeMatch[1]);
-    const m = parseInt(closeMatch[2]);
-    const isPM = closeMatch[3].toUpperCase() === 'PM';
-    let close24 = h;
-    if (isPM && h !== 12) close24 = h + 12;
-    else if (!isPM && h === 12) close24 = 0;
+  // Match "HH:MM AM/PM – HH:MM AM/PM" (open – close)
+  const rangeMatch = desc.match(
+    /(\d{1,2}):(\d{2})\s*(AM|PM)\s*[–\-]\s*(\d{1,2}):(\d{2})\s*(AM|PM)/i
+  );
+  if (rangeMatch) {
+    const openH = parseInt(rangeMatch[1]);
+    const openAMPM = rangeMatch[3].toUpperCase();
+    let open24 = openH;
+    if (openAMPM === 'PM' && openH !== 12) open24 = openH + 12;
+    else if (openAMPM === 'AM' && openH === 12) open24 = 0;
+
+    const closeH = parseInt(rangeMatch[4]);
+    const closeM = parseInt(rangeMatch[5]);
+    const closeAMPM = rangeMatch[6].toUpperCase();
+    let close24 = closeH;
+    if (closeAMPM === 'PM' && closeH !== 12) close24 = closeH + 12;
+    else if (closeAMPM === 'AM' && closeH === 12) close24 = 0;
+
+    let closeMins = close24 * 60 + closeM;
+    const openMins = open24 * 60;
+    // Handle midnight crossing (e.g., 11:00 AM – 1:00 AM)
+    if (closeMins <= openMins) closeMins += 24 * 60;
+
     const now = new Date();
-    const diffMins = (close24 * 60 + m) - (now.getHours() * 60 + now.getMinutes());
+    let nowMins = now.getHours() * 60 + now.getMinutes();
+    // If we're past midnight but within the overnight window
+    if (nowMins < openMins && closeMins > 24 * 60) nowMins += 24 * 60;
+
+    const diffMins = closeMins - nowMins;
     if (diffMins > 0 && diffMins <= 120) {
       const hrs = Math.floor(diffMins / 60);
       const mins = diffMins % 60;

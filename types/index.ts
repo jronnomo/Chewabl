@@ -40,8 +40,8 @@ export interface DiningPlan {
   status: 'voting' | 'confirmed' | 'completed' | 'cancelled';
   cuisine: string;
   budget: string;
-  /** Legacy field — kept for mock data compatibility */
-  invitees: Invitee[];
+  /** @deprecated Use `invites` instead. Kept for mock data compatibility. */
+  invitees?: Invitee[];
   /** Backend-driven invites with RSVP status */
   invites?: PlanInvite[];
   rsvpDeadline?: string;
@@ -93,6 +93,8 @@ export interface BackendUser {
   avatarUri?: string;
   pushToken?: string;
   inviteCode: string;
+  preferences?: UserPreferences;
+  favorites?: string[];
   createdAt: string;
 }
 

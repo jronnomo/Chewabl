@@ -9,6 +9,8 @@ import {
   Animated,
   KeyboardAvoidingView,
   Platform,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -17,15 +19,20 @@ import * as Haptics from 'expo-haptics';
 import { useApp } from '../context/AppContext';
 import { CUISINES, BUDGET_OPTIONS, DIETARY_OPTIONS, ATMOSPHERE_OPTIONS, GROUP_SIZE_OPTIONS, DISTANCE_OPTIONS } from '../mocks/restaurants';
 import { UserPreferences } from '../types';
-import Colors from '../constants/colors';
+import StaticColors from '../constants/colors';
+import { useColors } from '../context/ThemeContext';
+
+const Colors = StaticColors;
 
 const TOTAL_STEPS = 5;
 
 export default function OnboardingScreen() {
+  const Colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { saveOnboarding } = useApp();
   const [step, setStep] = useState<number>(0);
+  const [isSaving, setIsSaving] = useState(false);
   const [name, setName] = useState<string>('');
   const [selectedCuisines, setSelectedCuisines] = useState<string[]>([]);
   const [selectedBudget, setSelectedBudget] = useState<string>('$$');
@@ -59,8 +66,12 @@ export default function OnboardingScreen() {
     if (step < TOTAL_STEPS - 1) {
       animateTransition('forward', () => setStep(s => s + 1));
     } else {
+      if (name.trim().length < 2) {
+        Alert.alert('Name Required', 'Please enter at least 2 characters for your name.');
+        return;
+      }
       const prefs: UserPreferences = {
-        name,
+        name: name.trim(),
         cuisines: selectedCuisines,
         budget: selectedBudget,
         dietary: selectedDietary,
@@ -68,9 +79,14 @@ export default function OnboardingScreen() {
         groupSize: selectedGroupSize,
         distance: selectedDistance,
       };
+      setIsSaving(true);
       saveOnboarding.mutate(prefs, {
         onSuccess: () => {
           router.replace('/' as never);
+        },
+        onError: () => {
+          setIsSaving(false);
+          Alert.alert('Error', 'Failed to save preferences. Please try again.');
         },
       });
     }
@@ -93,7 +109,7 @@ export default function OnboardingScreen() {
     setSelectedDietary(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d]);
   }, []);
 
-  const canProceed = step === 0 ? name.trim().length > 0 : true;
+  const canProceed = step === 0 ? name.trim().length >= 2 : true;
 
   const renderStep = () => {
     switch (step) {
@@ -101,15 +117,18 @@ export default function OnboardingScreen() {
         return (
           <View style={styles.stepContent}>
             <Text style={styles.stepEmoji}>👋</Text>
-            <Text style={styles.stepTitle}>Welcome to Chewabl</Text>
-            <Text style={styles.stepSubtitle}>No more "where should we eat?" — let's get you set up.</Text>
+            <Text style={[styles.stepTitle, { color: Colors.text }]}>Welcome to Chewabl</Text>
+            <Text style={[styles.stepSubtitle, { color: Colors.textSecondary }]}>No more "where should we eat?" — let's get you set up.</Text>
             <TextInput
-              style={styles.nameInput}
+              style={[styles.nameInput, { backgroundColor: Colors.card, borderColor: Colors.border, color: Colors.text }]}
               placeholder="What's your name?"
               placeholderTextColor={Colors.textTertiary}
               value={name}
               onChangeText={setName}
               autoFocus
+              maxLength={50}
+              returnKeyType="next"
+              onSubmitEditing={handleNext}
               testID="onboarding-name-input"
             />
           </View>
@@ -118,16 +137,16 @@ export default function OnboardingScreen() {
         return (
           <View style={styles.stepContent}>
             <Text style={styles.stepEmoji}>🍽️</Text>
-            <Text style={styles.stepTitle}>What do you love?</Text>
-            <Text style={styles.stepSubtitle}>Pick your favorite cuisines (select as many as you like)</Text>
+            <Text style={[styles.stepTitle, { color: Colors.text }]}>What do you love?</Text>
+            <Text style={[styles.stepSubtitle, { color: Colors.textSecondary }]}>Pick your favorite cuisines (select as many as you like)</Text>
             <View style={styles.optionsGrid}>
               {CUISINES.map(c => (
                 <Pressable
                   key={c}
-                  style={[styles.optionChip, selectedCuisines.includes(c) && styles.optionChipActive]}
+                  style={[styles.optionChip, selectedCuisines.includes(c) ? { backgroundColor: Colors.primary, borderColor: Colors.primary } : { backgroundColor: Colors.card, borderColor: Colors.border }]}
                   onPress={() => toggleCuisine(c)}
                 >
-                  <Text style={[styles.optionChipText, selectedCuisines.includes(c) && styles.optionChipTextActive]}>{c}</Text>
+                  <Text style={[styles.optionChipText, { color: selectedCuisines.includes(c) ? '#FFF' : Colors.text }]}>{c}</Text>
                 </Pressable>
               ))}
             </View>
@@ -137,32 +156,32 @@ export default function OnboardingScreen() {
         return (
           <View style={styles.stepContent}>
             <Text style={styles.stepEmoji}>💰</Text>
-            <Text style={styles.stepTitle}>Your typical budget</Text>
-            <Text style={styles.stepSubtitle}>We'll use this to suggest places in your range</Text>
+            <Text style={[styles.stepTitle, { color: Colors.text }]}>Your typical budget</Text>
+            <Text style={[styles.stepSubtitle, { color: Colors.textSecondary }]}>We'll use this to suggest places in your range</Text>
             <View style={styles.budgetRow}>
               {BUDGET_OPTIONS.map(b => (
                 <Pressable
                   key={b}
-                  style={[styles.budgetChip, selectedBudget === b && styles.budgetChipActive]}
+                  style={[styles.budgetChip, selectedBudget === b ? { backgroundColor: Colors.primary, borderColor: Colors.primary } : { backgroundColor: Colors.card, borderColor: Colors.border }]}
                   onPress={() => {
                     Haptics.selectionAsync();
                     setSelectedBudget(b);
                   }}
                 >
-                  <Text style={[styles.budgetChipText, selectedBudget === b && styles.budgetChipTextActive]}>{b}</Text>
+                  <Text style={[styles.budgetChipText, { color: selectedBudget === b ? '#FFF' : Colors.text }]}>{b}</Text>
                 </Pressable>
               ))}
             </View>
 
-            <Text style={styles.subSectionTitle}>Dietary restrictions</Text>
+            <Text style={[styles.subSectionTitle, { color: Colors.text }]}>Dietary restrictions</Text>
             <View style={styles.optionsGrid}>
               {DIETARY_OPTIONS.map(d => (
                 <Pressable
                   key={d}
-                  style={[styles.optionChip, selectedDietary.includes(d) && styles.optionChipActive]}
+                  style={[styles.optionChip, selectedDietary.includes(d) ? { backgroundColor: Colors.primary, borderColor: Colors.primary } : { backgroundColor: Colors.card, borderColor: Colors.border }]}
                   onPress={() => toggleDietary(d)}
                 >
-                  <Text style={[styles.optionChipText, selectedDietary.includes(d) && styles.optionChipTextActive]}>{d}</Text>
+                  <Text style={[styles.optionChipText, { color: selectedDietary.includes(d) ? '#FFF' : Colors.text }]}>{d}</Text>
                 </Pressable>
               ))}
             </View>
@@ -172,37 +191,37 @@ export default function OnboardingScreen() {
         return (
           <View style={styles.stepContent}>
             <Text style={styles.stepEmoji}>✨</Text>
-            <Text style={styles.stepTitle}>Almost there!</Text>
-            <Text style={styles.stepSubtitle}>A few more preferences to personalize your experience</Text>
+            <Text style={[styles.stepTitle, { color: Colors.text }]}>Almost there!</Text>
+            <Text style={[styles.stepSubtitle, { color: Colors.textSecondary }]}>A few more preferences to personalize your experience</Text>
 
-            <Text style={styles.subSectionTitle}>Vibe preference</Text>
+            <Text style={[styles.subSectionTitle, { color: Colors.text }]}>Vibe preference</Text>
             <View style={styles.optionsGrid}>
               {ATMOSPHERE_OPTIONS.map(a => (
                 <Pressable
                   key={a}
-                  style={[styles.optionChip, selectedAtmosphere === a && styles.optionChipActive]}
+                  style={[styles.optionChip, selectedAtmosphere === a ? { backgroundColor: Colors.primary, borderColor: Colors.primary } : { backgroundColor: Colors.card, borderColor: Colors.border }]}
                   onPress={() => {
                     Haptics.selectionAsync();
                     setSelectedAtmosphere(a);
                   }}
                 >
-                  <Text style={[styles.optionChipText, selectedAtmosphere === a && styles.optionChipTextActive]}>{a}</Text>
+                  <Text style={[styles.optionChipText, { color: selectedAtmosphere === a ? '#FFF' : Colors.text }]}>{a}</Text>
                 </Pressable>
               ))}
             </View>
 
-            <Text style={styles.subSectionTitle}>Typical group size</Text>
+            <Text style={[styles.subSectionTitle, { color: Colors.text }]}>Typical group size</Text>
             <View style={styles.optionsGrid}>
               {GROUP_SIZE_OPTIONS.map(g => (
                 <Pressable
                   key={g}
-                  style={[styles.optionChip, selectedGroupSize === g && styles.optionChipActive]}
+                  style={[styles.optionChip, selectedGroupSize === g ? { backgroundColor: Colors.primary, borderColor: Colors.primary } : { backgroundColor: Colors.card, borderColor: Colors.border }]}
                   onPress={() => {
                     Haptics.selectionAsync();
                     setSelectedGroupSize(g);
                   }}
                 >
-                  <Text style={[styles.optionChipText, selectedGroupSize === g && styles.optionChipTextActive]}>{g}</Text>
+                  <Text style={[styles.optionChipText, { color: selectedGroupSize === g ? '#FFF' : Colors.text }]}>{g}</Text>
                 </Pressable>
               ))}
             </View>
@@ -212,19 +231,19 @@ export default function OnboardingScreen() {
         return (
           <View style={styles.stepContent}>
             <Text style={styles.stepEmoji}>📍</Text>
-            <Text style={styles.stepTitle}>How far will you go?</Text>
-            <Text style={styles.stepSubtitle}>Maximum distance you're willing to travel for a meal</Text>
+            <Text style={[styles.stepTitle, { color: Colors.text }]}>How far will you go?</Text>
+            <Text style={[styles.stepSubtitle, { color: Colors.textSecondary }]}>Maximum distance you're willing to travel for a meal</Text>
             <View style={styles.optionsGrid}>
               {DISTANCE_OPTIONS.map(d => (
                 <Pressable
                   key={d}
-                  style={[styles.optionChip, selectedDistance === d && styles.optionChipActive]}
+                  style={[styles.optionChip, selectedDistance === d ? { backgroundColor: Colors.primary, borderColor: Colors.primary } : { backgroundColor: Colors.card, borderColor: Colors.border }]}
                   onPress={() => {
                     Haptics.selectionAsync();
                     setSelectedDistance(d);
                   }}
                 >
-                  <Text style={[styles.optionChipText, selectedDistance === d && styles.optionChipTextActive]}>
+                  <Text style={[styles.optionChipText, { color: selectedDistance === d ? '#FFF' : Colors.text }]}>
                     {d} mi
                   </Text>
                 </Pressable>
@@ -242,15 +261,16 @@ export default function OnboardingScreen() {
       style={styles.flex}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <View style={[styles.container, { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 20 }]}>
+      <View style={[styles.container, { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 20, backgroundColor: Colors.background }]}>
         <View style={styles.progressRow}>
           {Array.from({ length: TOTAL_STEPS }).map((_, i) => (
             <View
               key={i}
               style={[
                 styles.progressDot,
-                i <= step && styles.progressDotActive,
-                i === step && styles.progressDotCurrent,
+                { backgroundColor: Colors.border },
+                i <= step && { backgroundColor: Colors.primaryLight },
+                i === step && [styles.progressDotCurrent, { backgroundColor: Colors.primary }],
               ]}
             />
           ))}
@@ -270,20 +290,26 @@ export default function OnboardingScreen() {
           {step > 0 && (
             <Pressable style={styles.backBtn} onPress={handleBack}>
               <ChevronLeft size={20} color={Colors.text} />
-              <Text style={styles.backBtnText}>Back</Text>
+              <Text style={[styles.backBtnText, { color: Colors.text }]}>Back</Text>
             </Pressable>
           )}
           <View style={styles.flex} />
           <Pressable
-            style={[styles.nextBtn, !canProceed && styles.nextBtnDisabled]}
+            style={[styles.nextBtn, (!canProceed || isSaving) && styles.nextBtnDisabled]}
             onPress={handleNext}
-            disabled={!canProceed}
+            disabled={!canProceed || isSaving}
             testID="onboarding-next-btn"
           >
-            <Text style={styles.nextBtnText}>
-              {step === TOTAL_STEPS - 1 ? "Let's Eat!" : 'Next'}
-            </Text>
-            <ChevronRight size={18} color="#FFF" />
+            {isSaving ? (
+              <ActivityIndicator color="#FFF" />
+            ) : (
+              <>
+                <Text style={styles.nextBtnText}>
+                  {step === TOTAL_STEPS - 1 ? "Let's Eat!" : 'Next'}
+                </Text>
+                <ChevronRight size={18} color="#FFF" />
+              </>
+            )}
           </Pressable>
         </View>
       </View>

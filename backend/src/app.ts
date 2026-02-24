@@ -1,0 +1,24 @@
+import express from 'express';
+import cors from 'cors';
+import dotenv from 'dotenv';
+import authRoutes from './routes/auth';
+import userRoutes from './routes/users';
+import friendRoutes from './routes/friends';
+import planRoutes from './routes/plans';
+
+dotenv.config();
+
+const app = express();
+
+// F-001-003: CORS with explicit allowed origins in production
+const allowedOrigins = process.env.CORS_ORIGINS?.split(',').map(o => o.trim()).filter(Boolean);
+app.use(cors(allowedOrigins && allowedOrigins.length > 0 ? { origin: allowedOrigins } : undefined));
+
+app.use(express.json({ limit: '10kb' }));
+app.use('/auth', authRoutes);
+app.use('/users', userRoutes);
+app.use('/friends', friendRoutes);
+app.use('/plans', planRoutes);
+app.get('/health', (_req, res) => res.json({ ok: true }));
+
+export default app;

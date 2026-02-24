@@ -3,8 +3,6 @@ const BASE_URL = 'https://places.googleapis.com/v1';
 
 if (!API_KEY) {
   console.warn('[Places] EXPO_PUBLIC_GOOGLE_PLACES_API_KEY is not set');
-} else {
-  console.log('[Places] API key loaded:', API_KEY.slice(0, 8) + '…');
 }
 
 const FIELD_MASK = [

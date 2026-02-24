@@ -51,7 +51,19 @@ const PlanSchema = new Schema<IPlan>(
     options: { type: [String], default: [] },
     votes: { type: Map, of: [String], default: {} },
   },
-  { timestamps: true }
+  {
+    timestamps: true,
+    toJSON: {
+      virtuals: true,
+      // F-005-017: Convert Mongoose Map to plain object for votes field
+      transform: (_doc: IPlan, ret: Record<string, unknown>) => {
+        if (ret.votes instanceof Map) {
+          ret.votes = Object.fromEntries(ret.votes);
+        }
+        return ret;
+      },
+    },
+  }
 );
 
 export default mongoose.model<IPlan>('Plan', PlanSchema);

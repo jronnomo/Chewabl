@@ -1,19 +1,38 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 
 const BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000';
 
 const TOKEN_KEY = 'chewabl_auth_token';
 
+/** Thrown on network / connectivity errors (timeout, no internet, DNS failure) */
+export class NetworkError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'NetworkError';
+  }
+}
+
+/** Thrown when the server returns 401 (token expired or invalid) */
+export class SessionExpiredError extends Error {
+  constructor() {
+    super('Session expired. Please sign in again.');
+    this.name = 'SessionExpiredError';
+  }
+}
+
+// Dedup flag to prevent concurrent 401s from clearing token multiple times
+let _handling401 = false;
+
 export async function getToken(): Promise<string | null> {
-  return AsyncStorage.getItem(TOKEN_KEY);
+  return SecureStore.getItemAsync(TOKEN_KEY);
 }
 
 export async function setToken(token: string): Promise<void> {
-  await AsyncStorage.setItem(TOKEN_KEY, token);
+  await SecureStore.setItemAsync(TOKEN_KEY, token);
 }
 
 export async function clearToken(): Promise<void> {
-  await AsyncStorage.removeItem(TOKEN_KEY);
+  await SecureStore.deleteItemAsync(TOKEN_KEY);
 }
 
 async function request<T>(
@@ -29,27 +48,49 @@ async function request<T>(
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${BASE_URL}${path}`, { ...options, headers }).catch((err: unknown) => {
-    const isNetworkError = err instanceof TypeError;
-    throw new Error(isNetworkError
-      ? 'Cannot connect to server. Please check your connection or try again later.'
-      : String(err)
-    );
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
 
-  if (!response.ok) {
-    const body = await response.text();
-    let message = `API ${response.status}`;
-    try {
-      const parsed = JSON.parse(body);
-      message = parsed.error || message;
-    } catch {
-      // body wasn't JSON
+  try {
+    const response = await fetch(`${BASE_URL}${path}`, {
+      ...options,
+      headers,
+      signal: controller.signal,
+    }).catch((err: unknown) => {
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        throw new NetworkError('Request timed out. Please try again.');
+      }
+      throw new NetworkError(err instanceof TypeError
+        ? 'Cannot connect to server. Please check your connection or try again later.'
+        : String(err)
+      );
+    });
+
+    if (response.status === 401) {
+      if (!_handling401) {
+        _handling401 = true;
+        await clearToken();
+        _handling401 = false;
+      }
+      throw new SessionExpiredError();
     }
-    throw new Error(message);
-  }
 
-  return response.json() as Promise<T>;
+    if (!response.ok) {
+      const body = await response.text();
+      let message = `API ${response.status}`;
+      try {
+        const parsed = JSON.parse(body);
+        message = parsed.error || message;
+      } catch {
+        // body wasn't JSON
+      }
+      throw new Error(message);
+    }
+
+    return response.json() as Promise<T>;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 export const api = {

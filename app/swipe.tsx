@@ -7,6 +7,7 @@ import {
   Animated,
   Dimensions,
   ActivityIndicator,
+  ScrollView,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -26,7 +27,7 @@ export default function SwipeScreen() {
   const Colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { preferences, toggleFavorite, locationPermission, requestLocation } = useApp();
+  const { preferences, toggleFavorite, favorites, locationPermission, requestLocation } = useApp();
   const { data: restaurantData = [], isFetching } = useNearbyRestaurants();
 
   const sortedRestaurants = React.useMemo(() => {
@@ -45,9 +46,18 @@ export default function SwipeScreen() {
   const [liked, setLiked] = useState<Restaurant[]>([]);
   const [passed, setPassed] = useState<Restaurant[]>([]);
   const [showResults, setShowResults] = useState<boolean>(false);
+  const [lastSwiped, setLastSwiped] = useState<{ restaurant: Restaurant; direction: 'left' | 'right'; wasFavorite: boolean } | null>(null);
 
   const resultsOpacity = useRef(new Animated.Value(0)).current;
   const counterScale = useRef(new Animated.Value(1)).current;
+  const showResultsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Cleanup timer on unmount
+  useEffect(() => {
+    return () => {
+      if (showResultsTimer.current) clearTimeout(showResultsTimer.current);
+    };
+  }, []);
 
   const animateCounter = useCallback(() => {
     Animated.sequence([
@@ -57,32 +67,53 @@ export default function SwipeScreen() {
   }, [counterScale]);
 
   const handleSwipeRight = useCallback((restaurant: Restaurant) => {
-    console.log('Swiped right on:', restaurant.name);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setLiked(prev => [...prev, restaurant]);
-    toggleFavorite(restaurant.id);
+    // Only add to favorites, never toggle off
+    if (!favorites.includes(restaurant.id)) {
+      toggleFavorite(restaurant.id);
+    }
+    setLastSwiped({ restaurant, direction: 'right', wasFavorite: favorites.includes(restaurant.id) });
     animateCounter();
     setCurrentIndex(prev => {
       const next = prev + 1;
       if (next >= sortedRestaurants.length) {
-        setTimeout(() => setShowResults(true), 300);
+        setShowResults(true);
       }
       return next;
     });
-  }, [sortedRestaurants.length, toggleFavorite, animateCounter]);
+  }, [sortedRestaurants.length, toggleFavorite, favorites, animateCounter]);
 
   const handleSwipeLeft = useCallback((restaurant: Restaurant) => {
-    console.log('Swiped left on:', restaurant.name);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setPassed(prev => [...prev, restaurant]);
+    setLastSwiped({ restaurant, direction: 'left', wasFavorite: false });
     setCurrentIndex(prev => {
       const next = prev + 1;
       if (next >= sortedRestaurants.length) {
-        setTimeout(() => setShowResults(true), 300);
+        setShowResults(true);
       }
       return next;
     });
   }, [sortedRestaurants.length]);
+
+  const handleUndo = useCallback(() => {
+    if (!lastSwiped || currentIndex <= 0) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const { restaurant, direction, wasFavorite } = lastSwiped;
+    if (direction === 'right') {
+      setLiked(prev => prev.filter(r => r.id !== restaurant.id));
+      // Only remove from favorites if it was newly added by this swipe
+      if (!wasFavorite && favorites.includes(restaurant.id)) {
+        toggleFavorite(restaurant.id);
+      }
+    } else {
+      setPassed(prev => prev.filter(r => r.id !== restaurant.id));
+    }
+    setCurrentIndex(prev => prev - 1);
+    setShowResults(false);
+    setLastSwiped(null);
+  }, [lastSwiped, currentIndex, favorites, toggleFavorite]);
 
   const handleReset = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
@@ -90,6 +121,7 @@ export default function SwipeScreen() {
     setLiked([]);
     setPassed([]);
     setShowResults(false);
+    setLastSwiped(null);
   }, []);
 
   useEffect(() => {
@@ -108,11 +140,25 @@ export default function SwipeScreen() {
     ? currentIndex / sortedRestaurants.length
     : 0;
 
+  // Loading state — differentiate from empty stack
   if (isFetching && sortedRestaurants.length === 0) {
     return (
-      <View style={[styles.container, styles.centeredState, { paddingTop: insets.top }]}>
+      <View style={[styles.container, styles.centeredState, { paddingTop: insets.top, backgroundColor: Colors.background }]}>
         <ActivityIndicator size="large" color={Colors.primary} />
-        <Text style={styles.loadingText}>Finding restaurants near you…</Text>
+        <Text style={[styles.loadingText, { color: Colors.textSecondary }]}>Finding restaurants near you…</Text>
+      </View>
+    );
+  }
+
+  // No restaurants at all (not loading)
+  if (!isFetching && sortedRestaurants.length === 0) {
+    return (
+      <View style={[styles.container, styles.centeredState, { paddingTop: insets.top, backgroundColor: Colors.background }]}>
+        <Text style={styles.emptyStackEmoji}>🍽</Text>
+        <Text style={[styles.emptyStackText, { color: Colors.textSecondary }]}>No restaurants found nearby</Text>
+        <Pressable style={styles.retryBtn} onPress={() => router.back()}>
+          <Text style={styles.retryBtnText}>Go Back</Text>
+        </Pressable>
       </View>
     );
   }
@@ -122,11 +168,11 @@ export default function SwipeScreen() {
       <View style={[styles.container, { paddingTop: insets.top, backgroundColor: Colors.background }]}>
         <Animated.View style={[styles.resultsContainer, { opacity: resultsOpacity }]}>
           <View style={styles.resultsHeader}>
-            <Pressable style={styles.backBtn} onPress={() => router.back()}>
+            <Pressable style={[styles.backBtn, { backgroundColor: Colors.card, borderColor: Colors.border }]} onPress={() => router.back()} accessibilityLabel="Go back" accessibilityRole="button">
               <ArrowLeft size={20} color={Colors.text} />
             </Pressable>
-            <Text style={styles.resultsTitle}>Your Picks</Text>
-            <Pressable style={styles.resetBtn} onPress={handleReset}>
+            <Text style={[styles.resultsTitle, { color: Colors.text }]}>Your Picks</Text>
+            <Pressable style={[styles.resetBtn, { backgroundColor: Colors.primaryLight }]} onPress={handleReset} accessibilityLabel="Reset swipes" accessibilityRole="button">
               <RotateCcw size={18} color={Colors.primary} />
             </Pressable>
           </View>
@@ -134,44 +180,44 @@ export default function SwipeScreen() {
           {liked.length === 0 ? (
             <View style={styles.emptyResults}>
               <Text style={styles.emptyEmoji}>🤷</Text>
-              <Text style={styles.emptyTitle}>Nothing caught your eye?</Text>
-              <Text style={styles.emptySub}>Try swiping again with fresh eyes</Text>
+              <Text style={[styles.emptyTitle, { color: Colors.text }]}>Nothing caught your eye?</Text>
+              <Text style={[styles.emptySub, { color: Colors.textSecondary }]}>Try swiping again with fresh eyes</Text>
               <Pressable style={styles.retryBtn} onPress={handleReset}>
                 <Text style={styles.retryBtnText}>Try Again</Text>
               </Pressable>
             </View>
           ) : (
-            <View style={styles.resultsList}>
-              <Text style={styles.resultsCount}>
+            <ScrollView style={styles.resultsList} contentContainerStyle={styles.resultsListContent}>
+              <Text style={[styles.resultsCount, { color: Colors.textSecondary }]}>
                 You liked {liked.length} restaurant{liked.length !== 1 ? 's' : ''}
               </Text>
               {liked.map((r, i) => (
                 <Pressable
                   key={r.id}
-                  style={styles.resultCard}
+                  style={[styles.resultCard, { backgroundColor: Colors.card }]}
                   onPress={() => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                     router.push(`/restaurant/${r.id}` as never);
                   }}
                 >
-                  <View style={styles.resultRank}>
+                  <View style={[styles.resultRank, { backgroundColor: Colors.primaryLight }]}>
                     <Text style={styles.resultRankText}>{i + 1}</Text>
                   </View>
                   <Image source={{ uri: r.imageUrl }} style={styles.resultImage} contentFit="cover" />
                   <View style={styles.resultInfo}>
-                    <Text style={styles.resultName} numberOfLines={1}>{r.name}</Text>
-                    <Text style={styles.resultCuisine}>{r.cuisine} · {'$'.repeat(r.priceLevel)}</Text>
+                    <Text style={[styles.resultName, { color: Colors.text }]} numberOfLines={1}>{r.name}</Text>
+                    <Text style={[styles.resultCuisine, { color: Colors.textSecondary }]}>{r.cuisine} · {'$'.repeat(r.priceLevel)}</Text>
                     <View style={styles.resultMeta}>
                       <Star size={11} color={Colors.star} fill={Colors.star} />
-                      <Text style={styles.resultRating}>{r.rating}</Text>
+                      <Text style={[styles.resultRating, { color: Colors.text }]}>{r.rating}</Text>
                       <MapPin size={11} color={Colors.textTertiary} />
-                      <Text style={styles.resultDistance}>{r.distance}</Text>
+                      <Text style={[styles.resultDistance, { color: Colors.textTertiary }]}>{r.distance}</Text>
                     </View>
                   </View>
                   <Heart size={18} color={Colors.primary} fill={Colors.primary} />
                 </Pressable>
               ))}
-            </View>
+            </ScrollView>
           )}
         </Animated.View>
       </View>
@@ -179,31 +225,31 @@ export default function SwipeScreen() {
   }
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <View style={[styles.container, { paddingTop: insets.top, backgroundColor: Colors.background }]}>
       <View style={styles.header}>
-        <Pressable style={styles.backBtn} onPress={() => router.back()} testID="swipe-back">
+        <Pressable style={[styles.backBtn, { backgroundColor: Colors.card, borderColor: Colors.border }]} onPress={() => router.back()} testID="swipe-back" accessibilityLabel="Go back" accessibilityRole="button">
           <ArrowLeft size={20} color={Colors.text} />
         </Pressable>
         <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>Discover</Text>
-          <Text style={styles.headerSub}>
+          <Text style={[styles.headerTitle, { color: Colors.text }]}>Discover</Text>
+          <Text style={[styles.headerSub, { color: Colors.textTertiary }]}>
             {currentIndex} / {sortedRestaurants.length}
           </Text>
         </View>
-        <Animated.View style={[styles.likeCounter, { transform: [{ scale: counterScale }] }]}>
+        <Animated.View style={[styles.likeCounter, { backgroundColor: Colors.primaryLight, transform: [{ scale: counterScale }] }]}>
           <Heart size={14} color={Colors.primary} fill={liked.length > 0 ? Colors.primary : 'transparent'} />
-          <Text style={styles.likeCountText}>{liked.length}</Text>
+          <Text style={[styles.likeCountText, { color: Colors.primary }]}>{liked.length}</Text>
         </Animated.View>
       </View>
 
-      <View style={styles.progressBarContainer}>
+      <View style={[styles.progressBarContainer, { backgroundColor: Colors.border }]}>
         <View style={[styles.progressBar, { width: `${progress * 100}%` }]} />
       </View>
 
       {locationPermission === 'denied' && (
-        <Pressable style={styles.locationBanner} onPress={requestLocation}>
+        <Pressable style={[styles.locationBanner, { backgroundColor: Colors.primaryLight }]} onPress={requestLocation}>
           <MapPin size={14} color={Colors.primary} />
-          <Text style={styles.locationBannerText}>
+          <Text style={[styles.locationBannerText, { color: Colors.primary }]}>
             Enable location for nearby restaurants
           </Text>
         </Pressable>
@@ -226,23 +272,37 @@ export default function SwipeScreen() {
         {currentIndex >= sortedRestaurants.length && !showResults && (
           <View style={styles.emptyStack}>
             <Text style={styles.emptyStackEmoji}>🍽</Text>
-            <Text style={styles.emptyStackText}>That's all for now!</Text>
+            <Text style={[styles.emptyStackText, { color: Colors.textSecondary }]}>That's all for now!</Text>
           </View>
         )}
       </View>
 
       <View style={[styles.actionBar, { paddingBottom: insets.bottom + 16 }]}>
         <Pressable
-          style={[styles.actionBtn, styles.actionBtnNo]}
+          style={[styles.actionBtn, styles.actionBtnNo, { backgroundColor: Colors.card }]}
           onPress={() => {
             if (currentIndex < sortedRestaurants.length) {
               handleSwipeLeft(sortedRestaurants[currentIndex]);
             }
           }}
           testID="swipe-no-btn"
+          accessibilityLabel="Pass on restaurant"
+          accessibilityRole="button"
         >
           <X size={28} color={Colors.error} />
         </Pressable>
+
+        {lastSwiped && currentIndex > 0 && (
+          <Pressable
+            style={[styles.actionBtn, styles.undoBtn, { backgroundColor: Colors.card, borderColor: Colors.border }]}
+            onPress={handleUndo}
+            testID="swipe-undo-btn"
+            accessibilityLabel="Undo last swipe"
+            accessibilityRole="button"
+          >
+            <RotateCcw size={22} color={Colors.textSecondary} />
+          </Pressable>
+        )}
 
         <Pressable
           style={[styles.actionBtn, styles.actionBtnYes]}
@@ -252,6 +312,8 @@ export default function SwipeScreen() {
             }
           }}
           testID="swipe-yes-btn"
+          accessibilityLabel="Like restaurant"
+          accessibilityRole="button"
         >
           <Heart size={28} color="#FFF" fill="#FFF" />
         </Pressable>
@@ -365,6 +427,13 @@ const styles = StyleSheet.create({
   actionBtnYes: {
     backgroundColor: Colors.primary,
   },
+  undoBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
   resultsContainer: {
     flex: 1,
   },
@@ -397,7 +466,10 @@ const styles = StyleSheet.create({
   },
   resultsList: {
     flex: 1,
+  },
+  resultsListContent: {
     paddingTop: 8,
+    paddingBottom: 30,
   },
   resultCard: {
     flexDirection: 'row',

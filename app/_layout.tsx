@@ -2,9 +2,10 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
+import { View, Text, StyleSheet } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { AppProvider } from "@/context/AppContext";
-import { AuthProvider } from "@/context/AuthContext";
+import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { ThemeProvider } from "@/context/ThemeContext";
 import { configurePushHandler } from "@/services/notifications";
 import Colors from "@/constants/colors";
@@ -12,7 +13,62 @@ import Colors from "@/constants/colors";
 SplashScreen.preventAutoHideAsync();
 configurePushHandler();
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: 2,
+      staleTime: 5 * 60 * 1000,
+    },
+  },
+});
+
+class ErrorBoundaryFallback extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean }
+> {
+  state = { hasError: false };
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <View style={errorStyles.container}>
+          <Text style={errorStyles.emoji}>😵</Text>
+          <Text style={errorStyles.title}>Something went wrong</Text>
+          <Text style={errorStyles.subtitle}>
+            Please restart the app and try again.
+          </Text>
+        </View>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+const errorStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 20,
+    backgroundColor: Colors.background,
+  },
+  emoji: { fontSize: 48, marginBottom: 16 },
+  title: {
+    fontSize: 22,
+    fontWeight: "800",
+    color: Colors.text,
+  },
+  subtitle: {
+    fontSize: 15,
+    color: Colors.textSecondary,
+    marginTop: 8,
+    textAlign: "center",
+  },
+});
 
 function RootLayoutNav() {
   return (
@@ -64,21 +120,33 @@ function RootLayoutNav() {
   );
 }
 
-export default function RootLayout() {
-  useEffect(() => {
-    SplashScreen.hideAsync();
-  }, []);
+function SplashGate({ children }: { children: React.ReactNode }) {
+  const { isLoading } = useAuth();
 
+  useEffect(() => {
+    if (!isLoading) {
+      SplashScreen.hideAsync();
+    }
+  }, [isLoading]);
+
+  return <>{children}</>;
+}
+
+export default function RootLayout() {
   return (
     <QueryClientProvider client={queryClient}>
       <GestureHandlerRootView>
-        <AuthProvider>
-          <AppProvider>
-            <ThemeProvider>
-              <RootLayoutNav />
-            </ThemeProvider>
-          </AppProvider>
-        </AuthProvider>
+        <ErrorBoundaryFallback>
+          <AuthProvider>
+            <SplashGate>
+              <AppProvider>
+                <ThemeProvider>
+                  <RootLayoutNav />
+                </ThemeProvider>
+              </AppProvider>
+            </SplashGate>
+          </AuthProvider>
+        </ErrorBoundaryFallback>
       </GestureHandlerRootView>
     </QueryClientProvider>
   );
