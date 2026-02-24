@@ -150,8 +150,7 @@ export default function GroupSessionScreen() {
     savedPlanRef.current = true;
 
     const winner = results[0].restaurant;
-    const isSolo = members.length <= 1;
-    const title = isSolo ? `My Pick: ${winner.name}` : `Group Pick: ${winner.name}`;
+    const title = `Group Pick: ${winner.name}`;
     const budget = '$'.repeat(winner.priceLevel);
 
     if (isAuthenticated) {
