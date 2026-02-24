@@ -24,6 +24,7 @@ const PLANS_KEY = 'chewabl_plans';
 const FAVORITES_KEY = 'chewabl_favorites';
 const FAVORITE_RESTAURANTS_KEY = 'chewabl_favorite_restaurants';
 const AVATAR_KEY = 'chewabl_avatar_uri';
+const GUEST_KEY = 'chewabl_guest_mode';
 
 const BUDGET_MAP: Record<string, string[]> = {
   '$': ['PRICE_LEVEL_INEXPENSIVE'],
@@ -50,6 +51,7 @@ export const [AppProvider, useApp] = createContextHook(() => {
   const [favoritedRestaurants, setFavoritedRestaurants] = useState<Restaurant[]>([]);
   const [localAvatarUri, setLocalAvatarUri] = useState<string | null>(null);
   const [userLocation, setUserLocation] = useState<Coords | null>(null);
+  const [isGuest, setIsGuestState] = useState<boolean>(false);
   const [locationPermission, setLocationPermission] = useState<
     'undetermined' | 'granted' | 'denied'
   >('undetermined');
@@ -94,11 +96,33 @@ export const [AppProvider, useApp] = createContextHook(() => {
     },
   });
 
+  const guestQuery = useQuery({
+    queryKey: ['guestMode'],
+    queryFn: async () => {
+      const val = await AsyncStorage.getItem(GUEST_KEY);
+      return val === 'true';
+    },
+  });
+
   useEffect(() => {
     if (onboardedQuery.data !== undefined) {
       setIsOnboarded(onboardedQuery.data);
     }
   }, [onboardedQuery.data]);
+
+  useEffect(() => {
+    if (guestQuery.data !== undefined) {
+      setIsGuestState(guestQuery.data);
+    }
+  }, [guestQuery.data]);
+
+  // Clear guest mode when user authenticates
+  useEffect(() => {
+    if (isAuthenticated && isGuest) {
+      setIsGuestState(false);
+      AsyncStorage.removeItem(GUEST_KEY).catch(() => {});
+    }
+  }, [isAuthenticated, isGuest]);
 
   // Auto-onboard when an authenticated user already has preferences on the backend
   useEffect(() => {
@@ -271,11 +295,22 @@ export const [AppProvider, useApp] = createContextHook(() => {
     setLocalAvatarUri(uri);
   }, []);
 
+  const setGuestMode = useCallback(async (value: boolean) => {
+    setIsGuestState(value);
+    if (value) {
+      await AsyncStorage.setItem(GUEST_KEY, 'true');
+    } else {
+      await AsyncStorage.removeItem(GUEST_KEY);
+    }
+  }, []);
+
   const isLoading = authLoading || onboardedQuery.isLoading || prefsQuery.isLoading
     || (isAuthenticated && plansQuery.isLoading);
 
   return {
     isOnboarded,
+    isGuest,
+    setGuestMode,
     isLoading,
     preferences,
     plans,

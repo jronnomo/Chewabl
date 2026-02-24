@@ -13,6 +13,7 @@ interface PlanCardProps {
   plan: DiningPlan;
   onPress?: () => void;
   onEdit?: () => void;
+  onRestaurantPress?: () => void;
 }
 
 const statusConfigStatic = {
@@ -107,7 +108,7 @@ function PlanCardFooter({ plan }: { plan: DiningPlan }) {
   );
 }
 
-export default React.memo(function PlanCard({ plan, onPress, onEdit }: PlanCardProps) {
+export default React.memo(function PlanCard({ plan, onPress, onEdit, onRestaurantPress }: PlanCardProps) {
   const Colors = useColors();
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const configStatic = statusConfigStatic[plan.status];
@@ -179,13 +180,18 @@ export default React.memo(function PlanCard({ plan, onPress, onEdit }: PlanCardP
         </View>
 
         {plan.restaurant && (
-          <View style={[styles.restaurantPreview, { backgroundColor: Colors.surfaceElevated }]}>
-            <Image source={{ uri: plan.restaurant.imageUrl }} style={styles.restaurantImage} contentFit="cover" />
-            <View style={styles.restaurantInfo}>
-              <Text style={[styles.restaurantName, { color: Colors.text }]} numberOfLines={1}>{plan.restaurant.name}</Text>
-              <Text style={[styles.restaurantAddress, { color: Colors.textSecondary }]}>{plan.restaurant.address}</Text>
+          <Pressable
+            onPress={e => { e.stopPropagation?.(); onRestaurantPress?.(); }}
+            disabled={!onRestaurantPress}
+          >
+            <View style={[styles.restaurantPreview, { backgroundColor: Colors.surfaceElevated }]}>
+              <Image source={{ uri: plan.restaurant.imageUrl }} style={styles.restaurantImage} contentFit="cover" />
+              <View style={styles.restaurantInfo}>
+                <Text style={[styles.restaurantName, { color: Colors.text }]} numberOfLines={1}>{plan.restaurant.name}</Text>
+                <Text style={[styles.restaurantAddress, { color: Colors.textSecondary }]}>{plan.restaurant.address}</Text>
+              </View>
             </View>
-          </View>
+          </Pressable>
         )}
 
         <PlanCardFooter plan={plan} />

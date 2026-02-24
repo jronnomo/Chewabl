@@ -46,7 +46,7 @@ export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const Colors = useColors();
-  const { preferences, updatePreferences, favorites, favoritedRestaurants, setLocalAvatar, localAvatarUri, plans } = useApp();
+  const { preferences, updatePreferences, favorites, favoritedRestaurants, setLocalAvatar, localAvatarUri, plans, setGuestMode } = useApp();
   const { user, signOut, isAuthenticated, updateUser } = useAuth();
 
   const [avatarLoading, setAvatarLoading] = useState(false);
@@ -127,9 +127,10 @@ export default function ProfileScreen() {
   const handleLogout = useCallback(async () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
     await AsyncStorage.removeItem('chewabl_avatar_uri');
+    await setGuestMode(false);
     await signOut();
     router.replace('/auth' as never);
-  }, [signOut, router]);
+  }, [signOut, setGuestMode, router]);
 
   const displayName = user?.name || preferences.name || 'Foodie';
   const avatarUri = localAvatarUri || user?.avatarUri;

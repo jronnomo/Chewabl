@@ -35,7 +35,7 @@ router.get('/:id', requireAuth, async (req: AuthRequest, res: Response): Promise
 // Create plan
 router.post('/', requireAuth, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { title, date, time, cuisine, budget, inviteeIds, rsvpDeadline, options, type, status: reqStatus } = req.body as {
+    const { title, date, time, cuisine, budget, inviteeIds, rsvpDeadline, options, type, status: reqStatus, restaurant } = req.body as {
       title: string;
       date?: string;
       time?: string;
@@ -46,6 +46,7 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response): Promise<v
       options?: string[];
       type?: 'planned' | 'group-swipe';
       status?: 'voting' | 'confirmed';
+      restaurant?: { id: string; name: string; imageUrl: string; address: string; cuisine: string; priceLevel: number; rating: number };
     };
 
     // Input length validation
@@ -88,6 +89,7 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response): Promise<v
       status: (type === 'group-swipe' && reqStatus) ? reqStatus : 'voting',
       cuisine: cuisine || 'Any',
       budget: budget || '$$',
+      ...(restaurant ? { restaurant } : {}),
       invites,
       rsvpDeadline: rsvpDeadline ? new Date(rsvpDeadline) : undefined,
       options: options || [],
@@ -190,7 +192,7 @@ router.put('/:id', requireAuth, async (req: AuthRequest, res: Response): Promise
       return;
     }
 
-    const { title, date, time, cuisine, budget, options, rsvpDeadline } = req.body;
+    const { title, date, time, cuisine, budget, options, rsvpDeadline, restaurant } = req.body;
     if (title !== undefined && (typeof title !== 'string' || title.length > 100)) {
       res.status(400).json({ error: 'Title must be 100 characters or less' }); return;
     }
@@ -207,6 +209,7 @@ router.put('/:id', requireAuth, async (req: AuthRequest, res: Response): Promise
     if (budget !== undefined) plan.budget = budget;
     if (options !== undefined) plan.options = options;
     if (rsvpDeadline !== undefined) plan.rsvpDeadline = rsvpDeadline ? new Date(rsvpDeadline) : undefined;
+    if (restaurant !== undefined) plan.restaurant = restaurant || undefined;
 
     await plan.save();
     res.json(plan);

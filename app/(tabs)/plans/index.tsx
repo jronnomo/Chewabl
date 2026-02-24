@@ -152,6 +152,7 @@ export default function PlansScreen() {
             plan={item}
             onPress={() => handlePlanPress(item)}
             onEdit={item.type === 'group-swipe' ? undefined : () => handlePlanEdit(item)}
+            onRestaurantPress={item.restaurant ? () => router.push(`/restaurant/${item.restaurant!.id}` as never) : undefined}
           />
         )}
         contentContainerStyle={styles.listContent}

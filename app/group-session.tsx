@@ -163,6 +163,15 @@ export default function GroupSessionScreen() {
         cuisine: winner.cuisine,
         budget,
         status: 'confirmed',
+        restaurant: {
+          id: winner.id,
+          name: winner.name,
+          imageUrl: winner.imageUrl,
+          address: winner.address,
+          cuisine: winner.cuisine,
+          priceLevel: winner.priceLevel,
+          rating: winner.rating,
+        },
         inviteeIds: inviteeIds.length > 0 ? inviteeIds : undefined,
       }).catch(() => {
         // Silently fail — the user still sees results

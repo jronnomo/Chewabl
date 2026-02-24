@@ -9,6 +9,7 @@ export interface CreatePlanInput {
   cuisine: string;
   budget: string;
   status?: string;
+  restaurant?: { id: string; name: string; imageUrl: string; address: string; cuisine: string; priceLevel: number; rating: number };
   inviteeIds?: string[];
   rsvpDeadline?: string;
   options?: string[];

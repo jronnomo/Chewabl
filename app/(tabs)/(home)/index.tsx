@@ -27,7 +27,7 @@ export default function HomeScreen() {
   const Colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { preferences, isOnboarded, isLoading, locationPermission, requestLocation } = useApp();
+  const { preferences, isOnboarded, isGuest, isLoading, locationPermission, requestLocation } = useApp();
   const { user, isAuthenticated } = useAuth();
   const { data: allRestaurants = [] } = useNearbyRestaurants();
 
@@ -73,8 +73,12 @@ export default function HomeScreen() {
     );
   }
 
+  if (!isAuthenticated && !isGuest) {
+    return <Redirect href={'/auth' as never} />;
+  }
+
   if (!isOnboarded) {
-    return <Redirect href={isAuthenticated ? '/onboarding' as never : '/auth' as never} />;
+    return <Redirect href={'/onboarding' as never} />;
   }
 
   const displayName = user?.name || preferences.name;

@@ -17,6 +17,7 @@ import { useRouter } from 'expo-router';
 import { Mail, Lock, User, Phone, ChevronRight, Eye, EyeOff } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useAuth } from '../context/AuthContext';
+import { useApp } from '../context/AppContext';
 import StaticColors from '../constants/colors';
 import { useColors } from '../context/ThemeContext';
 
@@ -29,6 +30,7 @@ export default function AuthScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { signIn, signUp } = useAuth();
+  const { setGuestMode, isOnboarded } = useApp();
 
   const [tab, setTab] = useState<Tab>('signin');
   const [name, setName] = useState('');
@@ -79,7 +81,7 @@ export default function AuthScreen() {
           'The server is not reachable right now. You can continue as a guest to explore the app — your preferences will be saved locally.',
           [
             { text: 'Try Again', style: 'cancel' },
-            { text: 'Continue as Guest', onPress: () => router.replace('/onboarding' as never) },
+            { text: 'Continue as Guest', onPress: async () => { await setGuestMode(true); router.replace(isOnboarded ? '/(tabs)' as never : '/onboarding' as never); } },
           ]
         );
       } else {
@@ -222,7 +224,7 @@ export default function AuthScreen() {
 
           <Pressable
             style={styles.skipBtn}
-            onPress={() => router.replace('/onboarding' as never)}
+            onPress={async () => { await setGuestMode(true); router.replace(isOnboarded ? '/(tabs)' as never : '/onboarding' as never); }}
           >
             <Text style={[styles.skipBtnText, { color: Colors.textSecondary }]}>
               Continue without an account
