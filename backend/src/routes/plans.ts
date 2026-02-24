@@ -70,13 +70,15 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response): Promise<v
     const owner = await User.findById(req.userId).select('name avatarUri');
     if (!owner) { res.status(404).json({ error: 'User not found' }); return; }
 
-    const invites: { userId: string; name: string; avatarUri?: string; status: 'pending' }[] = [];
+    const isGroupSwipe = type === 'group-swipe';
+    const invites: { userId: string; name: string; avatarUri?: string; status: 'pending' | 'accepted' }[] = [];
     const pushTokens: string[] = [];
 
     if (inviteeIds && inviteeIds.length > 0) {
       const invitees = await User.find({ _id: { $in: inviteeIds } }).select('name avatarUri pushToken');
       invitees.forEach(u => {
-        invites.push({ userId: u.id, name: u.name, avatarUri: u.avatarUri, status: 'pending' });
+        // Group-swipe invitees are auto-accepted (hand-picked in lobby, not an RSVP)
+        invites.push({ userId: u.id, name: u.name, avatarUri: u.avatarUri, status: isGroupSwipe ? 'accepted' : 'pending' });
         if (u.pushToken) pushTokens.push(u.pushToken);
       });
     }
@@ -101,11 +103,15 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response): Promise<v
 
     // Notify invitees
     if (pushTokens.length > 0) {
+      const notifTitle = isGroupSwipe ? 'Group Swipe Started!' : 'Dining Plan Invite';
+      const notifBody = isGroupSwipe
+        ? `${owner.name} started a group swipe — tap to vote!`
+        : `${owner.name} invited you to "${title}"`;
       await sendPushToMany(
         pushTokens,
-        'Dining Plan Invite',
-        `${owner.name} invited you to "${title}"`,
-        { type: 'plan_invite', planId: plan.id }
+        notifTitle,
+        notifBody,
+        { type: isGroupSwipe ? 'group_swipe_invite' : 'plan_invite', planId: plan.id }
       );
     }
 
