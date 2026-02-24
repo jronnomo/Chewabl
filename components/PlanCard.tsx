@@ -127,11 +127,13 @@ export default React.memo(function PlanCard({ plan, onPress, onEdit }: PlanCardP
     onPress?.();
   }, [onPress]);
 
-  const formattedDate = new Date(plan.date).toLocaleDateString('en-US', {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-  });
+  const formattedDate = plan.date
+    ? new Date(plan.date).toLocaleDateString('en-US', {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+      })
+    : '';
 
   return (
     <Pressable onPress={handlePress} onPressIn={handlePressIn} onPressOut={handlePressOut} testID={`plan-card-${plan.id}`}>
@@ -158,8 +160,17 @@ export default React.memo(function PlanCard({ plan, onPress, onEdit }: PlanCardP
             </View>
           </View>
           <View style={styles.metaRow}>
-            <CalendarDays size={13} color={Colors.textSecondary} />
-            <Text style={[styles.metaText, { color: Colors.textSecondary }]}>{formattedDate} at {plan.time}</Text>
+            {plan.type === 'group-swipe' ? (
+              <>
+                <Users size={13} color={Colors.textSecondary} />
+                <Text style={[styles.metaText, { color: Colors.textSecondary }]}>Group Decision</Text>
+              </>
+            ) : (
+              <>
+                <CalendarDays size={13} color={Colors.textSecondary} />
+                <Text style={[styles.metaText, { color: Colors.textSecondary }]}>{formattedDate}{plan.time ? ` at ${plan.time}` : ''}</Text>
+              </>
+            )}
           </View>
           <View style={styles.metaRow}>
             <Text style={[styles.cuisineTag, { color: Colors.primary, backgroundColor: Colors.primaryLight }]}>{plan.cuisine}</Text>

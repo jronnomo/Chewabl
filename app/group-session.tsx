@@ -34,7 +34,8 @@ import SwipeCard from '@/components/SwipeCard';
 import { useApp, useNearbyRestaurants } from '@/context/AppContext';
 import { useAuth } from '@/context/AuthContext';
 import { getFriends } from '@/services/friends';
-import { Restaurant, GroupMember, SwipeResult, Friend } from '@/types';
+import { createPlan } from '@/services/plans';
+import { Restaurant, GroupMember, SwipeResult, Friend, DiningPlan } from '@/types';
 import StaticColors from '@/constants/colors';
 import { useColors } from '@/context/ThemeContext';
 
@@ -62,8 +63,8 @@ export default function GroupSessionScreen() {
   const router = useRouter();
   const Colors = useColors();
   const params = useLocalSearchParams<{ planId?: string; curveball?: string; autoStart?: string }>();
-  const { preferences, plans, localAvatarUri } = useApp();
-  const { user } = useAuth();
+  const { preferences, plans, localAvatarUri, addPlan } = useApp();
+  const { user, isAuthenticated } = useAuth();
   const { data: nearbyRestaurants = [] } = useNearbyRestaurants();
 
   const sessionRestaurants = useMemo(() => {
@@ -126,6 +127,7 @@ export default function GroupSessionScreen() {
   const [results, setResults] = useState<SwipeResult[]>([]);
   const [isAnimating, setIsAnimating] = useState(false);
 
+  const savedPlanRef = useRef(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(40)).current;
 
@@ -141,6 +143,47 @@ export default function GroupSessionScreen() {
   useEffect(() => {
     animateIn();
   }, [phase, animateIn]);
+
+  // Auto-save group swipe result as a plan
+  useEffect(() => {
+    if (phase !== 'results' || results.length === 0 || savedPlanRef.current) return;
+    savedPlanRef.current = true;
+
+    const winner = results[0].restaurant;
+    const isSolo = members.length <= 1;
+    const title = isSolo ? `My Pick: ${winner.name}` : `Group Pick: ${winner.name}`;
+    const budget = '$'.repeat(winner.priceLevel);
+
+    if (isAuthenticated) {
+      const inviteeIds = members
+        .filter(m => m.id !== myMemberId)
+        .map(m => m.id);
+      createPlan({
+        type: 'group-swipe',
+        title,
+        cuisine: winner.cuisine,
+        budget,
+        status: 'confirmed',
+        inviteeIds: inviteeIds.length > 0 ? inviteeIds : undefined,
+      }).catch(() => {
+        // Silently fail — the user still sees results
+      });
+    } else {
+      const localPlan: DiningPlan = {
+        id: `gs-${Date.now()}`,
+        type: 'group-swipe',
+        title,
+        status: 'confirmed',
+        restaurant: winner,
+        cuisine: winner.cuisine,
+        budget,
+        options: [],
+        votes: {},
+        createdAt: new Date().toISOString(),
+      };
+      addPlan(localPlan);
+    }
+  }, [phase, results, members, myMemberId, isAuthenticated, addPlan]);
 
   const calculateResults = useCallback(() => {
     const allSwipes: Record<string, Record<string, 'yes' | 'no'>> = {

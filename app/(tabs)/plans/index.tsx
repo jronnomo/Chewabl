@@ -53,9 +53,10 @@ export default function PlansScreen() {
     if (isAuthenticated && user && plan.invites) {
       const myInvite = plan.invites.find(i => i.userId === user.id && i.status === 'pending');
       if (myInvite) {
+        const dateTimeStr = plan.date ? `${plan.date}${plan.time ? ` at ${plan.time}` : ''}` : 'No date set';
         Alert.alert(
           `"${plan.title}"`,
-          `${plan.date} at ${plan.time}\n\nWill you attend?`,
+          `${dateTimeStr}\n\nWill you attend?`,
           [
             {
               text: 'Decline',
@@ -79,9 +80,10 @@ export default function PlansScreen() {
     }
 
     // F-005-008: onPress for non-voting plan cards — show info
+    const infoDateStr = plan.date ? `${plan.date}${plan.time ? ` at ${plan.time}` : ''}` : 'No date';
     Alert.alert(
       plan.title,
-      `${plan.date} at ${plan.time}\nStatus: ${plan.status}\nCuisine: ${plan.cuisine ?? 'Any'} · Budget: ${plan.budget ?? 'Any'}`,
+      `${infoDateStr}\nStatus: ${plan.status}\nCuisine: ${plan.cuisine ?? 'Any'} · Budget: ${plan.budget ?? 'Any'}`,
     );
   }, [isAuthenticated, user, rsvpMutation, router]);
 
@@ -149,7 +151,7 @@ export default function PlansScreen() {
           <PlanCard
             plan={item}
             onPress={() => handlePlanPress(item)}
-            onEdit={() => handlePlanEdit(item)}
+            onEdit={item.type === 'group-swipe' ? undefined : () => handlePlanEdit(item)}
           />
         )}
         contentContainerStyle={styles.listContent}

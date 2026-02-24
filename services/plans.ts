@@ -2,11 +2,13 @@ import { api } from './api';
 import { DiningPlan } from '../types';
 
 export interface CreatePlanInput {
+  type?: 'planned' | 'group-swipe';
   title: string;
-  date: string;
-  time: string;
+  date?: string;
+  time?: string;
   cuisine: string;
   budget: string;
+  status?: string;
   inviteeIds?: string[];
   rsvpDeadline?: string;
   options?: string[];

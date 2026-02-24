@@ -33,9 +33,10 @@ export interface PlanInvite {
 
 export interface DiningPlan {
   id: string;
+  type?: 'planned' | 'group-swipe';
   title: string;
-  date: string;
-  time: string;
+  date?: string;
+  time?: string;
   restaurant?: Restaurant;
   status: 'voting' | 'confirmed' | 'completed' | 'cancelled';
   cuisine: string;

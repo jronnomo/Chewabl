@@ -11,9 +11,10 @@ export interface IPlanInvite {
 }
 
 export interface IPlan extends Document {
+  type: 'planned' | 'group-swipe';
   title: string;
-  date: string;
-  time: string;
+  date?: string;
+  time?: string;
   ownerId: mongoose.Types.ObjectId;
   status: 'voting' | 'confirmed' | 'completed' | 'cancelled';
   cuisine: string;
@@ -39,9 +40,10 @@ const PlanInviteSchema = new Schema<IPlanInvite>(
 
 const PlanSchema = new Schema<IPlan>(
   {
+    type: { type: String, enum: ['planned', 'group-swipe'], default: 'planned' },
     title: { type: String, required: true, trim: true },
-    date: { type: String, required: true },
-    time: { type: String, required: true },
+    date: { type: String },
+    time: { type: String },
     ownerId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     status: { type: String, enum: ['voting', 'confirmed', 'completed', 'cancelled'], default: 'voting' },
     cuisine: { type: String, default: 'Any' },
