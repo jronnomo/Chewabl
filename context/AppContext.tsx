@@ -23,6 +23,7 @@ const PREFS_KEY = 'chewabl_preferences';
 const ONBOARDED_KEY = 'chewabl_onboarded';
 const PLANS_KEY = 'chewabl_plans';
 const FAVORITES_KEY = 'chewabl_favorites';
+const FAVORITE_RESTAURANTS_KEY = 'chewabl_favorite_restaurants';
 const AVATAR_KEY = 'chewabl_avatar_uri';
 
 const BUDGET_MAP: Record<string, string[]> = {
@@ -47,6 +48,7 @@ export const [AppProvider, useApp] = createContextHook(() => {
   });
   const [localPlans, setLocalPlans] = useState<DiningPlan[]>([]);
   const [favorites, setFavorites] = useState<string[]>([]);
+  const [favoritedRestaurants, setFavoritedRestaurants] = useState<Restaurant[]>([]);
   const [localAvatarUri, setLocalAvatarUri] = useState<string | null>(null);
   const [userLocation, setUserLocation] = useState<Coords | null>(null);
   const [locationPermission, setLocationPermission] = useState<
@@ -74,6 +76,14 @@ export const [AppProvider, useApp] = createContextHook(() => {
     queryFn: async () => {
       const stored = await AsyncStorage.getItem(FAVORITES_KEY);
       return stored ? (JSON.parse(stored) as string[]) : [];
+    },
+  });
+
+  const favoritedRestaurantsQuery = useQuery({
+    queryKey: ['favoritedRestaurants'],
+    queryFn: async () => {
+      const stored = await AsyncStorage.getItem(FAVORITE_RESTAURANTS_KEY);
+      return stored ? (JSON.parse(stored) as Restaurant[]) : [];
     },
   });
 
@@ -112,6 +122,12 @@ export const [AppProvider, useApp] = createContextHook(() => {
       setFavorites(favoritesQuery.data);
     }
   }, [isAuthenticated, user, favoritesQuery.data]);
+
+  useEffect(() => {
+    if (favoritedRestaurantsQuery.data) {
+      setFavoritedRestaurants(favoritedRestaurantsQuery.data);
+    }
+  }, [favoritedRestaurantsQuery.data]);
 
   useEffect(() => {
     if (avatarQuery.data !== undefined) {
@@ -188,11 +204,25 @@ export const [AppProvider, useApp] = createContextHook(() => {
     },
   });
 
-  const toggleFavorite = useCallback((restaurantId: string) => {
+  const toggleFavorite = useCallback((restaurant: Restaurant) => {
+    const restaurantId = restaurant.id;
     setFavorites(prev => {
-      const updated = prev.includes(restaurantId)
+      const isRemoving = prev.includes(restaurantId);
+      const updated = isRemoving
         ? prev.filter(id => id !== restaurantId)
         : [...prev, restaurantId];
+
+      // Update cached restaurant objects
+      setFavoritedRestaurants(prevRestaurants => {
+        const updatedRestaurants = isRemoving
+          ? prevRestaurants.filter(r => r.id !== restaurantId)
+          : [...prevRestaurants.filter(r => r.id !== restaurantId), restaurant];
+        AsyncStorage.setItem(FAVORITE_RESTAURANTS_KEY, JSON.stringify(updatedRestaurants)).catch(err =>
+          console.error('[FavoritedRestaurants] AsyncStorage write failed:', err)
+        );
+        return updatedRestaurants;
+      });
+
       (async () => {
         try {
           await AsyncStorage.setItem(FAVORITES_KEY, JSON.stringify(updated));
@@ -235,6 +265,7 @@ export const [AppProvider, useApp] = createContextHook(() => {
     preferences,
     plans,
     favorites,
+    favoritedRestaurants,
     localAvatarUri,
     setLocalAvatar,
     userLocation,

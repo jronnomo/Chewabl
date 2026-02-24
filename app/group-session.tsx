@@ -29,13 +29,11 @@ import {
   UserPlus,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
-import * as Contacts from 'expo-contacts';
 import { useQuery } from '@tanstack/react-query';
 import SwipeCard from '@/components/SwipeCard';
-import { useApp } from '@/context/AppContext';
+import { useApp, useNearbyRestaurants } from '@/context/AppContext';
 import { useAuth } from '@/context/AuthContext';
-import { getFriends, lookupByPhones } from '@/services/friends';
-import { restaurants } from '@/mocks/restaurants';
+import { getFriends } from '@/services/friends';
 import { Restaurant, GroupMember, SwipeResult, Friend } from '@/types';
 import StaticColors from '@/constants/colors';
 import { useColors } from '@/context/ThemeContext';
@@ -43,23 +41,7 @@ import { useColors } from '@/context/ThemeContext';
 const Colors = StaticColors;
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-interface ContactMatch {
-  id: string;
-  name: string;
-  phone: string;
-  hasChewabl: boolean;
-  avatarUri?: string;
-  inviteCode: string;
-}
-
 const FALLBACK_AVATAR = 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100';
-
-const MOCK_MEMBERS: GroupMember[] = [
-  { id: 'me', name: 'You', avatar: FALLBACK_AVATAR, completedSwiping: false },
-  { id: 'u1', name: 'Sarah M.', avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100', completedSwiping: false },
-  { id: 'u2', name: 'Jake R.', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100', completedSwiping: false },
-  { id: 'u3', name: 'Emily K.', avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100', completedSwiping: false },
-];
 
 const generateMockSwipes = (memberIds: string[], restaurantList: Restaurant[], myId: string): Record<string, Record<string, 'yes' | 'no'>> => {
   const swipes: Record<string, Record<string, 'yes' | 'no'>> = {};
@@ -82,24 +64,18 @@ export default function GroupSessionScreen() {
   const params = useLocalSearchParams<{ planId?: string; curveball?: string; autoStart?: string }>();
   const { preferences, plans, localAvatarUri } = useApp();
   const { user } = useAuth();
+  const { data: nearbyRestaurants = [] } = useNearbyRestaurants();
 
   const sessionRestaurants = useMemo(() => {
     const plan = params.planId ? plans.find(p => p.id === params.planId) : null;
-    const allowCurveball = params.curveball === 'true';
 
-    // F-006-010/F-005-018: Use plan.options (real restaurant data) when available
+    // Use plan.options (real restaurant data) when available
     if (plan?.options && plan.options.length > 0) {
       return plan.options;
     }
 
-    return [...restaurants].filter(r => {
-      if (!plan || plan.cuisine === 'Any' || !plan.cuisine) return true;
-      const planCuisines = plan.cuisine.split(', ');
-      if (planCuisines.includes(r.cuisine)) return true;
-      // F-006-016: Fix curveball — include deals only when flag is on
-      if (allowCurveball && r.lastCallDeal) return true;
-      return false;
-    }).sort((a, b) => {
+    // Use live nearby restaurants from Google Places
+    return [...nearbyRestaurants].sort((a, b) => {
       let scoreA = 0, scoreB = 0;
       if (preferences.cuisines.includes(a.cuisine)) scoreA += 2;
       if (preferences.cuisines.includes(b.cuisine)) scoreB += 2;
@@ -107,21 +83,22 @@ export default function GroupSessionScreen() {
       if (b.isOpenNow) scoreB += 1;
       return scoreB - scoreA;
     });
-  }, [preferences.cuisines, params.planId, params.curveball, plans]);
+  }, [preferences.cuisines, params.planId, plans, nearbyRestaurants]);
 
-  // Derive members from plan invites if available, otherwise fall back to MOCK_MEMBERS
+  // Derive members from plan invites if available, otherwise start with just the host
   const initialMembers = useMemo((): GroupMember[] => {
+    const meEntry: GroupMember = {
+      id: user?.id ?? 'me',
+      name: user?.name ? `${user.name} (You)` : 'You',
+      avatar: localAvatarUri ?? user?.avatarUri ?? FALLBACK_AVATAR,
+      completedSwiping: false,
+    };
+
     if (params.planId) {
       const plan = plans.find(p => p.id === params.planId);
       if (plan?.invites && plan.invites.length > 0) {
         const accepted = plan.invites.filter(i => i.status === 'accepted');
         if (accepted.length > 0) {
-          const meEntry: GroupMember = {
-            id: user?.id ?? 'me',
-            name: user?.name ? `${user.name} (You)` : 'You',
-            avatar: localAvatarUri ?? user?.avatarUri ?? FALLBACK_AVATAR,
-            completedSwiping: false,
-          };
           const others: GroupMember[] = accepted.map(inv => ({
             id: inv.userId,
             name: inv.name,
@@ -132,17 +109,9 @@ export default function GroupSessionScreen() {
         }
       }
     }
-    // Authenticated with no plan: start solo, just the current user
-    if (user) {
-      return [{
-        id: user.id,
-        name: `${user.name} (You)`,
-        avatar: localAvatarUri ?? user.avatarUri ?? FALLBACK_AVATAR,
-        completedSwiping: false,
-      }];
-    }
-    return MOCK_MEMBERS;
-  }, [params.planId, plans, user]);
+
+    return [meEntry];
+  }, [params.planId, plans, user, localAvatarUri]);
 
   const myMemberId = initialMembers[0]?.id ?? 'me';
 
@@ -244,7 +213,6 @@ export default function GroupSessionScreen() {
   }, []);
 
   const handleSwipeRight = useCallback((restaurant: Restaurant) => {
-    if (isAnimating) return; // F-006-004: Prevent double-swipe
     setIsAnimating(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setMySwipes(prev => ({ ...prev, [restaurant.id]: 'yes' }));
@@ -263,10 +231,9 @@ export default function GroupSessionScreen() {
       return next;
     });
     setTimeout(() => setIsAnimating(false), 350);
-  }, [sessionRestaurants.length, calculateResults, myMemberId, isAnimating]);
+  }, [sessionRestaurants.length, calculateResults, myMemberId]);
 
   const handleSwipeLeft = useCallback((restaurant: Restaurant) => {
-    if (isAnimating) return; // F-006-004: Prevent double-swipe
     setIsAnimating(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setMySwipes(prev => ({ ...prev, [restaurant.id]: 'no' }));
@@ -285,7 +252,7 @@ export default function GroupSessionScreen() {
       return next;
     });
     setTimeout(() => setIsAnimating(false), 350);
-  }, [sessionRestaurants.length, calculateResults, isAnimating]);
+  }, [sessionRestaurants.length, calculateResults]);
 
   const topMatch = results.length > 0 ? results[0] : null;
   const perfectMatches = results.filter(r => r.isMatch);
@@ -315,7 +282,7 @@ export default function GroupSessionScreen() {
             </View>
             <Text style={[styles.lobbyHeroTitle, { color: Colors.text }]}>Swipe Together</Text>
             <Text style={[styles.lobbyHeroSub, { color: Colors.textSecondary }]}>
-              Everyone swipes on restaurants. The group's top match wins!
+              Everyone swipes {sessionRestaurants.length} restaurants together. The group's top match wins!
             </Text>
           </View>
 
@@ -357,17 +324,6 @@ export default function GroupSessionScreen() {
             </Pressable>
           </View>
 
-          <View style={[styles.sessionInfo, { backgroundColor: Colors.card }]}>
-            <View style={styles.infoRow}>
-              <Text style={[styles.infoLabel, { color: Colors.textSecondary }]}>Restaurants</Text>
-              <Text style={[styles.infoValue, { color: Colors.text }]}>{sessionRestaurants.length} to swipe</Text>
-            </View>
-            <View style={[styles.infoDivider, { backgroundColor: Colors.borderLight }]} />
-            <View style={styles.infoRow}>
-              <Text style={[styles.infoLabel, { color: Colors.textSecondary }]}>How it works</Text>
-              <Text style={[styles.infoValue, { color: Colors.text }]}>Swipe right = Yes</Text>
-            </View>
-          </View>
         </Animated.View>
 
         <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 12, backgroundColor: Colors.card, borderTopColor: Colors.borderLight }]}>
@@ -456,6 +412,7 @@ export default function GroupSessionScreen() {
           <Pressable
             style={[styles.actionBtn, styles.actionBtnNo]}
             onPress={() => {
+              if (isAnimating) return;
               if (currentIndex < sessionRestaurants.length) {
                 handleSwipeLeft(sessionRestaurants[currentIndex]);
               }
@@ -468,6 +425,7 @@ export default function GroupSessionScreen() {
           <Pressable
             style={[styles.actionBtn, styles.actionBtnYes]}
             onPress={() => {
+              if (isAnimating) return;
               if (currentIndex < sessionRestaurants.length) {
                 handleSwipeRight(sessionRestaurants[currentIndex]);
               }
@@ -1231,9 +1189,6 @@ function AddMemberModal({
 }) {
   const Colors = useColors();
   const { isAuthenticated } = useAuth();
-  const [contactsLoading, setContactsLoading] = useState(false);
-  const [contactMatches, setContactMatches] = useState<ContactMatch[]>([]);
-  const [showContacts, setShowContacts] = useState(false);
 
   const { data: friends = [], isLoading: friendsLoading } = useQuery({
     queryKey: ['friends'],
@@ -1255,76 +1210,6 @@ function AddMemberModal({
     });
   }, [onAddMember]);
 
-  const handleOpenContacts = useCallback(async () => {
-    setContactsLoading(true);
-    try {
-      const { status } = await Contacts.requestPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permission needed', 'Please allow contacts access in Settings.');
-        return;
-      }
-      const { data } = await Contacts.getContactsAsync({
-        fields: [Contacts.Fields.PhoneNumbers, Contacts.Fields.Name],
-      });
-      const phones: string[] = [];
-      const contactMap: Record<string, { name: string }> = {};
-      for (const contact of data) {
-        for (const p of (contact.phoneNumbers ?? [])) {
-          if (p.number) {
-            const digits = p.number.replace(/\D/g, '');
-            const e164 = digits.length === 10 ? `+1${digits}` : `+${digits}`;
-            if (!contactMap[e164]) {
-              phones.push(e164);
-              contactMap[e164] = { name: contact.name ?? p.number };
-            }
-          }
-        }
-      }
-      let matches: ContactMatch[] = [];
-      try {
-        const found = await lookupByPhones(phones.slice(0, 100));
-        matches = found.map(u => ({
-          id: u.id,
-          name: u.name,
-          phone: u.phone ?? '',
-          hasChewabl: true,
-          avatarUri: u.avatarUri,
-          inviteCode: u.inviteCode,
-        }));
-        // Also add contacts that weren't found
-        const foundPhones = new Set(found.map(u => u.phone));
-        for (const [phone, c] of Object.entries(contactMap).slice(0, 30)) {
-          if (!foundPhones.has(phone) && !matches.find(m => m.phone === phone)) {
-            matches.push({ id: `contact_${phone}`, name: c.name, phone, hasChewabl: false, inviteCode: '' });
-          }
-        }
-      } catch {
-        // Backend unavailable — show contacts as invitable
-        matches = Object.entries(contactMap).slice(0, 30).map(([phone, c]) => ({
-          id: `contact_${phone}`,
-          name: c.name,
-          phone,
-          hasChewabl: false,
-          inviteCode: '',
-        }));
-      }
-      setContactMatches(matches);
-      setShowContacts(true);
-    } catch {
-      Alert.alert('Error', 'Could not access contacts.');
-    } finally {
-      setContactsLoading(false);
-    }
-  }, []);
-
-  const handleContactTap = useCallback((match: ContactMatch) => {
-    if (match.hasChewabl && !existingMemberIds.includes(match.id)) {
-      onAddMember({ id: match.id, name: match.name, avatar: match.avatarUri ?? FALLBACK_AVATAR, completedSwiping: false });
-    } else if (!match.hasChewabl) {
-      Alert.alert('Invite Sent', `${match.name} will receive an invitation to join Chewabl.`);
-    }
-  }, [onAddMember, existingMemberIds]);
-
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={{ flex: 1, backgroundColor: Colors.background }}>
@@ -1336,76 +1221,31 @@ function AddMemberModal({
         </View>
 
         <ScrollView contentContainerStyle={modalStyles.scrollContent}>
-          {isAuthenticated && (
-            <View style={modalStyles.section}>
-              <Text style={[modalStyles.sectionTitle, { color: Colors.text }]}>Your Friends</Text>
-              {friendsLoading && <ActivityIndicator color={Colors.primary} style={{ marginVertical: 12 }} />}
-              {!friendsLoading && availableFriends.length === 0 && (
-                <Text style={[modalStyles.emptyText, { color: Colors.textTertiary }]}>
-                  No friends to add yet. Add friends from the Friends tab.
-                </Text>
-              )}
-              {availableFriends.map(friend => (
-                <Pressable
-                  key={friend.id}
-                  style={[modalStyles.row, { borderBottomColor: Colors.borderLight }]}
-                  onPress={() => handleAddFriend(friend)}
-                >
-                  <View style={[modalStyles.avatar, { backgroundColor: Colors.primaryLight }]}>
-                    {friend.avatarUri
-                      ? <Image source={{ uri: friend.avatarUri }} style={modalStyles.avatarImg} contentFit="cover" />
-                      : <Text style={[modalStyles.avatarInitial, { color: Colors.primary }]}>{friend.name[0]?.toUpperCase()}</Text>
-                    }
-                  </View>
-                  <Text style={[modalStyles.rowName, { color: Colors.text }]}>{friend.name}</Text>
-                  <UserPlus size={18} color={Colors.primary} />
-                </Pressable>
-              ))}
-            </View>
-          )}
-
-          {!showContacts ? (
-            <Pressable
-              style={[modalStyles.contactsBtn, { backgroundColor: Colors.card, borderColor: Colors.border }]}
-              onPress={handleOpenContacts}
-              disabled={contactsLoading}
-            >
-              {contactsLoading
-                ? <ActivityIndicator color={Colors.primary} />
-                : <>
-                  <Users size={18} color={Colors.primary} />
-                  <Text style={[modalStyles.contactsBtnText, { color: Colors.primary }]}>Add from Contacts</Text>
-                </>
-              }
-            </Pressable>
-          ) : (
-            <View style={modalStyles.section}>
-              <Text style={[modalStyles.sectionTitle, { color: Colors.text }]}>Contacts</Text>
-              {contactMatches.map(match => (
-                <Pressable
-                  key={match.id}
-                  style={[modalStyles.row, { borderBottomColor: Colors.borderLight }]}
-                  onPress={() => handleContactTap(match)}
-                >
-                  <View style={[modalStyles.avatar, { backgroundColor: Colors.primaryLight }]}>
-                    {match.avatarUri
-                      ? <Image source={{ uri: match.avatarUri }} style={modalStyles.avatarImg} contentFit="cover" />
-                      : <Text style={[modalStyles.avatarInitial, { color: Colors.primary }]}>{match.name[0]?.toUpperCase()}</Text>
-                    }
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[modalStyles.rowName, { color: Colors.text }]}>{match.name}</Text>
-                    {!match.hasChewabl && (
-                      <Text style={[modalStyles.rowSub, { color: Colors.textTertiary }]}>Not on Chewabl yet</Text>
-                    )}
-                  </View>
-                  <Text style={[modalStyles.actionLabel, { color: match.hasChewabl ? Colors.primary : Colors.secondary }]}>
-                    {match.hasChewabl ? (existingMemberIds.includes(match.id) ? 'Added' : 'Add') : 'Invite'}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          )}
+          <View style={modalStyles.section}>
+            <Text style={[modalStyles.sectionTitle, { color: Colors.text }]}>Your Friends</Text>
+            {friendsLoading && <ActivityIndicator color={Colors.primary} style={{ marginVertical: 12 }} />}
+            {!friendsLoading && availableFriends.length === 0 && (
+              <Text style={[modalStyles.emptyText, { color: Colors.textTertiary }]}>
+                No friends to add yet. Add friends from the Friends tab.
+              </Text>
+            )}
+            {availableFriends.map(friend => (
+              <Pressable
+                key={friend.id}
+                style={[modalStyles.row, { borderBottomColor: Colors.borderLight }]}
+                onPress={() => handleAddFriend(friend)}
+              >
+                <View style={[modalStyles.avatar, { backgroundColor: Colors.primaryLight }]}>
+                  {friend.avatarUri
+                    ? <Image source={{ uri: friend.avatarUri }} style={modalStyles.avatarImg} contentFit="cover" />
+                    : <Text style={[modalStyles.avatarInitial, { color: Colors.primary }]}>{friend.name[0]?.toUpperCase()}</Text>
+                  }
+                </View>
+                <Text style={[modalStyles.rowName, { color: Colors.text }]}>{friend.name}</Text>
+                <UserPlus size={18} color={Colors.primary} />
+              </Pressable>
+            ))}
+          </View>
         </ScrollView>
       </View>
     </Modal>
@@ -1477,26 +1317,5 @@ const modalStyles = StyleSheet.create({
     flex: 1,
     fontSize: 15,
     fontWeight: '600' as const,
-  },
-  rowSub: {
-    fontSize: 12,
-    marginTop: 2,
-  },
-  actionLabel: {
-    fontSize: 14,
-    fontWeight: '700' as const,
-  },
-  contactsBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    borderRadius: 14,
-    paddingVertical: 14,
-    borderWidth: 1.5,
-  },
-  contactsBtnText: {
-    fontSize: 15,
-    fontWeight: '700' as const,
   },
 });

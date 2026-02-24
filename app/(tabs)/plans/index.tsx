@@ -128,14 +128,14 @@ export default function PlansScreen() {
             style={[
               styles.tab,
               { backgroundColor: Colors.card, borderColor: Colors.border },
-              activeTab === tab.key && { backgroundColor: Colors.text, borderColor: Colors.text },
+              activeTab === tab.key && { backgroundColor: Colors.primary, borderColor: Colors.primary },
             ]}
             onPress={() => {
               Haptics.selectionAsync();
               setActiveTab(tab.key);
             }}
           >
-            <Text style={[styles.tabText, { color: Colors.textSecondary }, activeTab === tab.key && styles.tabTextActive]}>
+            <Text style={[styles.tabText, { color: Colors.textSecondary }, activeTab === tab.key && { color: '#FFF' }]}>
               {tab.label}
             </Text>
           </Pressable>
@@ -221,17 +221,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
   },
-  tabActive: {
-    backgroundColor: Colors.text,
-    borderColor: Colors.text,
-  },
   tabText: {
     fontSize: 14,
     fontWeight: '600' as const,
     color: Colors.textSecondary,
-  },
-  tabTextActive: {
-    color: '#FFF',
   },
   listContent: {
     paddingHorizontal: 20,

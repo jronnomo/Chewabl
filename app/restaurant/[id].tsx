@@ -59,7 +59,7 @@ export default function RestaurantDetailScreen() {
       Animated.spring(heartScale, { toValue: 1.3, useNativeDriver: true }),
       Animated.spring(heartScale, { toValue: 1, useNativeDriver: true }),
     ]).start();
-    toggleFavorite(restaurant.id);
+    toggleFavorite(restaurant);
   }, [restaurant, toggleFavorite, heartScale]);
 
   const handleCall = useCallback(() => {
