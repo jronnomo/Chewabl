@@ -73,8 +73,8 @@ export default function PlansScreen() {
       }
     }
 
-    // Go directly to group swipe (skip lobby)
-    if (plan.status === 'voting') {
+    // Group-swipe plans: voting → swipe, confirmed → show results
+    if (plan.type === 'group-swipe' && (plan.status === 'voting' || plan.status === 'confirmed')) {
       router.push(`/group-session?planId=${plan.id}&autoStart=true` as never);
       return;
     }
@@ -150,6 +150,7 @@ export default function PlansScreen() {
         renderItem={({ item }) => (
           <PlanCard
             plan={item}
+            currentUserId={user?.id}
             onPress={() => handlePlanPress(item)}
             onEdit={item.type === 'group-swipe' ? undefined : () => handlePlanEdit(item)}
             onRestaurantPress={item.restaurant ? () => router.push(`/restaurant/${item.restaurant!.id}` as never) : undefined}

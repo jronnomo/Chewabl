@@ -11,6 +11,7 @@ const Colors = StaticColors;
 
 interface PlanCardProps {
   plan: DiningPlan;
+  currentUserId?: string;
   onPress?: () => void;
   onEdit?: () => void;
   onRestaurantPress?: () => void;
@@ -44,6 +45,12 @@ function PlanCardFooter({ plan }: { plan: DiningPlan }) {
   if (plan.invites !== undefined) {
     const accepted = plan.invites.filter(i => i.status === 'accepted').length;
     const pending = plan.invites.filter(i => i.status === 'pending').length;
+
+    // Group-swipe: owner is always "accepted", show total including owner
+    const isGroupSwipe = plan.type === 'group-swipe';
+    const totalMembers = isGroupSwipe ? plan.invites.length + 1 : plan.invites.length;
+    const acceptedCount = isGroupSwipe ? accepted + 1 : accepted;
+
     return (
       <View style={[styles.footer, { borderTopColor: Colors.borderLight }]}>
         <View style={styles.avatarsRow}>
@@ -76,7 +83,7 @@ function PlanCardFooter({ plan }: { plan: DiningPlan }) {
         <View style={styles.inviteeInfo}>
           <Users size={13} color={Colors.textSecondary} />
           <Text style={[styles.inviteeText, { color: Colors.textSecondary }]}>
-            {accepted}/{plan.invites.length} accepted{pending > 0 ? ` · ${pending} pending` : ''}
+            {acceptedCount}/{totalMembers} accepted{pending > 0 ? ` · ${pending} pending` : ''}
           </Text>
         </View>
       </View>
@@ -108,7 +115,7 @@ function PlanCardFooter({ plan }: { plan: DiningPlan }) {
   );
 }
 
-export default React.memo(function PlanCard({ plan, onPress, onEdit, onRestaurantPress }: PlanCardProps) {
+export default React.memo(function PlanCard({ plan, currentUserId, onPress, onEdit, onRestaurantPress }: PlanCardProps) {
   const Colors = useColors();
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const configStatic = statusConfigStatic[plan.status];
@@ -177,6 +184,13 @@ export default React.memo(function PlanCard({ plan, onPress, onEdit, onRestauran
             <Text style={[styles.cuisineTag, { color: Colors.primary, backgroundColor: Colors.primaryLight }]}>{plan.cuisine}</Text>
             <Text style={[styles.budgetTag, { color: Colors.secondary, backgroundColor: Colors.secondaryLight }]}>{plan.budget}</Text>
           </View>
+          {plan.type === 'group-swipe' && plan.status === 'voting' && currentUserId && (
+            <Text style={{ fontSize: 12, color: Colors.textTertiary, marginTop: 2 }}>
+              {plan.swipesCompleted?.includes(currentUserId)
+                ? `Waiting for ${((plan.invites?.filter(i => i.status === 'accepted').length ?? 0) + 1) - (plan.swipesCompleted?.length ?? 0)} others...`
+                : 'Tap to swipe'}
+            </Text>
+          )}
         </View>
 
         {plan.restaurant && (

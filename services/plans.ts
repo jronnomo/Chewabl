@@ -1,5 +1,5 @@
 import { api } from './api';
-import { DiningPlan } from '../types';
+import { DiningPlan, Restaurant } from '../types';
 
 export interface CreatePlanInput {
   type?: 'planned' | 'group-swipe';
@@ -13,6 +13,7 @@ export interface CreatePlanInput {
   inviteeIds?: string[];
   rsvpDeadline?: string;
   options?: string[];
+  restaurantOptions?: Restaurant[];
 }
 
 export async function getPlans(): Promise<DiningPlan[]> {
@@ -36,4 +37,11 @@ export async function rsvpPlan(
   action: 'accept' | 'decline'
 ): Promise<void> {
   await api.post(`/plans/${planId}/rsvp`, { action });
+}
+
+export async function submitSwipes(
+  planId: string,
+  votes: string[]
+): Promise<DiningPlan> {
+  return api.post<DiningPlan>(`/plans/${planId}/swipe`, { votes });
 }
