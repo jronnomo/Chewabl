@@ -100,6 +100,14 @@ export const [AppProvider, useApp] = createContextHook(() => {
     }
   }, [onboardedQuery.data]);
 
+  // Auto-onboard when an authenticated user already has preferences on the backend
+  useEffect(() => {
+    if (isAuthenticated && user?.preferences && !isOnboarded) {
+      setIsOnboarded(true);
+      AsyncStorage.setItem(ONBOARDED_KEY, 'true').catch(() => {});
+    }
+  }, [isAuthenticated, user?.preferences, isOnboarded]);
+
   // Hydrate preferences from server when authenticated, otherwise from AsyncStorage
   useEffect(() => {
     if (isAuthenticated && user?.preferences) {
