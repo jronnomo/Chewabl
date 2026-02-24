@@ -45,7 +45,11 @@ export async function lookupByPhones(phones: string[]): Promise<LookupUser[]> {
 export async function lookupByInviteCode(code: string): Promise<LookupUser | null> {
   try {
     return await api.get<LookupUser>(`/users/invite/${code}`);
-  } catch {
-    return null;
+  } catch (err: unknown) {
+    // Only treat "not found" as a null result; re-throw auth/network/server errors
+    if (err instanceof Error && err.message === 'Invite code not found') {
+      return null;
+    }
+    throw err;
   }
 }

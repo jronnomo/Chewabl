@@ -21,6 +21,7 @@ import {
   X,
   Smartphone,
   Link,
+  Clock,
 } from 'lucide-react-native';
 import * as Contacts from 'expo-contacts';
 import * as Haptics from 'expo-haptics';
@@ -33,6 +34,7 @@ import {
   lookupByInviteCode,
 } from '../../../services/friends';
 import { useAuth } from '../../../context/AuthContext';
+import { SessionExpiredError, NetworkError } from '../../../services/api';
 import { Friend, FriendRequest } from '../../../types';
 import StaticColors from '../../../constants/colors';
 import { useColors } from '../../../context/ThemeContext';
@@ -77,6 +79,7 @@ export default function FriendsTabScreen() {
     onSuccess: () => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       queryClient.invalidateQueries({ queryKey: ['friends'] });
+      queryClient.invalidateQueries({ queryKey: ['friendRequests'] });
       Alert.alert('Request Sent', 'Your friend request has been sent!');
     },
     onError: (err: Error) => {
@@ -167,6 +170,15 @@ export default function FriendsTabScreen() {
           setCodeResult(result);
         }
       }
+    } catch (err: unknown) {
+      setCodeResult(null);
+      if (err instanceof SessionExpiredError) {
+        Alert.alert('Session Expired', 'Please sign in again.');
+      } else if (err instanceof NetworkError) {
+        Alert.alert('Connection Error', 'Could not reach the server. Please check your connection.');
+      } else {
+        Alert.alert('Error', err instanceof Error ? err.message : 'Something went wrong.');
+      }
     } finally {
       setCodeLoading(false);
     }
@@ -186,36 +198,62 @@ export default function FriendsTabScreen() {
     </View>
   );
 
-  const renderRequest = ({ item }: { item: FriendRequest }) => (
-    <View style={[styles.personRow, { backgroundColor: Colors.card }]}>
-      {item.from.avatarUri ? (
-        <Image source={{ uri: item.from.avatarUri }} style={styles.avatar} contentFit="cover" />
-      ) : (
-        <View style={[styles.avatarFallback, { backgroundColor: Colors.primaryLight }]}>
-          <Text style={[styles.avatarInitial, { color: Colors.primary }]}>{item.from.name[0]?.toUpperCase()}</Text>
+  const renderRequest = ({ item }: { item: FriendRequest }) => {
+    if (item.direction === 'sent') {
+      const person = item.to;
+      return (
+        <View style={[styles.personRow, { backgroundColor: Colors.card }]}>
+          {person?.avatarUri ? (
+            <Image source={{ uri: person.avatarUri }} style={styles.avatar} contentFit="cover" />
+          ) : (
+            <View style={[styles.avatarFallback, { backgroundColor: Colors.primaryLight }]}>
+              <Text style={[styles.avatarInitial, { color: Colors.primary }]}>{person?.name?.[0]?.toUpperCase()}</Text>
+            </View>
+          )}
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.personName, { color: Colors.text }]}>{person?.name}</Text>
+            <Text style={{ fontSize: 12, color: Colors.textSecondary, marginTop: 2 }}>Request sent</Text>
+          </View>
+          <View style={[styles.pendingBadge, { backgroundColor: Colors.primaryLight }]}>
+            <Clock size={12} color={Colors.primary} />
+            <Text style={{ fontSize: 12, fontWeight: '600', color: Colors.primary }}>Pending</Text>
+          </View>
         </View>
-      )}
-      <Text style={[styles.personName, { flex: 1, color: Colors.text }]}>{item.from.name}</Text>
-      <Pressable
-        style={[styles.respondBtn, styles.respondBtnAccept]}
-        onPress={() => respondMutation.mutate({ id: item.id, action: 'accept' })}
-        disabled={respondMutation.isPending}
-        accessibilityLabel="Accept friend request"
-        accessibilityRole="button"
-      >
-        <Check size={16} color="#FFF" />
-      </Pressable>
-      <Pressable
-        style={[styles.respondBtn, styles.respondBtnDecline, { borderColor: Colors.error }]}
-        onPress={() => respondMutation.mutate({ id: item.id, action: 'decline' })}
-        disabled={respondMutation.isPending}
-        accessibilityLabel="Decline friend request"
-        accessibilityRole="button"
-      >
-        <X size={16} color={Colors.error} />
-      </Pressable>
-    </View>
-  );
+      );
+    }
+
+    const person = item.from;
+    return (
+      <View style={[styles.personRow, { backgroundColor: Colors.card }]}>
+        {person?.avatarUri ? (
+          <Image source={{ uri: person.avatarUri }} style={styles.avatar} contentFit="cover" />
+        ) : (
+          <View style={[styles.avatarFallback, { backgroundColor: Colors.primaryLight }]}>
+            <Text style={[styles.avatarInitial, { color: Colors.primary }]}>{person?.name?.[0]?.toUpperCase()}</Text>
+          </View>
+        )}
+        <Text style={[styles.personName, { flex: 1, color: Colors.text }]}>{person?.name}</Text>
+        <Pressable
+          style={[styles.respondBtn, styles.respondBtnAccept]}
+          onPress={() => respondMutation.mutate({ id: item.id, action: 'accept' })}
+          disabled={respondMutation.isPending}
+          accessibilityLabel="Accept friend request"
+          accessibilityRole="button"
+        >
+          <Check size={16} color="#FFF" />
+        </Pressable>
+        <Pressable
+          style={[styles.respondBtn, styles.respondBtnDecline, { borderColor: Colors.error }]}
+          onPress={() => respondMutation.mutate({ id: item.id, action: 'decline' })}
+          disabled={respondMutation.isPending}
+          accessibilityLabel="Decline friend request"
+          accessibilityRole="button"
+        >
+          <X size={16} color={Colors.error} />
+        </Pressable>
+      </View>
+    );
+  };
 
   return (
     <View style={[styles.container, { paddingTop: insets.top, backgroundColor: Colors.background }]}>
@@ -501,6 +539,14 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.card,
     borderWidth: 1.5,
     borderColor: Colors.error,
+  },
+  pendingBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
   },
   actionCard: {
     flexDirection: 'row',
