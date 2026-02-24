@@ -334,6 +334,12 @@ export default function GroupSessionScreen() {
                 No restaurants match your filters. Try adjusting your preferences.
               </Text>
             </View>
+          ) : members.length < 2 ? (
+            <View style={{ alignItems: 'center', paddingVertical: 16 }}>
+              <Text style={{ color: Colors.textSecondary, fontSize: 14, textAlign: 'center' }}>
+                Add at least one friend to start swiping
+              </Text>
+            </View>
           ) : (
             <Pressable style={styles.startBtn} onPress={handleStartSwiping} testID="start-swiping-btn">
               <Text style={styles.startBtnText}>Start Swiping</Text>
@@ -402,6 +408,7 @@ export default function GroupSessionScreen() {
                 restaurant={restaurant}
                 onSwipeLeft={handleSwipeLeft}
                 onSwipeRight={handleSwipeRight}
+                onTap={(r) => router.push(`/restaurant/${r.id}` as never)}
                 isTop={isTop}
               />
             );
@@ -761,7 +768,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 16,
+    paddingVertical: 18,
+    paddingHorizontal: 32,
     borderRadius: 28,
     gap: 6,
     shadowColor: Colors.primary,

@@ -134,6 +134,14 @@ export const [AppProvider, useApp] = createContextHook(() => {
     }
   }, [avatarQuery.data]);
 
+  // Sync avatar from backend user when authenticated (survives cache clears / reinstalls)
+  useEffect(() => {
+    if (isAuthenticated && user?.avatarUri) {
+      setLocalAvatarUri(user.avatarUri);
+      AsyncStorage.setItem(AVATAR_KEY, user.avatarUri).catch(() => {});
+    }
+  }, [isAuthenticated, user?.avatarUri]);
+
   // Fetch plans from backend when authenticated
   const plansQuery = useQuery({
     queryKey: ['plans'],

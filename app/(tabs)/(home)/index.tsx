@@ -8,11 +8,13 @@ import {
   Animated,
   FlatList,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, Redirect } from 'expo-router';
 import { Zap, CalendarPlus, Flame, TrendingUp, Sparkles, ChevronRight, Heart, Users, Clock, MapPin } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
+import { openSettings } from 'expo-linking';
 import { useApp, useNearbyRestaurants } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
 import RestaurantCard from '../../../components/RestaurantCard';
@@ -93,7 +95,7 @@ export default function HomeScreen() {
           {locationPermission === 'denied' && (
             <Pressable
               style={[styles.locationBanner, { backgroundColor: Colors.card, borderColor: Colors.border }]}
-              onPress={requestLocation}
+              onPress={() => Platform.OS === 'web' ? requestLocation() : openSettings()}
               accessibilityLabel="Enable location access"
               accessibilityRole="button"
             >

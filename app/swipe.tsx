@@ -12,7 +12,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Image } from 'expo-image';
-import { X, Heart, ArrowLeft, RotateCcw, Star, MapPin } from 'lucide-react-native';
+import { X, Heart, ArrowLeft, RotateCcw, Star, MapPin, CheckCircle } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import SwipeCard from '@/components/SwipeCard';
 import { useApp, useNearbyRestaurants } from '@/context/AppContext';
@@ -114,6 +114,18 @@ export default function SwipeScreen() {
     setShowResults(false);
     setLastSwiped(null);
   }, [lastSwiped, currentIndex, favorites, toggleFavorite]);
+
+  const handleChooseThis = useCallback(() => {
+    if (currentIndex >= sortedRestaurants.length) return;
+    const restaurant = sortedRestaurants[currentIndex];
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    // Add to favorites if not already
+    if (!favorites.includes(restaurant.id)) {
+      toggleFavorite(restaurant);
+    }
+    setLiked([restaurant]);
+    setShowResults(true);
+  }, [currentIndex, sortedRestaurants, favorites, toggleFavorite]);
 
   const handleReset = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
@@ -264,6 +276,7 @@ export default function SwipeScreen() {
               restaurant={restaurant}
               onSwipeLeft={handleSwipeLeft}
               onSwipeRight={handleSwipeRight}
+              onTap={(r) => router.push(`/restaurant/${r.id}` as never)}
               isTop={isTop}
             />
           );
@@ -274,6 +287,18 @@ export default function SwipeScreen() {
             <Text style={styles.emptyStackEmoji}>🍽</Text>
             <Text style={[styles.emptyStackText, { color: Colors.textSecondary }]}>That's all for now!</Text>
           </View>
+        )}
+
+        {lastSwiped && currentIndex > 0 && (
+          <Pressable
+            style={[styles.undoBtnFloating, { backgroundColor: Colors.card, borderColor: Colors.border }]}
+            onPress={handleUndo}
+            testID="swipe-undo-btn"
+            accessibilityLabel="Undo last swipe"
+            accessibilityRole="button"
+          >
+            <RotateCcw size={16} color={Colors.textSecondary} />
+          </Pressable>
         )}
       </View>
 
@@ -292,17 +317,16 @@ export default function SwipeScreen() {
           <X size={28} color={Colors.error} />
         </Pressable>
 
-        {lastSwiped && currentIndex > 0 && (
-          <Pressable
-            style={[styles.actionBtn, styles.undoBtn, { backgroundColor: Colors.card, borderColor: Colors.border }]}
-            onPress={handleUndo}
-            testID="swipe-undo-btn"
-            accessibilityLabel="Undo last swipe"
-            accessibilityRole="button"
-          >
-            <RotateCcw size={22} color={Colors.textSecondary} />
-          </Pressable>
-        )}
+        <Pressable
+          style={[styles.chooseBtn, { backgroundColor: Colors.card, borderColor: Colors.primary }]}
+          onPress={handleChooseThis}
+          testID="swipe-choose-btn"
+          accessibilityLabel="Choose this restaurant"
+          accessibilityRole="button"
+        >
+          <CheckCircle size={20} color={Colors.primary} />
+          <Text style={[styles.chooseBtnText, { color: Colors.primary }]}>Choose This!</Text>
+        </Pressable>
 
         <Pressable
           style={[styles.actionBtn, styles.actionBtnYes]}
@@ -427,12 +451,43 @@ const styles = StyleSheet.create({
   actionBtnYes: {
     backgroundColor: Colors.primary,
   },
-  undoBtn: {
-    width: 48,
+  chooseBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingHorizontal: 18,
     height: 48,
     borderRadius: 24,
+    borderWidth: 2,
+    borderColor: Colors.primary,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  chooseBtnText: {
+    fontSize: 14,
+    fontWeight: '700' as const,
+    color: Colors.primary,
+  },
+  undoBtnFloating: {
+    position: 'absolute',
+    bottom: 8,
+    right: 24,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     borderWidth: 1,
     borderColor: Colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   resultsContainer: {
     flex: 1,

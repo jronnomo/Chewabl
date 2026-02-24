@@ -81,7 +81,9 @@ export interface Friend {
 
 export interface FriendRequest {
   id: string;
-  from: Friend;
+  from?: Friend;
+  to?: Friend;
+  direction: 'received' | 'sent';
   createdAt: string;
 }
 
