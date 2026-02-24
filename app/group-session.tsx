@@ -206,9 +206,6 @@ export default function GroupSessionScreen() {
 
   const handleStartSwiping = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-    setMembers(prev => prev.map(m =>
-      m.id !== myMemberId ? { ...m, completedSwiping: true } : m
-    ));
     setPhase('swiping');
   }, []);
 

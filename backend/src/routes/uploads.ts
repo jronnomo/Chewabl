@@ -5,14 +5,21 @@ import User from '../models/User';
 
 const router = Router();
 
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
+let cloudinaryConfigured = false;
+function ensureCloudinary() {
+  if (!cloudinaryConfigured) {
+    cloudinary.config({
+      cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+      api_key: process.env.CLOUDINARY_API_KEY,
+      api_secret: process.env.CLOUDINARY_API_SECRET,
+    });
+    cloudinaryConfigured = true;
+  }
+}
 
 router.post('/avatar', requireAuth, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
+    ensureCloudinary();
     const { image } = req.body;
     if (!image || typeof image !== 'string') {
       res.status(400).json({ error: 'image (base64 data URI) is required' });
