@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import createContextHook from '@nkzw/create-context-hook';
 import * as Location from 'expo-location';
 import { UserPreferences, DiningPlan, Restaurant } from '../types';
-import { samplePlans } from '../mocks/plans';
+
 import { useAuth } from './AuthContext';
 import { updateProfile } from '../services/auth';
 import { getPlans } from '../services/plans';
@@ -17,7 +17,6 @@ import {
 } from '../services/googlePlaces';
 import { mapToRestaurant } from '../lib/placesMapper';
 import { registerRestaurants } from '../lib/restaurantRegistry';
-import { restaurants as mockRestaurants } from '../mocks/restaurants';
 
 const PREFS_KEY = 'chewabl_preferences';
 const ONBOARDED_KEY = 'chewabl_onboarded';
@@ -145,7 +144,7 @@ export const [AppProvider, useApp] = createContextHook(() => {
 
   const plans = isAuthenticated
     ? (plansQuery.data ?? [])
-    : localPlans.length > 0 ? localPlans : samplePlans;
+    : [];
 
   const requestLocation = useCallback(async () => {
     try {
@@ -297,7 +296,7 @@ export function useNearbyRestaurants() {
     ],
     queryFn: async () => {
       if (!userLocation) {
-        return mockRestaurants;
+        return [];
       }
       const params = buildSearchNearbyParams(preferences, userLocation);
       // Always include at least 'restaurant' so the query is meaningful
@@ -305,13 +304,12 @@ export function useNearbyRestaurants() {
         params.includedTypes = ['restaurant'];
       }
       const places = await searchNearby(params);
-      if (places.length === 0) return mockRestaurants;
+      if (places.length === 0) return [];
       const mapped = places.map(p => mapToRestaurant(p, userLocation));
       registerRestaurants(mapped);
       return mapped;
     },
     staleTime: 5 * 60 * 1000,
-    placeholderData: mockRestaurants,
   });
 }
 
@@ -362,6 +360,5 @@ export function useSearchRestaurants(
     // Only fire when we have a location or a search query
     enabled: !!(userLocation || query.trim()),
     staleTime: 5 * 60 * 1000,
-    placeholderData: mockRestaurants,
   });
 }
