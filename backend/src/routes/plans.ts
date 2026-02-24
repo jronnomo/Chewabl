@@ -14,7 +14,7 @@ router.get('/', requireAuth, async (req: AuthRequest, res: Response): Promise<vo
         { ownerId: req.userId },
         { 'invites.userId': req.userId },
       ],
-    }).sort({ date: 1 });
+    }).sort({ createdAt: -1 });
     res.json(plans);
   } catch {
     res.status(500).json({ error: 'Server error' });

@@ -191,8 +191,8 @@ export default React.memo(function SwipeCard({
           </View>
 
           <View style={styles.tagRow}>
-            {restaurant.tags.slice(0, 3).map(tag => (
-              <View key={tag} style={styles.cardTag}>
+            {restaurant.tags.slice(0, 3).map((tag, i) => (
+              <View key={`${tag}-${i}`} style={styles.cardTag}>
                 <Text style={styles.cardTagText}>{tag}</Text>
               </View>
             ))}

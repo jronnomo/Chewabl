@@ -589,7 +589,9 @@ export default function GroupSessionScreen() {
                     <Text style={[styles.hostBadgeText, { color: Colors.success }]}>Done</Text>
                   </View>
                 ) : (
-                  <ActivityIndicator size="small" color={Colors.textTertiary} />
+                  <View style={[styles.hostBadge, { backgroundColor: Colors.secondaryLight }]}>
+                    <Text style={[styles.hostBadgeText, { color: Colors.secondary }]}>Swiping...</Text>
+                  </View>
                 )}
               </View>
             ))}
@@ -597,8 +599,7 @@ export default function GroupSessionScreen() {
 
           {pendingMembers.length > 0 && (
             <View style={{ alignItems: 'center', paddingVertical: 16 }}>
-              <ActivityIndicator color={Colors.primary} />
-              <Text style={{ color: Colors.textTertiary, fontSize: 13, marginTop: 8 }}>
+              <Text style={{ color: Colors.textTertiary, fontSize: 13 }}>
                 We'll notify you when everyone's done
               </Text>
             </View>
