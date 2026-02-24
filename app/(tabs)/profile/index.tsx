@@ -8,6 +8,7 @@ import {
   Alert,
   Switch,
   ActivityIndicator,
+  Linking,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -35,7 +36,6 @@ import * as ImagePicker from 'expo-image-picker';
 import { useApp } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
 import { requestNotificationPermissions, registerForPushNotifications } from '../../../services/notifications';
-import { restaurants } from '../../../mocks/restaurants';
 import StaticColors from '../../../constants/colors';
 import { useColors } from '../../../context/ThemeContext';
 
@@ -45,12 +45,12 @@ export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const Colors = useColors();
-  const { preferences, updatePreferences, favorites, setLocalAvatar, localAvatarUri, plans } = useApp();
+  const { preferences, updatePreferences, favorites, favoritedRestaurants, setLocalAvatar, localAvatarUri, plans } = useApp();
   const { user, signOut, isAuthenticated } = useAuth();
 
   const [avatarLoading, setAvatarLoading] = useState(false);
 
-  const favoriteRestaurants = restaurants.filter(r => favorites.includes(r.id));
+  const favoriteRestaurants = favoritedRestaurants;
 
   const handlePickAvatar = useCallback(async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -94,7 +94,14 @@ export default function ProfileScreen() {
     if (!preferences.notificationsEnabled) {
       const granted = await requestNotificationPermissions();
       if (!granted) {
-        Alert.alert('Notifications Disabled', 'Please enable notifications in your device Settings.');
+        Alert.alert(
+          'Notifications Disabled',
+          'Please enable notifications in your device Settings.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Open Settings', onPress: () => Linking.openSettings() },
+          ]
+        );
         return;
       }
       registerForPushNotifications();
@@ -124,7 +131,7 @@ export default function ProfileScreen() {
           {isAuthenticated && (
             <Pressable
               style={[styles.friendsBtn, { backgroundColor: Colors.primaryLight }]}
-              onPress={() => router.push('/friends')}
+              onPress={() => router.push('/(tabs)/friends' as never)}
             >
               <UserPlus size={18} color={Colors.primary} />
               <Text style={[styles.friendsBtnText, { color: Colors.primary }]}>Friends</Text>

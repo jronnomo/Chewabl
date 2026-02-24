@@ -71,7 +71,7 @@ export default function SwipeScreen() {
     setLiked(prev => [...prev, restaurant]);
     // Only add to favorites, never toggle off
     if (!favorites.includes(restaurant.id)) {
-      toggleFavorite(restaurant.id);
+      toggleFavorite(restaurant);
     }
     setLastSwiped({ restaurant, direction: 'right', wasFavorite: favorites.includes(restaurant.id) });
     animateCounter();
@@ -105,7 +105,7 @@ export default function SwipeScreen() {
       setLiked(prev => prev.filter(r => r.id !== restaurant.id));
       // Only remove from favorites if it was newly added by this swipe
       if (!wasFavorite && favorites.includes(restaurant.id)) {
-        toggleFavorite(restaurant.id);
+        toggleFavorite(restaurant);
       }
     } else {
       setPassed(prev => prev.filter(r => r.id !== restaurant.id));

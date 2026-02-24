@@ -84,7 +84,7 @@ export default function PlanEventScreen() {
   const [selectedFriendIds, setSelectedFriendIds] = useState<string[]>(
     existingPlan?.invites?.map(i => i.userId) ?? []
   );
-  const [rsvpHours, setRsvpHours] = useState<number | null>(24);
+  const [rsvpHours, setRsvpHours] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const isEditMode = !!existingPlan;
 
@@ -396,12 +396,7 @@ export default function PlanEventScreen() {
             </>
           )}
 
-          {!isAuthenticated && (
-            <Text style={{ fontSize: 12, color: Colors.textTertiary, textAlign: 'center', marginBottom: 16 }}>
-              Sign in to invite friends and set RSVP deadlines
-            </Text>
-          )}
-          {isAuthenticated && friends.length > 0 && (
+          {friends.length > 0 && (
             <View style={styles.inputGroup}>
               <View style={styles.labelRow}>
                 <UserCheck size={16} color={Colors.primary} />
@@ -435,12 +430,11 @@ export default function PlanEventScreen() {
             </View>
           )}
 
-          {isAuthenticated && (
-            <View style={styles.inputGroup}>
-              <View style={styles.labelRow}>
-                <Timer size={16} color={Colors.primary} />
-                <Text style={[styles.label, { color: Colors.text }]}>RSVP Deadline</Text>
-              </View>
+          <View style={styles.inputGroup}>
+            <View style={styles.labelRow}>
+              <Timer size={16} color={Colors.primary} />
+              <Text style={[styles.label, { color: Colors.text }]}>RSVP Deadline</Text>
+            </View>
               <View style={styles.chipRow}>
                 <Pressable
                   style={[styles.timeChip, { backgroundColor: Colors.card, borderColor: Colors.border }, rsvpHours === null && [styles.chipActive, { backgroundColor: Colors.primary, borderColor: Colors.primary }]]}
@@ -460,8 +454,7 @@ export default function PlanEventScreen() {
                   </Pressable>
                 ))}
               </View>
-            </View>
-          )}
+          </View>
 
           <View style={[styles.infoCard, { backgroundColor: Colors.secondaryLight }]}>
             <Sparkles size={18} color={Colors.secondary} />
