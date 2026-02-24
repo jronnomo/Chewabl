@@ -11,11 +11,13 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Mail, Lock, User, Phone, ChevronRight, Eye, EyeOff } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useAuth } from '../context/AuthContext';
+import { useApp } from '../context/AppContext';
 import StaticColors from '../constants/colors';
 import { useColors } from '../context/ThemeContext';
 
@@ -28,6 +30,7 @@ export default function AuthScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { signIn, signUp } = useAuth();
+  const { setGuestMode, isOnboarded } = useApp();
 
   const [tab, setTab] = useState<Tab>('signin');
   const [name, setName] = useState('');
@@ -59,11 +62,17 @@ export default function AuthScreen() {
     setLoading(true);
     try {
       if (tab === 'signin') {
-        await signIn(email.trim(), password);
+        const returnedUser = await signIn(email.trim(), password);
+        if (returnedUser.preferences) {
+          await AsyncStorage.setItem('chewabl_onboarded', 'true');
+          router.replace('/(tabs)' as never);
+        } else {
+          router.replace('/onboarding' as never);
+        }
       } else {
         await signUp(name.trim(), email.trim(), password, phone.trim() || undefined);
+        router.replace('/onboarding' as never);
       }
-      router.replace('/(tabs)' as never);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Something went wrong';
       if (message.includes('Cannot connect to server')) {
@@ -72,7 +81,7 @@ export default function AuthScreen() {
           'The server is not reachable right now. You can continue as a guest to explore the app — your preferences will be saved locally.',
           [
             { text: 'Try Again', style: 'cancel' },
-            { text: 'Continue as Guest', onPress: () => router.replace('/(tabs)' as never) },
+            { text: 'Continue as Guest', onPress: async () => { await setGuestMode(true); router.replace(isOnboarded ? '/(tabs)' as never : '/onboarding' as never); } },
           ]
         );
       } else {
@@ -215,7 +224,7 @@ export default function AuthScreen() {
 
           <Pressable
             style={styles.skipBtn}
-            onPress={() => router.replace('/(tabs)' as never)}
+            onPress={async () => { await setGuestMode(true); router.replace(isOnboarded ? '/(tabs)' as never : '/onboarding' as never); }}
           >
             <Text style={[styles.skipBtnText, { color: Colors.textSecondary }]}>
               Continue without an account

@@ -39,13 +39,35 @@ router.get('/', requireAuth, async (req: AuthRequest, res: Response): Promise<vo
   }
 });
 
-// Pending requests sent to me
+// Pending requests — both received and sent
 router.get('/requests', requireAuth, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const uid = new mongoose.Types.ObjectId(req.userId);
-    const requests = await Friendship.find({ recipient: uid, status: 'pending' })
+
+    // Received pending requests (someone sent to me)
+    const received = await Friendship.find({ recipient: uid, status: 'pending' })
       .populate('requester', 'id name avatarUri');
-    res.json(requests.map(r => ({ id: r.id, from: r.requester, createdAt: r.createdAt })));
+
+    // Sent pending requests (I sent to someone)
+    const sent = await Friendship.find({ requester: uid, status: 'pending' })
+      .populate('recipient', 'id name avatarUri');
+
+    const result = [
+      ...received.map(r => ({
+        id: r.id,
+        from: r.requester,
+        direction: 'received' as const,
+        createdAt: r.createdAt,
+      })),
+      ...sent.map(s => ({
+        id: s.id,
+        to: s.recipient,
+        direction: 'sent' as const,
+        createdAt: s.createdAt,
+      })),
+    ];
+
+    res.json(result);
   } catch {
     res.status(500).json({ error: 'Server error' });
   }

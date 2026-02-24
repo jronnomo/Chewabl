@@ -35,6 +35,7 @@ import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { useApp } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
+import { api } from '../../../services/api';
 import { requestNotificationPermissions, registerForPushNotifications } from '../../../services/notifications';
 import StaticColors from '../../../constants/colors';
 import { useColors } from '../../../context/ThemeContext';
@@ -45,8 +46,8 @@ export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const Colors = useColors();
-  const { preferences, updatePreferences, favorites, favoritedRestaurants, setLocalAvatar, localAvatarUri, plans } = useApp();
-  const { user, signOut, isAuthenticated } = useAuth();
+  const { preferences, updatePreferences, favorites, favoritedRestaurants, setLocalAvatar, localAvatarUri, plans, setGuestMode } = useApp();
+  const { user, signOut, isAuthenticated, updateUser } = useAuth();
 
   const [avatarLoading, setAvatarLoading] = useState(false);
 
@@ -64,22 +65,32 @@ export default function ProfileScreen() {
       allowsEditing: true,
       aspect: [1, 1],
       quality: 0.8,
+      base64: true,
     });
 
     if (result.canceled || !result.assets[0]) return;
 
-    const uri = result.assets[0].uri;
+    const asset = result.assets[0];
     setAvatarLoading(true);
     try {
-      await setLocalAvatar(uri);
-      // TODO: Implement proper image upload (multipart/form-data or base64) for production.
-      // Do not send raw local file URI to backend — store locally only for now.
+      // Optimistic: show local preview immediately
+      await setLocalAvatar(asset.uri);
+
+      // Upload to Cloudinary via backend if authenticated
+      if (isAuthenticated && asset.base64) {
+        const mimeType = asset.mimeType || 'image/jpeg';
+        const dataUri = `data:${mimeType};base64,${asset.base64}`;
+        const res = await api.post<{ avatarUri: string }>('/uploads/avatar', { image: dataUri });
+        updateUser({ avatarUri: res.avatarUri });
+        // Persist Cloudinary URL locally so it survives without network
+        await setLocalAvatar(res.avatarUri);
+      }
     } catch (err) {
-      Alert.alert('Error', 'Failed to update profile picture.');
+      Alert.alert('Error', 'Failed to upload profile picture. Your local preview is still saved.');
     } finally {
       setAvatarLoading(false);
     }
-  }, [setLocalAvatar]);
+  }, [setLocalAvatar, isAuthenticated, updateUser]);
 
   const handleToggleDarkMode = useCallback(() => {
     Haptics.selectionAsync();
@@ -116,9 +127,10 @@ export default function ProfileScreen() {
   const handleLogout = useCallback(async () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
     await AsyncStorage.removeItem('chewabl_avatar_uri');
+    await setGuestMode(false);
     await signOut();
     router.replace('/auth' as never);
-  }, [signOut, router]);
+  }, [signOut, setGuestMode, router]);
 
   const displayName = user?.name || preferences.name || 'Foodie';
   const avatarUri = localAvatarUri || user?.avatarUri;

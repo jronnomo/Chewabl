@@ -49,11 +49,12 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
     })();
   }, []);
 
-  const signIn = useCallback(async (email: string, password: string): Promise<void> => {
+  const signIn = useCallback(async (email: string, password: string): Promise<BackendUser> => {
     const res = await authService.login(email, password);
     setUser(res.user);
     setIsAuthenticated(true);
     AsyncStorage.setItem(CACHED_USER_KEY, JSON.stringify(res.user)).catch(() => {});
+    return res.user;
   }, []);
 
   const signUp = useCallback(async (

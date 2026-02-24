@@ -34,7 +34,8 @@ import SwipeCard from '@/components/SwipeCard';
 import { useApp, useNearbyRestaurants } from '@/context/AppContext';
 import { useAuth } from '@/context/AuthContext';
 import { getFriends } from '@/services/friends';
-import { Restaurant, GroupMember, SwipeResult, Friend } from '@/types';
+import { createPlan } from '@/services/plans';
+import { Restaurant, GroupMember, SwipeResult, Friend, DiningPlan } from '@/types';
 import StaticColors from '@/constants/colors';
 import { useColors } from '@/context/ThemeContext';
 
@@ -62,8 +63,8 @@ export default function GroupSessionScreen() {
   const router = useRouter();
   const Colors = useColors();
   const params = useLocalSearchParams<{ planId?: string; curveball?: string; autoStart?: string }>();
-  const { preferences, plans, localAvatarUri } = useApp();
-  const { user } = useAuth();
+  const { preferences, plans, localAvatarUri, addPlan } = useApp();
+  const { user, isAuthenticated } = useAuth();
   const { data: nearbyRestaurants = [] } = useNearbyRestaurants();
 
   const sessionRestaurants = useMemo(() => {
@@ -126,6 +127,7 @@ export default function GroupSessionScreen() {
   const [results, setResults] = useState<SwipeResult[]>([]);
   const [isAnimating, setIsAnimating] = useState(false);
 
+  const savedPlanRef = useRef(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(40)).current;
 
@@ -141,6 +143,55 @@ export default function GroupSessionScreen() {
   useEffect(() => {
     animateIn();
   }, [phase, animateIn]);
+
+  // Auto-save group swipe result as a plan
+  useEffect(() => {
+    if (phase !== 'results' || results.length === 0 || savedPlanRef.current) return;
+    savedPlanRef.current = true;
+
+    const winner = results[0].restaurant;
+    const title = `Group Pick: ${winner.name}`;
+    const budget = '$'.repeat(winner.priceLevel);
+
+    if (isAuthenticated) {
+      const inviteeIds = members
+        .filter(m => m.id !== myMemberId)
+        .map(m => m.id);
+      createPlan({
+        type: 'group-swipe',
+        title,
+        cuisine: winner.cuisine,
+        budget,
+        status: 'confirmed',
+        restaurant: {
+          id: winner.id,
+          name: winner.name,
+          imageUrl: winner.imageUrl,
+          address: winner.address,
+          cuisine: winner.cuisine,
+          priceLevel: winner.priceLevel,
+          rating: winner.rating,
+        },
+        inviteeIds: inviteeIds.length > 0 ? inviteeIds : undefined,
+      }).catch(() => {
+        // Silently fail — the user still sees results
+      });
+    } else {
+      const localPlan: DiningPlan = {
+        id: `gs-${Date.now()}`,
+        type: 'group-swipe',
+        title,
+        status: 'confirmed',
+        restaurant: winner,
+        cuisine: winner.cuisine,
+        budget,
+        options: [],
+        votes: {},
+        createdAt: new Date().toISOString(),
+      };
+      addPlan(localPlan);
+    }
+  }, [phase, results, members, myMemberId, isAuthenticated, addPlan]);
 
   const calculateResults = useCallback(() => {
     const allSwipes: Record<string, Record<string, 'yes' | 'no'>> = {
@@ -206,9 +257,6 @@ export default function GroupSessionScreen() {
 
   const handleStartSwiping = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-    setMembers(prev => prev.map(m =>
-      m.id !== myMemberId ? { ...m, completedSwiping: true } : m
-    ));
     setPhase('swiping');
   }, []);
 
@@ -334,6 +382,12 @@ export default function GroupSessionScreen() {
                 No restaurants match your filters. Try adjusting your preferences.
               </Text>
             </View>
+          ) : members.length < 2 ? (
+            <View style={{ alignItems: 'center', paddingVertical: 16 }}>
+              <Text style={{ color: Colors.textSecondary, fontSize: 14, textAlign: 'center' }}>
+                Add at least one friend to start swiping
+              </Text>
+            </View>
           ) : (
             <Pressable style={styles.startBtn} onPress={handleStartSwiping} testID="start-swiping-btn">
               <Text style={styles.startBtnText}>Start Swiping</Text>
@@ -402,6 +456,7 @@ export default function GroupSessionScreen() {
                 restaurant={restaurant}
                 onSwipeLeft={handleSwipeLeft}
                 onSwipeRight={handleSwipeRight}
+                onTap={(r) => router.push(`/restaurant/${r.id}` as never)}
                 isTop={isTop}
               />
             );
@@ -761,7 +816,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 16,
+    paddingVertical: 18,
+    paddingHorizontal: 32,
     borderRadius: 28,
     gap: 6,
     shadowColor: Colors.primary,

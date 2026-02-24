@@ -35,22 +35,25 @@ router.get('/:id', requireAuth, async (req: AuthRequest, res: Response): Promise
 // Create plan
 router.post('/', requireAuth, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { title, date, time, cuisine, budget, inviteeIds, rsvpDeadline, options } = req.body as {
+    const { title, date, time, cuisine, budget, inviteeIds, rsvpDeadline, options, type, status: reqStatus, restaurant } = req.body as {
       title: string;
-      date: string;
-      time: string;
+      date?: string;
+      time?: string;
       cuisine: string;
       budget: string;
       inviteeIds?: string[];
       rsvpDeadline?: string;
       options?: string[];
+      type?: 'planned' | 'group-swipe';
+      status?: 'voting' | 'confirmed';
+      restaurant?: { id: string; name: string; imageUrl: string; address: string; cuisine: string; priceLevel: number; rating: number };
     };
 
     // Input length validation
     if (!title || typeof title !== 'string' || title.length > 100) {
       res.status(400).json({ error: 'Title is required and must be 100 characters or less' }); return;
     }
-    if (!date || !time) {
+    if (type !== 'group-swipe' && (!date || !time)) {
       res.status(400).json({ error: 'Date and time are required' }); return;
     }
     if (cuisine && cuisine.length > 50) {
@@ -78,12 +81,15 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response): Promise<v
     }
 
     const plan = await Plan.create({
+      type: type || 'planned',
       title,
-      date,
-      time,
+      ...(date ? { date } : {}),
+      ...(time ? { time } : {}),
       ownerId: req.userId,
+      status: (type === 'group-swipe' && reqStatus) ? reqStatus : 'voting',
       cuisine: cuisine || 'Any',
       budget: budget || '$$',
+      ...(restaurant ? { restaurant } : {}),
       invites,
       rsvpDeadline: rsvpDeadline ? new Date(rsvpDeadline) : undefined,
       options: options || [],
@@ -119,27 +125,29 @@ router.post('/:id/rsvp', requireAuth, async (req: AuthRequest, res: Response): P
     if (!plan) { res.status(404).json({ error: 'Plan not found' }); return; }
 
     // F-005-015: Reject RSVP if plan date+time has passed
-    // Combine date and time fields for accurate comparison
-    let planDateTime: Date;
-    if (plan.time) {
-      const timeMatch = plan.time.match(/^(\d+):(\d+)\s*(AM|PM)$/i);
-      if (timeMatch) {
-        let h = parseInt(timeMatch[1], 10);
-        const m = parseInt(timeMatch[2], 10);
-        const isPM = timeMatch[3].toUpperCase() === 'PM';
-        if (isPM && h !== 12) h += 12;
-        if (!isPM && h === 12) h = 0;
-        const [year, month, day] = plan.date.split('-').map(Number);
-        planDateTime = new Date(year, month - 1, day, h, m);
+    // Group-swipe plans have no date — skip the past-plan check
+    if (plan.date) {
+      let planDateTime: Date;
+      if (plan.time) {
+        const timeMatch = plan.time.match(/^(\d+):(\d+)\s*(AM|PM)$/i);
+        if (timeMatch) {
+          let h = parseInt(timeMatch[1], 10);
+          const m = parseInt(timeMatch[2], 10);
+          const isPM = timeMatch[3].toUpperCase() === 'PM';
+          if (isPM && h !== 12) h += 12;
+          if (!isPM && h === 12) h = 0;
+          const [year, month, day] = plan.date.split('-').map(Number);
+          planDateTime = new Date(year, month - 1, day, h, m);
+        } else {
+          planDateTime = new Date(plan.date);
+        }
       } else {
         planDateTime = new Date(plan.date);
       }
-    } else {
-      planDateTime = new Date(plan.date);
-    }
-    if (planDateTime.getTime() < Date.now()) {
-      res.status(400).json({ error: 'Cannot RSVP to a past plan' });
-      return;
+      if (planDateTime.getTime() < Date.now()) {
+        res.status(400).json({ error: 'Cannot RSVP to a past plan' });
+        return;
+      }
     }
 
     const invite = plan.invites.find(i => i.userId.toString() === req.userId);
@@ -184,7 +192,7 @@ router.put('/:id', requireAuth, async (req: AuthRequest, res: Response): Promise
       return;
     }
 
-    const { title, date, time, cuisine, budget, options, rsvpDeadline } = req.body;
+    const { title, date, time, cuisine, budget, options, rsvpDeadline, restaurant } = req.body;
     if (title !== undefined && (typeof title !== 'string' || title.length > 100)) {
       res.status(400).json({ error: 'Title must be 100 characters or less' }); return;
     }
@@ -201,6 +209,7 @@ router.put('/:id', requireAuth, async (req: AuthRequest, res: Response): Promise
     if (budget !== undefined) plan.budget = budget;
     if (options !== undefined) plan.options = options;
     if (rsvpDeadline !== undefined) plan.rsvpDeadline = rsvpDeadline ? new Date(rsvpDeadline) : undefined;
+    if (restaurant !== undefined) plan.restaurant = restaurant || undefined;
 
     await plan.save();
     res.json(plan);

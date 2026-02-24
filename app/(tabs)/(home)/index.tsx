@@ -8,11 +8,13 @@ import {
   Animated,
   FlatList,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, Redirect } from 'expo-router';
 import { Zap, CalendarPlus, Flame, TrendingUp, Sparkles, ChevronRight, Heart, Users, Clock, MapPin } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
+import { openSettings } from 'expo-linking';
 import { useApp, useNearbyRestaurants } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
 import RestaurantCard from '../../../components/RestaurantCard';
@@ -25,8 +27,8 @@ export default function HomeScreen() {
   const Colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { preferences, isOnboarded, isLoading, locationPermission, requestLocation } = useApp();
-  const { user } = useAuth();
+  const { preferences, isOnboarded, isGuest, isLoading, locationPermission, requestLocation } = useApp();
+  const { user, isAuthenticated } = useAuth();
   const { data: allRestaurants = [] } = useNearbyRestaurants();
 
   const tonightNearYou = allRestaurants.filter(r => r.isOpenNow).slice(0, 5);
@@ -71,6 +73,10 @@ export default function HomeScreen() {
     );
   }
 
+  if (!isAuthenticated && !isGuest) {
+    return <Redirect href={'/auth' as never} />;
+  }
+
   if (!isOnboarded) {
     return <Redirect href={'/onboarding' as never} />;
   }
@@ -93,7 +99,7 @@ export default function HomeScreen() {
           {locationPermission === 'denied' && (
             <Pressable
               style={[styles.locationBanner, { backgroundColor: Colors.card, borderColor: Colors.border }]}
-              onPress={requestLocation}
+              onPress={() => Platform.OS === 'web' ? requestLocation() : openSettings()}
               accessibilityLabel="Enable location access"
               accessibilityRole="button"
             >

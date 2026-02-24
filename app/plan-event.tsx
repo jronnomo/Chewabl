@@ -170,12 +170,22 @@ export default function PlanEventScreen() {
 
       let resultPlanId: string;
       if (isAuthenticated) {
+        const restaurantPayload = pinnedRestaurant ? {
+          id: pinnedRestaurant.id,
+          name: pinnedRestaurant.name,
+          imageUrl: pinnedRestaurant.imageUrl,
+          address: pinnedRestaurant.address,
+          cuisine: pinnedRestaurant.cuisine,
+          priceLevel: pinnedRestaurant.priceLevel,
+          rating: pinnedRestaurant.rating,
+        } : undefined;
         const payload = {
           title: title.trim(),
           date: selectedDate,
           time: selectedTime,
           cuisine: effectiveCuisine,
           budget: effectiveBudget,
+          restaurant: restaurantPayload,
           inviteeIds: selectedFriendIds,
           rsvpDeadline,
           options: suggestedOptions.map(r => r.id),
@@ -202,7 +212,8 @@ export default function PlanEventScreen() {
           title: title.trim(),
           date: selectedDate,
           time: selectedTime,
-          status: 'voting',
+          status: pinnedRestaurant ? 'confirmed' : 'voting',
+          restaurant: pinnedRestaurant ?? undefined,
           cuisine: effectiveCuisine,
           budget: effectiveBudget,
           invitees: [],

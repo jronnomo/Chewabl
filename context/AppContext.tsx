@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import createContextHook from '@nkzw/create-context-hook';
 import * as Location from 'expo-location';
 import { UserPreferences, DiningPlan, Restaurant } from '../types';
-import { samplePlans } from '../mocks/plans';
+
 import { useAuth } from './AuthContext';
 import { updateProfile } from '../services/auth';
 import { getPlans } from '../services/plans';
@@ -17,7 +17,6 @@ import {
 } from '../services/googlePlaces';
 import { mapToRestaurant } from '../lib/placesMapper';
 import { registerRestaurants } from '../lib/restaurantRegistry';
-import { restaurants as mockRestaurants } from '../mocks/restaurants';
 
 const PREFS_KEY = 'chewabl_preferences';
 const ONBOARDED_KEY = 'chewabl_onboarded';
@@ -25,6 +24,7 @@ const PLANS_KEY = 'chewabl_plans';
 const FAVORITES_KEY = 'chewabl_favorites';
 const FAVORITE_RESTAURANTS_KEY = 'chewabl_favorite_restaurants';
 const AVATAR_KEY = 'chewabl_avatar_uri';
+const GUEST_KEY = 'chewabl_guest_mode';
 
 const BUDGET_MAP: Record<string, string[]> = {
   '$': ['PRICE_LEVEL_INEXPENSIVE'],
@@ -51,6 +51,7 @@ export const [AppProvider, useApp] = createContextHook(() => {
   const [favoritedRestaurants, setFavoritedRestaurants] = useState<Restaurant[]>([]);
   const [localAvatarUri, setLocalAvatarUri] = useState<string | null>(null);
   const [userLocation, setUserLocation] = useState<Coords | null>(null);
+  const [isGuest, setIsGuestState] = useState<boolean>(false);
   const [locationPermission, setLocationPermission] = useState<
     'undetermined' | 'granted' | 'denied'
   >('undetermined');
@@ -95,11 +96,41 @@ export const [AppProvider, useApp] = createContextHook(() => {
     },
   });
 
+  const guestQuery = useQuery({
+    queryKey: ['guestMode'],
+    queryFn: async () => {
+      const val = await AsyncStorage.getItem(GUEST_KEY);
+      return val === 'true';
+    },
+  });
+
   useEffect(() => {
     if (onboardedQuery.data !== undefined) {
       setIsOnboarded(onboardedQuery.data);
     }
   }, [onboardedQuery.data]);
+
+  useEffect(() => {
+    if (guestQuery.data !== undefined) {
+      setIsGuestState(guestQuery.data);
+    }
+  }, [guestQuery.data]);
+
+  // Clear guest mode when user authenticates
+  useEffect(() => {
+    if (isAuthenticated && isGuest) {
+      setIsGuestState(false);
+      AsyncStorage.removeItem(GUEST_KEY).catch(() => {});
+    }
+  }, [isAuthenticated, isGuest]);
+
+  // Auto-onboard when an authenticated user already has preferences on the backend
+  useEffect(() => {
+    if (isAuthenticated && user?.preferences && !isOnboarded) {
+      setIsOnboarded(true);
+      AsyncStorage.setItem(ONBOARDED_KEY, 'true').catch(() => {});
+    }
+  }, [isAuthenticated, user?.preferences, isOnboarded]);
 
   // Hydrate preferences from server when authenticated, otherwise from AsyncStorage
   useEffect(() => {
@@ -135,6 +166,14 @@ export const [AppProvider, useApp] = createContextHook(() => {
     }
   }, [avatarQuery.data]);
 
+  // Sync avatar from backend user when authenticated (survives cache clears / reinstalls)
+  useEffect(() => {
+    if (isAuthenticated && user?.avatarUri) {
+      setLocalAvatarUri(user.avatarUri);
+      AsyncStorage.setItem(AVATAR_KEY, user.avatarUri).catch(() => {});
+    }
+  }, [isAuthenticated, user?.avatarUri]);
+
   // Fetch plans from backend when authenticated
   const plansQuery = useQuery({
     queryKey: ['plans'],
@@ -145,7 +184,7 @@ export const [AppProvider, useApp] = createContextHook(() => {
 
   const plans = isAuthenticated
     ? (plansQuery.data ?? [])
-    : localPlans.length > 0 ? localPlans : samplePlans;
+    : [];
 
   const requestLocation = useCallback(async () => {
     try {
@@ -256,11 +295,22 @@ export const [AppProvider, useApp] = createContextHook(() => {
     setLocalAvatarUri(uri);
   }, []);
 
+  const setGuestMode = useCallback(async (value: boolean) => {
+    setIsGuestState(value);
+    if (value) {
+      await AsyncStorage.setItem(GUEST_KEY, 'true');
+    } else {
+      await AsyncStorage.removeItem(GUEST_KEY);
+    }
+  }, []);
+
   const isLoading = authLoading || onboardedQuery.isLoading || prefsQuery.isLoading
     || (isAuthenticated && plansQuery.isLoading);
 
   return {
     isOnboarded,
+    isGuest,
+    setGuestMode,
     isLoading,
     preferences,
     plans,
@@ -297,7 +347,7 @@ export function useNearbyRestaurants() {
     ],
     queryFn: async () => {
       if (!userLocation) {
-        return mockRestaurants;
+        return [];
       }
       const params = buildSearchNearbyParams(preferences, userLocation);
       // Always include at least 'restaurant' so the query is meaningful
@@ -305,13 +355,12 @@ export function useNearbyRestaurants() {
         params.includedTypes = ['restaurant'];
       }
       const places = await searchNearby(params);
-      if (places.length === 0) return mockRestaurants;
+      if (places.length === 0) return [];
       const mapped = places.map(p => mapToRestaurant(p, userLocation));
       registerRestaurants(mapped);
       return mapped;
     },
     staleTime: 5 * 60 * 1000,
-    placeholderData: mockRestaurants,
   });
 }
 
@@ -362,6 +411,5 @@ export function useSearchRestaurants(
     // Only fire when we have a location or a search query
     enabled: !!(userLocation || query.trim()),
     staleTime: 5 * 60 * 1000,
-    placeholderData: mockRestaurants,
   });
 }

@@ -23,6 +23,7 @@ interface SwipeCardProps {
   restaurant: Restaurant;
   onSwipeLeft: (restaurant: Restaurant) => void;
   onSwipeRight: (restaurant: Restaurant) => void;
+  onTap?: (restaurant: Restaurant) => void;
   isTop: boolean;
 }
 
@@ -30,6 +31,7 @@ export default React.memo(function SwipeCard({
   restaurant,
   onSwipeLeft,
   onSwipeRight,
+  onTap,
   isTop,
 }: SwipeCardProps) {
   const Colors = useColors();
@@ -38,6 +40,9 @@ export default React.memo(function SwipeCard({
   const opacityNo = useRef(new Animated.Value(0)).current;
   const isTopRef = useRef(isTop);
   isTopRef.current = isTop;
+  const onTapRef = useRef(onTap);
+  onTapRef.current = onTap;
+  const gestureStartTime = useRef(0);
 
   const resetPosition = useCallback(() => {
     Animated.spring(position, {
@@ -70,6 +75,9 @@ export default React.memo(function SwipeCard({
       onMoveShouldSetPanResponder: (_, gesture) => {
         return isTopRef.current && (Math.abs(gesture.dx) > 5 || Math.abs(gesture.dy) > 5);
       },
+      onPanResponderGrant: () => {
+        gestureStartTime.current = Date.now();
+      },
       onPanResponderMove: (_, gesture) => {
         position.setValue({ x: gesture.dx, y: gesture.dy * 0.3 });
         if (gesture.dx > 30) {
@@ -84,10 +92,15 @@ export default React.memo(function SwipeCard({
         }
       },
       onPanResponderRelease: (_, gesture) => {
+        const elapsed = Date.now() - gestureStartTime.current;
         if (gesture.dx > SWIPE_THRESHOLD) {
           swipeOffScreen('right');
         } else if (gesture.dx < -SWIPE_THRESHOLD) {
           swipeOffScreen('left');
+        } else if (Math.abs(gesture.dx) < 10 && Math.abs(gesture.dy) < 10 && elapsed < 300) {
+          // Tap detected
+          resetPosition();
+          onTapRef.current?.(restaurant);
         } else {
           resetPosition();
         }
