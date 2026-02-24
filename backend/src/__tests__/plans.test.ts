@@ -153,7 +153,7 @@ const groupSwipePlan = {
 };
 
 describe('POST /plans/:id/swipe', () => {
-  it('group-swipe invitees are auto-accepted', async () => {
+  it('group-swipe invitees start as pending, swiping auto-accepts', async () => {
     const alice = await createTestUser({ name: 'Alice' });
     const bob = await createTestUser({ name: 'Bob' });
 
@@ -163,7 +163,16 @@ describe('POST /plans/:id/swipe', () => {
       .send({ ...groupSwipePlan, inviteeIds: [bob.userId] });
     expect(createRes.status).toBe(201);
     expect(createRes.body.restaurantOptions.length).toBe(3);
-    expect(createRes.body.invites[0].status).toBe('accepted');
+    expect(createRes.body.invites[0].status).toBe('pending');
+
+    // Bob swipes — auto-accepts his invite
+    const bobSwipe = await request(app)
+      .post(`/plans/${createRes.body.id}/swipe`)
+      .set(authHeader(bob.token))
+      .send({ votes: ['r1'] });
+    expect(bobSwipe.status).toBe(200);
+    const bobInvite = bobSwipe.body.invites.find((i: { userId: string }) => i.userId === bob.userId);
+    expect(bobInvite.status).toBe('accepted');
   });
 
   it('group swipe — both members submit → plan confirmed with winner', async () => {
@@ -176,9 +185,9 @@ describe('POST /plans/:id/swipe', () => {
       .send({ ...groupSwipePlan, inviteeIds: [bob.userId] });
     const planId = createRes.body.id ?? createRes.body._id;
 
-    // Bob is auto-accepted for group-swipe plans — no RSVP needed
+    // Bob is pending — swiping will auto-accept him
 
-    // Alice swipes — plan stays voting
+    // Alice swipes — plan stays voting (Bob hasn't swiped)
     const aliceSwipe = await request(app)
       .post(`/plans/${planId}/swipe`)
       .set(authHeader(alice.token))
@@ -202,7 +211,7 @@ describe('POST /plans/:id/swipe', () => {
     const alice = await createTestUser({ name: 'Alice' });
     const bob = await createTestUser({ name: 'Bob' });
 
-    // Create group plan with Bob (auto-accepted) so Alice's first swipe doesn't auto-confirm
+    // Create group plan with Bob (pending) so Alice's first swipe doesn't auto-confirm
     const createRes = await request(app)
       .post('/plans')
       .set(authHeader(alice.token))
@@ -269,9 +278,9 @@ describe('POST /plans/:id/swipe', () => {
       .send({ ...groupSwipePlan, inviteeIds: [bob.userId, carol.userId] });
     const planId = createRes.body.id ?? createRes.body._id;
 
-    // All three are auto-accepted participants
-    expect(createRes.body.invites[0].status).toBe('accepted');
-    expect(createRes.body.invites[1].status).toBe('accepted');
+    // Both invitees start pending — swiping auto-accepts
+    expect(createRes.body.invites[0].status).toBe('pending');
+    expect(createRes.body.invites[1].status).toBe('pending');
 
     // Alice and Bob swipe — plan stays voting (Carol hasn't swiped)
     await request(app).post(`/plans/${planId}/swipe`).set(authHeader(alice.token)).send({ votes: ['r1'] });

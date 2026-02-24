@@ -28,7 +28,7 @@ import {
   UserPlus,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import SwipeCard from '@/components/SwipeCard';
 import { useApp, useNearbyRestaurants } from '@/context/AppContext';
 import { useAuth } from '@/context/AuthContext';
@@ -50,6 +50,7 @@ export default function GroupSessionScreen() {
   const params = useLocalSearchParams<{ planId?: string; curveball?: string; autoStart?: string }>();
   const { preferences, plans, localAvatarUri } = useApp();
   const { user, isAuthenticated } = useAuth();
+  const queryClient = useQueryClient();
   const { data: nearbyRestaurants = [] } = useNearbyRestaurants();
 
   // Active plan state — set when creating or fetching an existing plan
@@ -93,9 +94,12 @@ export default function GroupSessionScreen() {
 
     const plan = activePlan;
     if (plan?.invites && plan.invites.length > 0) {
-      const accepted = plan.invites.filter(i => i.status === 'accepted');
-      if (accepted.length > 0) {
-        const others: GroupMember[] = accepted.map(inv => ({
+      // For group-swipe: all non-declined invitees are members (pending or accepted)
+      const eligible = plan.type === 'group-swipe'
+        ? plan.invites.filter(i => i.status !== 'declined')
+        : plan.invites.filter(i => i.status === 'accepted');
+      if (eligible.length > 0) {
+        const others: GroupMember[] = eligible.map(inv => ({
           id: inv.userId,
           name: inv.name,
           avatar: inv.avatarUri ?? FALLBACK_AVATAR,
@@ -265,6 +269,7 @@ export default function GroupSessionScreen() {
           inviteeIds: inviteeIds.length > 0 ? inviteeIds : undefined,
         });
         setActivePlan(plan);
+        queryClient.invalidateQueries({ queryKey: ['plans'] });
       } catch {
         Alert.alert('Error', 'Failed to start group swipe. Please try again.');
         setIsSubmitting(false);
@@ -275,7 +280,7 @@ export default function GroupSessionScreen() {
     }
 
     setPhase('swiping');
-  }, [isAuthenticated, activePlan, members, myMemberId, preferences, sessionRestaurants]);
+  }, [isAuthenticated, activePlan, members, myMemberId, preferences, sessionRestaurants, queryClient]);
 
   // Submit swipes to backend and handle result
   const finishSwiping = useCallback(async (allMySwipes: Record<string, 'yes' | 'no'>) => {
@@ -292,6 +297,7 @@ export default function GroupSessionScreen() {
         setIsSubmitting(true);
         const updatedPlan = await submitSwipes(activePlan.id, yesVotes);
         setActivePlan(updatedPlan);
+        queryClient.invalidateQueries({ queryKey: ['plans'] });
 
         if (updatedPlan.status === 'confirmed') {
           const res = buildResultsFromPlan(updatedPlan);
@@ -320,7 +326,7 @@ export default function GroupSessionScreen() {
       setResults(resultList);
       setPhase('results');
     }
-  }, [myMemberId, isAuthenticated, activePlan, sessionRestaurants, buildResultsFromPlan]);
+  }, [myMemberId, isAuthenticated, activePlan, sessionRestaurants, buildResultsFromPlan, queryClient]);
 
   const handleSwipeRight = useCallback((restaurant: Restaurant) => {
     setIsAnimating(true);
@@ -593,11 +599,24 @@ export default function GroupSessionScreen() {
             <View style={{ alignItems: 'center', paddingVertical: 16 }}>
               <ActivityIndicator color={Colors.primary} />
               <Text style={{ color: Colors.textTertiary, fontSize: 13, marginTop: 8 }}>
-                Checking every 5 seconds...
+                We'll notify you when everyone's done
               </Text>
             </View>
           )}
         </Animated.View>
+
+        <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 12, backgroundColor: Colors.card, borderTopColor: Colors.borderLight }]}>
+          <Pressable
+            style={[styles.startBtn, { backgroundColor: Colors.primary }]}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              router.back();
+            }}
+          >
+            <Text style={styles.startBtnText}>Go to Plans</Text>
+            <ChevronRight size={18} color="#FFF" />
+          </Pressable>
+        </View>
       </View>
     );
   }

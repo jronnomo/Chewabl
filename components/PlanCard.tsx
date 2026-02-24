@@ -45,6 +45,12 @@ function PlanCardFooter({ plan }: { plan: DiningPlan }) {
   if (plan.invites !== undefined) {
     const accepted = plan.invites.filter(i => i.status === 'accepted').length;
     const pending = plan.invites.filter(i => i.status === 'pending').length;
+
+    // Group-swipe: owner is always "accepted", show total including owner
+    const isGroupSwipe = plan.type === 'group-swipe';
+    const totalMembers = isGroupSwipe ? plan.invites.length + 1 : plan.invites.length;
+    const acceptedCount = isGroupSwipe ? accepted + 1 : accepted;
+
     return (
       <View style={[styles.footer, { borderTopColor: Colors.borderLight }]}>
         <View style={styles.avatarsRow}>
@@ -77,7 +83,7 @@ function PlanCardFooter({ plan }: { plan: DiningPlan }) {
         <View style={styles.inviteeInfo}>
           <Users size={13} color={Colors.textSecondary} />
           <Text style={[styles.inviteeText, { color: Colors.textSecondary }]}>
-            {accepted}/{plan.invites.length} accepted{pending > 0 ? ` · ${pending} pending` : ''}
+            {acceptedCount}/{totalMembers} accepted{pending > 0 ? ` · ${pending} pending` : ''}
           </Text>
         </View>
       </View>

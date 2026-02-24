@@ -71,14 +71,13 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response): Promise<v
     if (!owner) { res.status(404).json({ error: 'User not found' }); return; }
 
     const isGroupSwipe = type === 'group-swipe';
-    const invites: { userId: string; name: string; avatarUri?: string; status: 'pending' | 'accepted' }[] = [];
+    const invites: { userId: string; name: string; avatarUri?: string; status: 'pending' }[] = [];
     const pushTokens: string[] = [];
 
     if (inviteeIds && inviteeIds.length > 0) {
       const invitees = await User.find({ _id: { $in: inviteeIds } }).select('name avatarUri pushToken');
       invitees.forEach(u => {
-        // Group-swipe invitees are auto-accepted (hand-picked in lobby, not an RSVP)
-        invites.push({ userId: u.id, name: u.name, avatarUri: u.avatarUri, status: isGroupSwipe ? 'accepted' : 'pending' });
+        invites.push({ userId: u.id, name: u.name, avatarUri: u.avatarUri, status: 'pending' });
         if (u.pushToken) pushTokens.push(u.pushToken);
       });
     }
@@ -189,7 +188,7 @@ router.post('/:id/rsvp', requireAuth, async (req: AuthRequest, res: Response): P
     if (action === 'decline' && plan.type === 'group-swipe' && plan.status === 'voting') {
       const allParticipantIds = [
         plan.ownerId.toString(),
-        ...plan.invites.filter(i => i.status === 'accepted').map(i => i.userId.toString()),
+        ...plan.invites.filter(i => i.status !== 'declined').map(i => i.userId.toString()),
       ];
       const allDone = allParticipantIds.length > 0 && allParticipantIds.every(pid => plan.swipesCompleted.includes(pid));
       if (allDone) {
@@ -242,11 +241,12 @@ router.post('/:id/swipe', requireAuth, async (req: AuthRequest, res: Response): 
       res.status(400).json({ error: 'Plan is not in voting status' }); return;
     }
 
-    // Check user is owner or accepted invitee
+    // Check user is owner or invitee (pending or accepted — swiping auto-accepts)
     const userId = req.userId!;
     const isOwner = plan.ownerId.toString() === userId;
-    const isAcceptedInvitee = plan.invites.some(i => i.userId.toString() === userId && i.status === 'accepted');
-    if (!isOwner && !isAcceptedInvitee) {
+    const invite = plan.invites.find(i => i.userId.toString() === userId);
+    const isInvitee = !!invite && invite.status !== 'declined';
+    if (!isOwner && !isInvitee) {
       res.status(403).json({ error: 'You are not a participant in this plan' }); return;
     }
 
@@ -262,6 +262,12 @@ router.post('/:id/swipe', requireAuth, async (req: AuthRequest, res: Response): 
       res.status(400).json({ error: 'Some vote IDs are not in restaurantOptions' }); return;
     }
 
+    // Auto-accept pending invitee on swipe (swiping = accepting)
+    if (invite && invite.status === 'pending') {
+      invite.status = 'accepted';
+      invite.respondedAt = new Date();
+    }
+
     // Store votes using Map set method
     if (plan.votes instanceof Map) {
       plan.votes.set(userId, votes);
@@ -270,10 +276,10 @@ router.post('/:id/swipe', requireAuth, async (req: AuthRequest, res: Response): 
     }
     plan.swipesCompleted.push(userId);
 
-    // Check if all participants have swiped
+    // Check if all participants have swiped (owner + non-declined invitees)
     const allParticipantIds = [
       plan.ownerId.toString(),
-      ...plan.invites.filter(i => i.status === 'accepted').map(i => i.userId.toString()),
+      ...plan.invites.filter(i => i.status !== 'declined').map(i => i.userId.toString()),
     ];
     const allDone = allParticipantIds.every(pid => plan.swipesCompleted.includes(pid));
 
