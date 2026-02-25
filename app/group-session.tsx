@@ -36,10 +36,10 @@ import { getFriends } from '@/services/friends';
 import { createPlan, submitSwipes, getPlan } from '@/services/plans';
 import { Restaurant, GroupMember, SwipeResult, Friend, DiningPlan } from '@/types';
 import StaticColors from '@/constants/colors';
+import { DEFAULT_AVATAR_URI } from '@/constants/images';
 import { useColors } from '@/context/ThemeContext';
 
 const Colors = StaticColors;
-const FALLBACK_AVATAR = 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100';
 
 type Phase = 'lobby' | 'swiping' | 'waiting' | 'results';
 
@@ -88,7 +88,7 @@ export default function GroupSessionScreen() {
     const meEntry: GroupMember = {
       id: user?.id ?? 'me',
       name: user?.name ? `${user.name} (You)` : 'You',
-      avatar: localAvatarUri ?? user?.avatarUri ?? FALLBACK_AVATAR,
+      avatar: localAvatarUri ?? user?.avatarUri,
       completedSwiping: activePlan?.swipesCompleted?.includes(user?.id ?? '') ?? false,
     };
 
@@ -102,7 +102,7 @@ export default function GroupSessionScreen() {
         const others: GroupMember[] = eligible.map(inv => ({
           id: inv.userId,
           name: inv.name,
-          avatar: inv.avatarUri ?? FALLBACK_AVATAR,
+          avatar: inv.avatarUri,
           completedSwiping: plan.swipesCompleted?.includes(inv.userId) ?? false,
         }));
         return [meEntry, ...others];
@@ -390,7 +390,7 @@ export default function GroupSessionScreen() {
             </View>
             {members.map(member => (
               <View key={member.id} style={styles.memberRow}>
-                <Image source={{ uri: member.avatar }} style={styles.memberAvatar} contentFit="cover" />
+                <Image source={member.avatar || DEFAULT_AVATAR_URI} style={styles.memberAvatar} contentFit="cover" />
                 <Text style={[styles.memberName, { color: Colors.text }]}>{member.name}</Text>
                 {member.id === myMemberId ? (
                   <View style={[styles.hostBadge, { backgroundColor: Colors.secondaryLight }]}>
@@ -478,7 +478,7 @@ export default function GroupSessionScreen() {
             <Text style={[styles.swipeHeaderTitle, { color: Colors.text }]}>Group Swipe</Text>
             <View style={styles.membersAvatarRow}>
               {members.slice(0, 4).map(m => (
-                <Image key={m.id} source={{ uri: m.avatar }} style={[styles.miniAvatar, { borderColor: Colors.card }]} contentFit="cover" />
+                <Image key={m.id} source={m.avatar || DEFAULT_AVATAR_URI} style={[styles.miniAvatar, { borderColor: Colors.card }]} contentFit="cover" />
               ))}
               <Text style={[styles.swipeCount, { color: Colors.textTertiary }]}>
                 {currentIndex}/{sessionRestaurants.length}
@@ -581,7 +581,7 @@ export default function GroupSessionScreen() {
             </View>
             {members.map(member => (
               <View key={member.id} style={styles.memberRow}>
-                <Image source={{ uri: member.avatar }} style={styles.memberAvatar} contentFit="cover" />
+                <Image source={member.avatar || DEFAULT_AVATAR_URI} style={styles.memberAvatar} contentFit="cover" />
                 <Text style={[styles.memberName, { color: Colors.text }]}>{member.name}</Text>
                 {member.completedSwiping ? (
                   <View style={[styles.hostBadge, { backgroundColor: Colors.success + '18' }]}>
@@ -769,7 +769,7 @@ export default function GroupSessionScreen() {
                 const total = sessionRestaurants.length || 1;
                 return (
                   <View key={m.id} style={styles.memberVoteRow}>
-                    <Image source={{ uri: m.avatar }} style={styles.memberVoteAvatar} contentFit="cover" />
+                    <Image source={m.avatar || DEFAULT_AVATAR_URI} style={styles.memberVoteAvatar} contentFit="cover" />
                     <View style={styles.memberVoteInfo}>
                       <Text style={[styles.memberVoteName, { color: Colors.text }]}>{m.name}</Text>
                       <Text style={[styles.memberVoteStat, { color: Colors.textTertiary }]}>
@@ -1390,7 +1390,7 @@ function AddMemberModal({
     onAddMember({
       id: friend.id,
       name: friend.name,
-      avatar: friend.avatarUri ?? FALLBACK_AVATAR,
+      avatar: friend.avatarUri,
       completedSwiping: false,
     });
   }, [onAddMember]);
@@ -1420,12 +1420,7 @@ function AddMemberModal({
                 style={[modalStyles.row, { borderBottomColor: Colors.borderLight }]}
                 onPress={() => handleAddFriend(friend)}
               >
-                <View style={[modalStyles.avatar, { backgroundColor: Colors.primaryLight }]}>
-                  {friend.avatarUri
-                    ? <Image source={{ uri: friend.avatarUri }} style={modalStyles.avatarImg} contentFit="cover" />
-                    : <Text style={[modalStyles.avatarInitial, { color: Colors.primary }]}>{friend.name[0]?.toUpperCase()}</Text>
-                  }
-                </View>
+                <Image source={friend.avatarUri || DEFAULT_AVATAR_URI} style={modalStyles.avatarImg} contentFit="cover" />
                 <Text style={[modalStyles.rowName, { color: Colors.text }]}>{friend.name}</Text>
                 <UserPlus size={18} color={Colors.primary} />
               </Pressable>
@@ -1493,10 +1488,6 @@ const modalStyles = StyleSheet.create({
   avatarImg: {
     width: 42,
     height: 42,
-  },
-  avatarInitial: {
-    fontSize: 16,
-    fontWeight: '700' as const,
   },
   rowName: {
     flex: 1,

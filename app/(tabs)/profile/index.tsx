@@ -15,7 +15,6 @@ import { useRouter } from 'expo-router';
 import { Image } from 'expo-image';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
-  User,
   Heart,
   UtensilsCrossed,
   DollarSign,
@@ -38,6 +37,7 @@ import { useAuth } from '../../../context/AuthContext';
 import { api } from '../../../services/api';
 import { requestNotificationPermissions, registerForPushNotifications } from '../../../services/notifications';
 import StaticColors from '../../../constants/colors';
+import { DEFAULT_AVATAR_URI } from '../../../constants/images';
 import { useColors } from '../../../context/ThemeContext';
 import { useThemeTransition } from '../../../context/ThemeTransitionContext';
 
@@ -136,7 +136,8 @@ export default function ProfileScreen() {
     router.replace('/auth' as never);
   }, [signOut, setGuestMode, router]);
 
-  const displayName = user?.name || preferences.name || 'Foodie';
+  const fullName = user?.name || preferences.name || 'Foodie';
+  const displayName = fullName.split(' ')[0];
   const avatarUri = localAvatarUri || user?.avatarUri;
 
   return (
@@ -157,13 +158,7 @@ export default function ProfileScreen() {
 
         <View style={[styles.profileCard, { backgroundColor: Colors.card }]}>
           <Pressable style={styles.avatarWrap} onPress={handlePickAvatar} disabled={avatarLoading} accessibilityLabel="Change profile picture" accessibilityRole="button">
-            {avatarUri ? (
-              <Image source={{ uri: avatarUri }} style={styles.avatarImage} contentFit="cover" />
-            ) : (
-              <View style={[styles.avatarCircle, { backgroundColor: Colors.primaryLight }]}>
-                <User size={32} color={Colors.primary} />
-              </View>
-            )}
+            <Image source={avatarUri || DEFAULT_AVATAR_URI} style={styles.avatarImage} contentFit="cover" />
             <View style={[styles.cameraOverlay, { backgroundColor: Colors.primary, borderColor: Colors.card }]}>
               {avatarLoading ? (
                 <ActivityIndicator size="small" color="#FFF" />
@@ -344,14 +339,6 @@ const styles = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 36,
-  },
-  avatarCircle: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: Colors.primaryLight,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   cameraOverlay: {
     position: 'absolute',

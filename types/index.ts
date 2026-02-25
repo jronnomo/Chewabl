@@ -142,7 +142,7 @@ export interface GroupSession {
 export interface GroupMember {
   id: string;
   name: string;
-  avatar: string;
+  avatar?: string;
   completedSwiping: boolean;
 }
 

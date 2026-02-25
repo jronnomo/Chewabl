@@ -29,6 +29,16 @@ describe('POST /auth/register', () => {
     expect(res.body.user.passwordHash).toBeUndefined();
   });
 
+  it('new user has empty favorites', async () => {
+    const res = await request(app).post('/auth/register').send({
+      name: 'Bob',
+      email: 'bob@example.com',
+      password: 'password123',
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.user.favorites).toEqual([]);
+  });
+
   it('returns 400 when name is missing', async () => {
     const res = await request(app).post('/auth/register').send({
       email: 'alice@example.com',

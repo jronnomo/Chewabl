@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import createContextHook from '@nkzw/create-context-hook';
@@ -124,6 +124,19 @@ export const [AppProvider, useApp] = createContextHook(() => {
     }
   }, [isAuthenticated, isGuest]);
 
+  // Clear stale favorites from AsyncStorage on sign-out to prevent data leaking to the next user
+  const prevAuthRef = useRef(isAuthenticated);
+  useEffect(() => {
+    if (prevAuthRef.current && !isAuthenticated) {
+      // User just signed out — clear local favorites
+      setFavorites([]);
+      setFavoritedRestaurants([]);
+      AsyncStorage.removeItem(FAVORITES_KEY).catch(() => {});
+      AsyncStorage.removeItem(FAVORITE_RESTAURANTS_KEY).catch(() => {});
+    }
+    prevAuthRef.current = isAuthenticated;
+  }, [isAuthenticated]);
+
   // Auto-onboard when an authenticated user already has preferences on the backend
   useEffect(() => {
     if (isAuthenticated && user?.preferences && !isOnboarded) {
@@ -149,16 +162,21 @@ export const [AppProvider, useApp] = createContextHook(() => {
   useEffect(() => {
     if (isAuthenticated && user?.favorites) {
       setFavorites(user.favorites);
+      // When authenticated, only show restaurants matching server-side favorite IDs
+      // This prevents stale AsyncStorage data from a previous user leaking through
+      if (favoritedRestaurantsQuery.data) {
+        const serverIds = new Set(user.favorites);
+        setFavoritedRestaurants(favoritedRestaurantsQuery.data.filter(r => serverIds.has(r.id)));
+      } else {
+        setFavoritedRestaurants([]);
+      }
     } else if (!isAuthenticated && favoritesQuery.data) {
       setFavorites(favoritesQuery.data);
+      if (favoritedRestaurantsQuery.data) {
+        setFavoritedRestaurants(favoritedRestaurantsQuery.data);
+      }
     }
-  }, [isAuthenticated, user, favoritesQuery.data]);
-
-  useEffect(() => {
-    if (favoritedRestaurantsQuery.data) {
-      setFavoritedRestaurants(favoritedRestaurantsQuery.data);
-    }
-  }, [favoritedRestaurantsQuery.data]);
+  }, [isAuthenticated, user, favoritesQuery.data, favoritedRestaurantsQuery.data]);
 
   useEffect(() => {
     if (avatarQuery.data !== undefined) {

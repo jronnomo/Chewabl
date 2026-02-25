@@ -26,6 +26,7 @@ import { DiningPlan } from '../types';
 import { getFriends } from '../services/friends';
 import { createPlan, updatePlan } from '../services/plans';
 import StaticColors from '../constants/colors';
+import { DEFAULT_AVATAR_URI } from '../constants/images';
 import { useColors } from '../context/ThemeContext';
 
 const Colors = StaticColors;
@@ -422,15 +423,7 @@ export default function PlanEventScreen() {
                       style={[styles.friendChip, { backgroundColor: Colors.card, borderColor: Colors.border }, selected && [styles.chipActive, { backgroundColor: Colors.primary, borderColor: Colors.primary }]]}
                       onPress={() => toggleFriend(f.id)}
                     >
-                      {f.avatarUri ? (
-                        <Image source={{ uri: f.avatarUri }} style={styles.friendChipAvatar} contentFit="cover" />
-                      ) : (
-                        <View style={[styles.friendChipAvatarFallback, { backgroundColor: Colors.primaryLight }]}>
-                          <Text style={[styles.friendChipInitial, { color: Colors.primary }, selected && { color: '#FFF' }]}>
-                            {f.name[0]?.toUpperCase()}
-                          </Text>
-                        </View>
-                      )}
+                      <Image source={f.avatarUri || DEFAULT_AVATAR_URI} style={styles.friendChipAvatar} contentFit="cover" />
                       <Text style={[styles.friendChipText, { color: Colors.text }, selected && styles.chipTextActive]}>
                         {f.name.split(' ')[0]}
                       </Text>
@@ -662,19 +655,6 @@ const styles = StyleSheet.create({
     width: 22,
     height: 22,
     borderRadius: 11,
-  },
-  friendChipAvatarFallback: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: Colors.primaryLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  friendChipInitial: {
-    fontSize: 11,
-    fontWeight: '700' as const,
-    color: Colors.primary,
   },
   friendChipText: {
     fontSize: 13,

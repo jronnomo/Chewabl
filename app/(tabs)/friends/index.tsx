@@ -37,6 +37,7 @@ import { useAuth } from '../../../context/AuthContext';
 import { SessionExpiredError, NetworkError } from '../../../services/api';
 import { Friend, FriendRequest } from '../../../types';
 import StaticColors from '../../../constants/colors';
+import { DEFAULT_AVATAR_URI } from '../../../constants/images';
 import { useColors } from '../../../context/ThemeContext';
 
 const Colors = StaticColors;
@@ -186,13 +187,7 @@ export default function FriendsTabScreen() {
 
   const renderFriend = ({ item }: { item: Friend }) => (
     <View style={[styles.personRow, { backgroundColor: Colors.card }]}>
-      {item.avatarUri ? (
-        <Image source={{ uri: item.avatarUri }} style={styles.avatar} contentFit="cover" />
-      ) : (
-        <View style={[styles.avatarFallback, { backgroundColor: Colors.primaryLight }]}>
-          <Text style={[styles.avatarInitial, { color: Colors.primary }]}>{item.name[0]?.toUpperCase()}</Text>
-        </View>
-      )}
+      <Image source={item.avatarUri || DEFAULT_AVATAR_URI} style={styles.avatar} contentFit="cover" />
       <Text style={[styles.personName, { color: Colors.text }]}>{item.name}</Text>
       {item.phone && <Text style={[styles.personSub, { color: Colors.textSecondary }]}>{item.phone}</Text>}
     </View>
@@ -203,13 +198,7 @@ export default function FriendsTabScreen() {
       const person = item.to;
       return (
         <View style={[styles.personRow, { backgroundColor: Colors.card }]}>
-          {person?.avatarUri ? (
-            <Image source={{ uri: person.avatarUri }} style={styles.avatar} contentFit="cover" />
-          ) : (
-            <View style={[styles.avatarFallback, { backgroundColor: Colors.primaryLight }]}>
-              <Text style={[styles.avatarInitial, { color: Colors.primary }]}>{person?.name?.[0]?.toUpperCase()}</Text>
-            </View>
-          )}
+          <Image source={person?.avatarUri || DEFAULT_AVATAR_URI} style={styles.avatar} contentFit="cover" />
           <View style={{ flex: 1 }}>
             <Text style={[styles.personName, { color: Colors.text }]}>{person?.name}</Text>
             <Text style={{ fontSize: 12, color: Colors.textSecondary, marginTop: 2 }}>Request sent</Text>
@@ -225,13 +214,7 @@ export default function FriendsTabScreen() {
     const person = item.from;
     return (
       <View style={[styles.personRow, { backgroundColor: Colors.card }]}>
-        {person?.avatarUri ? (
-          <Image source={{ uri: person.avatarUri }} style={styles.avatar} contentFit="cover" />
-        ) : (
-          <View style={[styles.avatarFallback, { backgroundColor: Colors.primaryLight }]}>
-            <Text style={[styles.avatarInitial, { color: Colors.primary }]}>{person?.name?.[0]?.toUpperCase()}</Text>
-          </View>
-        )}
+        <Image source={person?.avatarUri || DEFAULT_AVATAR_URI} style={styles.avatar} contentFit="cover" />
         <Text style={[styles.personName, { flex: 1, color: Colors.text }]}>{person?.name}</Text>
         <Pressable
           style={[styles.respondBtn, styles.respondBtnAccept]}
@@ -372,13 +355,7 @@ export default function FriendsTabScreen() {
 
                 {codeResult && (
                   <View style={[styles.personRow, { backgroundColor: Colors.card }]}>
-                    {codeResult.avatarUri ? (
-                      <Image source={{ uri: codeResult.avatarUri }} style={styles.avatar} contentFit="cover" />
-                    ) : (
-                      <View style={[styles.avatarFallback, { backgroundColor: Colors.primaryLight }]}>
-                        <Text style={[styles.avatarInitial, { color: Colors.primary }]}>{codeResult.name[0]?.toUpperCase()}</Text>
-                      </View>
-                    )}
+                    <Image source={codeResult.avatarUri || DEFAULT_AVATAR_URI} style={styles.avatar} contentFit="cover" />
                     <Text style={[styles.personName, { flex: 1, color: Colors.text }]}>{codeResult.name}</Text>
                     <Pressable
                       style={styles.addBtn}
@@ -402,13 +379,7 @@ export default function FriendsTabScreen() {
           )}
           renderItem={({ item }) => (
             <View style={[styles.personRow, { backgroundColor: Colors.card }]}>
-              {item.avatarUri ? (
-                <Image source={{ uri: item.avatarUri }} style={styles.avatar} contentFit="cover" />
-              ) : (
-                <View style={[styles.avatarFallback, { backgroundColor: Colors.primaryLight }]}>
-                  <Text style={[styles.avatarInitial, { color: Colors.primary }]}>{item.name[0]?.toUpperCase()}</Text>
-                </View>
-              )}
+              <Image source={item.avatarUri || DEFAULT_AVATAR_URI} style={styles.avatar} contentFit="cover" />
               <View style={{ flex: 1 }}>
                 <Text style={[styles.personName, { color: Colors.text }]}>{item.name}</Text>
                 {item.phone && <Text style={[styles.personSub, { color: Colors.textSecondary }]}>{item.phone}</Text>}
@@ -501,19 +472,6 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-  },
-  avatarFallback: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: Colors.primaryLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarInitial: {
-    fontSize: 18,
-    fontWeight: '700' as const,
-    color: Colors.primary,
   },
   personName: {
     fontSize: 15,

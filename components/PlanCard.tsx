@@ -5,6 +5,7 @@ import { CalendarDays, Users, Check, Vote, Clock, X, Pencil } from 'lucide-react
 import * as Haptics from 'expo-haptics';
 import { DiningPlan } from '../types';
 import StaticColors from '../constants/colors';
+import { DEFAULT_AVATAR_URI } from '../constants/images';
 import { useColors } from '../context/ThemeContext';
 
 const Colors = StaticColors;
@@ -65,13 +66,7 @@ function PlanCardFooter({ plan }: { plan: DiningPlan }) {
                 invite.status === 'declined' && styles.avatarDeclined,
               ]}
             >
-              {invite.avatarUri ? (
-                <Image source={{ uri: invite.avatarUri }} style={styles.avatar} contentFit="cover" />
-              ) : (
-                <View style={[styles.avatar, styles.avatarFallback, { backgroundColor: Colors.primaryLight }]}>
-                  <Text style={[styles.avatarInitial, { color: Colors.primary }]}>{invite.name[0]?.toUpperCase()}</Text>
-                </View>
-              )}
+              <Image source={invite.avatarUri || DEFAULT_AVATAR_URI} style={styles.avatar} contentFit="cover" />
             </View>
           ))}
           {plan.invites.length > 4 && (
@@ -358,16 +353,6 @@ const styles = StyleSheet.create({
   },
   avatarDeclined: {
     opacity: 0.4,
-  },
-  avatarFallback: {
-    backgroundColor: Colors.primaryLight,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-  },
-  avatarInitial: {
-    fontSize: 11,
-    fontWeight: '700' as const,
-    color: Colors.primary,
   },
   inviteeInfo: {
     flexDirection: 'row',

@@ -3,7 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  TextInput,
   Pressable,
   ScrollView,
   Animated,
@@ -17,6 +16,7 @@ import { useRouter } from 'expo-router';
 import { ChevronRight, ChevronLeft, Utensils } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useApp } from '../context/AppContext';
+import { useAuth } from '../context/AuthContext';
 import { CUISINES, BUDGET_OPTIONS, DIETARY_OPTIONS, ATMOSPHERE_OPTIONS, GROUP_SIZE_OPTIONS, DISTANCE_OPTIONS } from '../mocks/restaurants';
 import { UserPreferences } from '../types';
 import StaticColors from '../constants/colors';
@@ -31,9 +31,9 @@ export default function OnboardingScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { saveOnboarding } = useApp();
+  const { user } = useAuth();
   const [step, setStep] = useState<number>(0);
   const [isSaving, setIsSaving] = useState(false);
-  const [name, setName] = useState<string>('');
   const [selectedCuisines, setSelectedCuisines] = useState<string[]>([]);
   const [selectedBudget, setSelectedBudget] = useState<string>('$$');
   const [selectedDietary, setSelectedDietary] = useState<string[]>([]);
@@ -66,12 +66,8 @@ export default function OnboardingScreen() {
     if (step < TOTAL_STEPS - 1) {
       animateTransition('forward', () => setStep(s => s + 1));
     } else {
-      if (name.trim().length < 2) {
-        Alert.alert('Name Required', 'Please enter at least 2 characters for your name.');
-        return;
-      }
       const prefs: UserPreferences = {
-        name: name.trim(),
+        name: user?.name ?? '',
         cuisines: selectedCuisines,
         budget: selectedBudget,
         dietary: selectedDietary,
@@ -90,7 +86,7 @@ export default function OnboardingScreen() {
         },
       });
     }
-  }, [step, name, selectedCuisines, selectedBudget, selectedDietary, selectedAtmosphere, selectedGroupSize, selectedDistance, saveOnboarding, router, animateTransition]);
+  }, [step, user, selectedCuisines, selectedBudget, selectedDietary, selectedAtmosphere, selectedGroupSize, selectedDistance, saveOnboarding, router, animateTransition]);
 
   const handleBack = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -109,7 +105,7 @@ export default function OnboardingScreen() {
     setSelectedDietary(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d]);
   }, []);
 
-  const canProceed = step === 0 ? name.trim().length >= 2 : true;
+  const canProceed = true;
 
   const renderStep = () => {
     switch (step) {
@@ -117,20 +113,8 @@ export default function OnboardingScreen() {
         return (
           <View style={styles.stepContent}>
             <Text style={styles.stepEmoji}>👋</Text>
-            <Text style={[styles.stepTitle, { color: Colors.text }]}>Welcome to Chewabl</Text>
-            <Text style={[styles.stepSubtitle, { color: Colors.textSecondary }]}>No more "where should we eat?" — let's get you set up.</Text>
-            <TextInput
-              style={[styles.nameInput, { backgroundColor: Colors.card, borderColor: Colors.border, color: Colors.text }]}
-              placeholder="What's your name?"
-              placeholderTextColor={Colors.textTertiary}
-              value={name}
-              onChangeText={setName}
-              autoFocus
-              maxLength={50}
-              returnKeyType="next"
-              onSubmitEditing={handleNext}
-              testID="onboarding-name-input"
-            />
+            <Text style={[styles.stepTitle, { color: Colors.text }]}>Welcome to Chewabl{user?.name ? `, ${user.name.split(' ')[0]}` : ''}!</Text>
+            <Text style={[styles.stepSubtitle, { color: Colors.textSecondary }]}>No more "where should we eat?" — let's set up your dining preferences.</Text>
           </View>
         );
       case 1:
@@ -365,16 +349,6 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     lineHeight: 22,
     marginBottom: 28,
-  },
-  nameInput: {
-    backgroundColor: Colors.card,
-    borderRadius: 14,
-    paddingHorizontal: 18,
-    paddingVertical: 16,
-    fontSize: 18,
-    color: Colors.text,
-    borderWidth: 1.5,
-    borderColor: Colors.border,
   },
   optionsGrid: {
     flexDirection: 'row',
