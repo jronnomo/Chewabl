@@ -81,6 +81,15 @@ const RESTAURANT_OPTIONS = [
   'rest_burger_barn',
 ];
 
+// Full restaurant objects for restaurantOptions (SwipeCard needs tags, name, imageUrl, etc.)
+const RESTAURANT_OPTION_OBJECTS = [
+  { id: 'rest_tacos_supreme', name: 'Tacos Supreme', imageUrl: 'https://images.unsplash.com/photo-1565299585323-38d6b0865b47?w=400', address: '123 Main St', cuisine: 'Mexican', priceLevel: 2, rating: 4.5, distance: '0.3mi', tags: ['Tacos', 'Burritos', 'Outdoor Seating'], isOpenNow: true, phone: '(555) 123-4567', hours: '11am-10pm', description: 'Authentic Mexican street tacos', photos: [], reviewCount: 142, hasReservation: false, noiseLevel: 'moderate', seating: ['indoor', 'outdoor'], busyLevel: 'moderate' },
+  { id: 'rest_sushi_heaven', name: 'Sushi Heaven', imageUrl: 'https://images.unsplash.com/photo-1579871494447-9811cf80d66c?w=400', address: '456 Oak Ave', cuisine: 'Japanese', priceLevel: 3, rating: 4.8, distance: '0.5mi', tags: ['Sushi', 'Sake Bar', 'Date Night'], isOpenNow: true, phone: '(555) 234-5678', hours: '12pm-11pm', description: 'Premium omakase and sushi rolls', photos: [], reviewCount: 238, hasReservation: true, noiseLevel: 'quiet', seating: ['indoor', 'bar'], busyLevel: 'busy' },
+  { id: 'rest_pizza_palace', name: 'Pizza Palace', imageUrl: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=400', address: '789 Elm Blvd', cuisine: 'Italian', priceLevel: 2, rating: 4.3, distance: '0.8mi', tags: ['Pizza', 'Pasta', 'Family Friendly'], isOpenNow: true, phone: '(555) 345-6789', hours: '11am-11pm', description: 'Wood-fired Neapolitan pizza', photos: [], reviewCount: 189, hasReservation: false, noiseLevel: 'loud', seating: ['indoor', 'patio'], busyLevel: 'moderate' },
+  { id: 'rest_thai_garden', name: 'Thai Garden', imageUrl: 'https://images.unsplash.com/photo-1562565652-a0d8f0c59eb4?w=400', address: '321 Pine Dr', cuisine: 'Thai', priceLevel: 2, rating: 4.6, distance: '1.2mi', tags: ['Curry', 'Noodles', 'Vegetarian Options'], isOpenNow: true, phone: '(555) 456-7890', hours: '11am-9:30pm', description: 'Traditional Thai dishes with fresh ingredients', photos: [], reviewCount: 167, hasReservation: false, noiseLevel: 'moderate', seating: ['indoor'], busyLevel: 'quiet' },
+  { id: 'rest_burger_barn', name: 'Burger Barn', imageUrl: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=400', address: '654 Cedar Ln', cuisine: 'American', priceLevel: 1, rating: 4.2, distance: '0.2mi', tags: ['Burgers', 'Shakes', 'Quick Bite'], isOpenNow: true, phone: '(555) 567-8901', hours: '10am-10pm', description: 'Classic smash burgers and hand-spun milkshakes', photos: [], reviewCount: 95, hasReservation: false, noiseLevel: 'loud', seating: ['indoor', 'outdoor'], busyLevel: 'busy' },
+];
+
 
 // ── Main seed ────────────────────────────────────────────────────────────────
 
@@ -311,6 +320,7 @@ async function seedReset() {
       ],
       rsvpDeadline: daysFromNow(3),
       options: RESTAURANT_OPTIONS,
+      restaurantOptions: RESTAURANT_OPTION_OBJECTS,
       votes: plan1Votes,
     },
     // 2. Weekend Brunch — voting, upcoming, Alice owns, friends voted, Alice hasn't
@@ -330,6 +340,7 @@ async function seedReset() {
       rsvpDeadline: daysAgo(1),
       votingOpenedAt: daysAgo(1),
       options: RESTAURANT_OPTIONS,
+      restaurantOptions: RESTAURANT_OPTION_OBJECTS,
       votes: plan2Votes,
     },
     // 3. Friday Night Out — voting, upcoming, Alice owns, Alice voted, friends haven't
@@ -348,6 +359,7 @@ async function seedReset() {
       ],
       rsvpDeadline: daysFromNow(10),
       options: RESTAURANT_OPTIONS,
+      restaurantOptions: RESTAURANT_OPTION_OBJECTS,
       votes: plan3Votes,
     },
     // 4. Team Lunch — voting, upcoming, Maya owns (Alice is a guest), Liam pending invite
@@ -365,6 +377,7 @@ async function seedReset() {
       ],
       rsvpDeadline: daysFromNow(6),
       options: RESTAURANT_OPTIONS,
+      restaurantOptions: RESTAURANT_OPTION_OBJECTS,
       votes: new Map(),
     },
     // 5. Sushi Saturday — confirmed, upcoming, Alice owns, all voted
@@ -383,6 +396,7 @@ async function seedReset() {
       rsvpDeadline: daysAgo(7),
       votingOpenedAt: daysAgo(7),
       options: RESTAURANT_OPTIONS,
+      restaurantOptions: RESTAURANT_OPTION_OBJECTS,
       votes: plan5Votes,
     },
     // 6. Birthday Dinner — completed, past, Liam owns (Alice invited)
@@ -402,6 +416,7 @@ async function seedReset() {
       rsvpDeadline: daysAgo(21),
       votingOpenedAt: daysAgo(21),
       options: RESTAURANT_OPTIONS,
+      restaurantOptions: RESTAURANT_OPTION_OBJECTS,
       votes: plan6Votes,
     },
     // 7. Cancelled Meetup — cancelled, past, Alice owns, mixed invite responses
