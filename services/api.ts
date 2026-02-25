@@ -57,7 +57,7 @@ async function request<T>(
       headers,
       signal: controller.signal,
     }).catch((err: unknown) => {
-      if (err instanceof DOMException && err.name === 'AbortError') {
+      if (err instanceof Error && err.name === 'AbortError') {
         throw new NetworkError('Request timed out. Please try again.');
       }
       throw new NetworkError(err instanceof TypeError
