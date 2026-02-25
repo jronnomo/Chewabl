@@ -59,8 +59,11 @@ export default function NotificationsScreen() {
         case 'group_swipe_result':
         case 'swipe_completed':
         case 'plan_reminder':
-          // No plan-detail route — navigate to plans tab
-          router.push('/(tabs)/plans' as never);
+          if (notifData?.planId) {
+            router.push(`/(tabs)/plans?planId=${notifData.planId}` as never);
+          } else {
+            router.push('/(tabs)/plans' as never);
+          }
           break;
         case 'group_swipe_invite':
           router.push('/group-session' as never);

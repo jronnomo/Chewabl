@@ -294,7 +294,7 @@ async function seedReset() {
   plan6Votes.set(liamId, ['rest_sushi_heaven', 'rest_pizza_palace']);
   plan6Votes.set(jerryId, ['rest_sushi_heaven', 'rest_thai_garden']);
 
-  await Plan.insertMany([
+  const seededPlans = await Plan.insertMany([
     // 1. Taco Tuesday — voting, upcoming, Alice owns, mixed votes
     {
       title: 'Taco Tuesday',
@@ -443,6 +443,8 @@ async function seedReset() {
     },
   ]);
 
+  const [planTaco, planBrunch, planFriday, planTeamLunch, planSushi, planBirthday, planCancelled, planThaiGroup, planBurgerGroup] = seededPlans;
+
   console.log('Created 9 plans:');
   console.log('  UPCOMING (voting):');
   console.log('    1. Taco Tuesday       — Maya+Jerry partial, Liam partial, Alice not yet');
@@ -486,7 +488,7 @@ async function seedReset() {
       type: 'swipe_completed',
       title: 'Swipe Update',
       body: 'Maya Johnson finished swiping for "Weekend Brunch"',
-      data: {},
+      data: { planId: planBrunch._id.toString() },
       read: false,
       createdAt: hoursAgo(3),
     },
@@ -495,7 +497,7 @@ async function seedReset() {
       type: 'swipe_completed',
       title: 'Swipe Update',
       body: 'Liam Rodriguez finished swiping for "Weekend Brunch"',
-      data: {},
+      data: { planId: planBrunch._id.toString() },
       read: false,
       createdAt: hoursAgo(4),
     },
@@ -504,7 +506,7 @@ async function seedReset() {
       type: 'plan_invite',
       title: 'Dining Plan Invite',
       body: 'Maya Johnson invited you to "Team Lunch"',
-      data: {},
+      data: { planId: planTeamLunch._id.toString() },
       read: false,
       createdAt: hoursAgo(6),
     },
@@ -515,7 +517,7 @@ async function seedReset() {
       type: 'rsvp_response',
       title: 'RSVP Accepted',
       body: 'Maya Johnson accepted your invite to "Taco Tuesday"',
-      data: {},
+      data: { planId: planTaco._id.toString() },
       read: true,
       createdAt: hoursAgo(48),
     },
@@ -524,7 +526,7 @@ async function seedReset() {
       type: 'rsvp_response',
       title: 'RSVP Accepted',
       body: 'Jerry Ronnau accepted your invite to "Taco Tuesday"',
-      data: {},
+      data: { planId: planTaco._id.toString() },
       read: true,
       createdAt: hoursAgo(50),
     },
@@ -533,7 +535,7 @@ async function seedReset() {
       type: 'rsvp_response',
       title: 'RSVP Accepted',
       body: 'Liam Rodriguez accepted your invite to "Taco Tuesday"',
-      data: {},
+      data: { planId: planTaco._id.toString() },
       read: true,
       createdAt: hoursAgo(52),
     },
@@ -551,7 +553,7 @@ async function seedReset() {
       type: 'group_swipe_result',
       title: 'Group Pick Decided!',
       body: 'The group picked Burger Barn for "Group Pick: Burger Barn"',
-      data: {},
+      data: { planId: planBurgerGroup._id.toString() },
       read: true,
       createdAt: hoursAgo(72),
     },
@@ -560,7 +562,7 @@ async function seedReset() {
       type: 'plan_invite',
       title: 'Dining Plan Invite',
       body: 'Liam Rodriguez invited you to "Birthday Dinner"',
-      data: {},
+      data: { planId: planBirthday._id.toString() },
       read: true,
       createdAt: hoursAgo(480), // 20 days ago
     },
@@ -569,7 +571,7 @@ async function seedReset() {
       type: 'rsvp_response',
       title: 'RSVP Declined',
       body: 'Maya Johnson declined your invite to "Cancelled Meetup"',
-      data: {},
+      data: { planId: planCancelled._id.toString() },
       read: true,
       createdAt: hoursAgo(240), // 10 days ago
     },
@@ -591,7 +593,7 @@ async function seedReset() {
       type: 'plan_invite',
       title: 'Dining Plan Invite',
       body: 'Alice Chen invited you to "Taco Tuesday"',
-      data: {},
+      data: { planId: planTaco._id.toString() },
       read: false,
       createdAt: hoursAgo(5),
     },
@@ -611,7 +613,7 @@ async function seedReset() {
       type: 'plan_invite',
       title: 'Dining Plan Invite',
       body: 'Liam Rodriguez invited you to "Birthday Dinner"',
-      data: {},
+      data: { planId: planBirthday._id.toString() },
       read: true,
       createdAt: hoursAgo(408), // 17 days ago
     },
@@ -620,7 +622,7 @@ async function seedReset() {
       type: 'group_swipe_invite',
       title: 'Group Swipe Started!',
       body: 'Liam Rodriguez started a group swipe — tap to vote!',
-      data: {},
+      data: { planId: planBurgerGroup._id.toString() },
       read: true,
       createdAt: hoursAgo(96), // 4 days ago
     },

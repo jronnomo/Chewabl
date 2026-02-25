@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,7 +9,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Plus } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -33,6 +33,19 @@ export default function PlansScreen() {
   const { user, isAuthenticated } = useAuth();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<TabFilter>('upcoming');
+  const { planId } = useLocalSearchParams<{ planId?: string }>();
+
+  // Auto-switch tab when navigating with a planId deep link
+  useEffect(() => {
+    if (!planId || plans.length === 0) return;
+    const target = plans.find(p => p.id === planId);
+    if (!target) return;
+    if (target.status === 'completed' || target.status === 'cancelled') {
+      setActiveTab('past');
+    } else {
+      setActiveTab('upcoming');
+    }
+  }, [planId, plans]);
 
   const rsvpMutation = useMutation({
     mutationFn: ({ planId, action }: { planId: string; action: 'accept' | 'decline' }) =>

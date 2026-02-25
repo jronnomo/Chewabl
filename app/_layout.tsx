@@ -91,7 +91,7 @@ function NotificationHandler() {
           case "group_swipe_result":
           case "swipe_completed":
           case "plan_reminder":
-            if (data.planId) router.push("/(tabs)/plans" as never);
+            if (data.planId) router.push(`/(tabs)/plans?planId=${data.planId}` as never);
             break;
           case "group_swipe_invite":
             router.push("/group-session" as never);
