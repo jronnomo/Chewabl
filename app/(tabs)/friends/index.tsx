@@ -11,7 +11,7 @@ import {
   Share,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Image } from 'expo-image';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -23,6 +23,7 @@ import {
   Smartphone,
   Link,
   Clock,
+  ArrowLeft,
 } from 'lucide-react-native';
 import * as Contacts from 'expo-contacts';
 import * as Haptics from 'expo-haptics';
@@ -55,10 +56,11 @@ function normalizePhone(raw: string): string | null {
 
 export default function FriendsTabScreen() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const Colors = useColors();
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const params = useLocalSearchParams<{ tab?: string }>();
+  const params = useLocalSearchParams<{ tab?: string; from?: string }>();
 
   const [tab, setTab] = useState<Tab>('friends');
 
@@ -250,7 +252,19 @@ export default function FriendsTabScreen() {
   return (
     <View style={[styles.container, { paddingTop: insets.top, backgroundColor: Colors.background }]}>
       <View style={styles.header}>
-        <Text style={[styles.headerTitle, { color: Colors.text }]}>Friends</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          {params.from === 'notifications' && (
+            <Pressable
+              onPress={() => router.push('/notifications' as never)}
+              style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: Colors.card, borderWidth: 1, borderColor: Colors.border, alignItems: 'center', justifyContent: 'center' }}
+              accessibilityLabel="Back to notifications"
+              accessibilityRole="button"
+            >
+              <ArrowLeft size={18} color={Colors.text} />
+            </Pressable>
+          )}
+          <Text style={[styles.headerTitle, { color: Colors.text }]}>Friends</Text>
+        </View>
       </View>
 
       <View style={[styles.tabRow, { backgroundColor: Colors.card }]}>

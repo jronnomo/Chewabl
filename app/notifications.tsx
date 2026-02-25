@@ -60,19 +60,19 @@ export default function NotificationsScreen() {
         case 'swipe_completed':
         case 'plan_reminder':
           if (notifData?.planId) {
-            router.push(`/(tabs)/plans?planId=${notifData.planId}` as never);
+            router.push(`/(tabs)/plans?planId=${notifData.planId}&from=notifications` as never);
           } else {
-            router.push('/(tabs)/plans' as never);
+            router.push('/(tabs)/plans?from=notifications' as never);
           }
           break;
         case 'group_swipe_invite':
           router.push('/group-session' as never);
           break;
         case 'friend_request':
-          router.push('/(tabs)/friends?tab=requests' as never);
+          router.push('/(tabs)/friends?tab=requests&from=notifications' as never);
           break;
         case 'friend_accepted':
-          router.push('/(tabs)/friends' as never);
+          router.push('/(tabs)/friends?from=notifications' as never);
           break;
         default:
           break;
@@ -156,7 +156,7 @@ export default function NotificationsScreen() {
         ]}
       >
         <Pressable
-          onPress={() => router.back()}
+          onPress={() => router.push('/(tabs)/(home)' as never)}
           style={styles.backBtn}
           accessibilityLabel="Go back"
           accessibilityRole="button"

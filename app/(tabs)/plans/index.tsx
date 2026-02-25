@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { Plus } from 'lucide-react-native';
+import { Plus, ArrowLeft } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import PlanCard from '../../../components/PlanCard';
@@ -33,7 +33,7 @@ export default function PlansScreen() {
   const { user, isAuthenticated } = useAuth();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<TabFilter>('upcoming');
-  const { planId } = useLocalSearchParams<{ planId?: string }>();
+  const { planId, from } = useLocalSearchParams<{ planId?: string; from?: string }>();
 
   // Auto-switch tab when navigating with a planId deep link
   useEffect(() => {
@@ -130,7 +130,19 @@ export default function PlansScreen() {
   return (
     <View style={[styles.container, { paddingTop: insets.top, backgroundColor: Colors.background }]}>
       <View style={styles.header}>
-        <Text style={[styles.headerTitle, { color: Colors.text }]}>My Plans</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          {from === 'notifications' && (
+            <Pressable
+              onPress={() => router.push('/notifications' as never)}
+              style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: Colors.card, borderWidth: 1, borderColor: Colors.border, alignItems: 'center', justifyContent: 'center' }}
+              accessibilityLabel="Back to notifications"
+              accessibilityRole="button"
+            >
+              <ArrowLeft size={18} color={Colors.text} />
+            </Pressable>
+          )}
+          <Text style={[styles.headerTitle, { color: Colors.text }]}>My Plans</Text>
+        </View>
         <Pressable style={styles.addBtn} onPress={handleNewPlan} testID="new-plan-btn" accessibilityLabel="Create new plan" accessibilityRole="button">
           <Plus size={20} color="#FFF" />
         </Pressable>
