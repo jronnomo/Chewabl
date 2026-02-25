@@ -49,6 +49,10 @@ rork-eslint.config.js
 # Maestro E2E tests
 maestro/
 
+.feature-dev/
+feature-dev/
+docs/
+
 # Session handoffs and test reports (generated, not committed)
 session-handoffs/
 test-reports/
