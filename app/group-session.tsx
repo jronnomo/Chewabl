@@ -93,18 +93,31 @@ export default function GroupSessionScreen() {
     };
 
     const plan = activePlan;
+    const myId = user?.id ?? '';
     if (plan?.invites && plan.invites.length > 0) {
       // For group-swipe: all non-declined invitees are members (pending or accepted)
+      // Exclude self from invitees list (already added as meEntry)
       const eligible = plan.type === 'group-swipe'
-        ? plan.invites.filter(i => i.status !== 'declined')
-        : plan.invites.filter(i => i.status === 'accepted');
-      if (eligible.length > 0) {
-        const others: GroupMember[] = eligible.map(inv => ({
-          id: inv.userId,
-          name: inv.name,
-          avatar: inv.avatarUri,
-          completedSwiping: plan.swipesCompleted?.includes(inv.userId) ?? false,
-        }));
+        ? plan.invites.filter(i => i.status !== 'declined' && i.userId !== myId)
+        : plan.invites.filter(i => i.status === 'accepted' && i.userId !== myId);
+      const others: GroupMember[] = eligible.map(inv => ({
+        id: inv.userId,
+        name: inv.name,
+        avatar: inv.avatarUri,
+        completedSwiping: plan.swipesCompleted?.includes(inv.userId) ?? false,
+      }));
+      // If current user is an invitee (not owner), add the owner to the member list
+      const isOwner = plan.ownerId === myId;
+      if (!isOwner && plan.ownerId) {
+        const ownerEntry: GroupMember = {
+          id: plan.ownerId,
+          name: 'Host',
+          avatar: undefined,
+          completedSwiping: plan.swipesCompleted?.includes(plan.ownerId) ?? false,
+        };
+        return [meEntry, ownerEntry, ...others];
+      }
+      if (others.length > 0) {
         return [meEntry, ...others];
       }
     }
