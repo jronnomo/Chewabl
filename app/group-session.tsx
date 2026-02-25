@@ -536,10 +536,15 @@ export default function GroupSessionScreen() {
 
     return (
       <View style={[styles.container, { paddingTop: insets.top, backgroundColor: Colors.background }]}>
-        <View style={styles.swipeHeader}>
+        <View style={styles.swipeTitleRow}>
           <Pressable style={[styles.backBtn, { backgroundColor: Colors.card, borderColor: Colors.border }]} onPress={() => params.autoStart === 'true' ? router.back() : setPhase('lobby')} accessibilityLabel="Go back" accessibilityRole="button">
             <ArrowLeft size={20} color={Colors.text} />
           </Pressable>
+          <Text style={[styles.swipeHeaderTitle, { color: Colors.text }]}>Group Swipe</Text>
+          <View style={{ width: 40 }} />
+        </View>
+
+        <View style={styles.swipeSubHeader}>
           <View style={styles.membersAvatarRow}>
             {members.slice(0, 4).map(m => (
               <Image key={m.id} source={m.avatar || DEFAULT_AVATAR_URI} style={[styles.miniAvatar, { borderColor: Colors.card }]} contentFit="cover" />
@@ -550,12 +555,9 @@ export default function GroupSessionScreen() {
               </View>
             )}
           </View>
-          <View style={styles.swipeHeaderCenter}>
-            <Text style={[styles.swipeHeaderTitle, { color: Colors.text }]}>Group Swipe</Text>
-            <Text style={[styles.swipeCount, { color: Colors.textTertiary }]}>
-              {currentIndex}/{sessionRestaurants.length} restaurants
-            </Text>
-          </View>
+          <Text style={[styles.swipeCount, { color: Colors.textTertiary }]}>
+            {currentIndex}/{sessionRestaurants.length} restaurants
+          </Text>
           {!isSolo && (
             <View style={[styles.friendProgress, { backgroundColor: Colors.success + '18' }]}>
               <Check size={14} color={Colors.success} />
@@ -564,7 +566,6 @@ export default function GroupSessionScreen() {
               </Text>
             </View>
           )}
-          {isSolo && <View style={{ width: 40 }} />}
         </View>
 
         <View style={styles.progressBarContainer}>
@@ -1040,18 +1041,23 @@ const styles = StyleSheet.create({
     fontWeight: '700' as const,
     color: '#FFF',
   },
-  swipeHeader: {
+  swipeTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingVertical: 10,
+    paddingTop: 10,
+    paddingBottom: 4,
   },
-  swipeHeaderCenter: {
+  swipeSubHeader: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingBottom: 8,
   },
   swipeHeaderTitle: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '800' as const,
     color: Colors.text,
   },
