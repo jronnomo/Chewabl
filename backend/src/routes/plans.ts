@@ -275,8 +275,9 @@ router.post('/:id/swipe', requireAuth, async (req: AuthRequest, res: Response): 
       res.status(400).json({ error: 'Plan is not in voting status' }); return;
     }
 
-    // For planned events, reject swipe if RSVP deadline hasn't passed yet (voting not open)
-    if (plan.type === 'planned' && plan.rsvpDeadline && plan.rsvpDeadline.getTime() > Date.now()) {
+    // For planned events, reject swipe if RSVP deadline hasn't passed AND invites are still pending
+    const hasPendingInvites = plan.invites.some(i => i.status === 'pending');
+    if (plan.type === 'planned' && plan.rsvpDeadline && plan.rsvpDeadline.getTime() > Date.now() && hasPendingInvites) {
       res.status(400).json({ error: 'Voting is not yet open. RSVP deadline has not passed.' }); return;
     }
 

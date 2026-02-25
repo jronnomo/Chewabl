@@ -62,7 +62,9 @@ export function derivePlanPhase(plan: DiningPlan): PlanPhase {
   // Planned events: check RSVP deadline
   if (plan.rsvpDeadline) {
     const deadline = new Date(plan.rsvpDeadline);
-    if (deadline.getTime() > Date.now()) {
+    // If all invitees have responded (none pending), skip straight to voting
+    const hasPending = plan.invites?.some(i => i.status === 'pending') ?? false;
+    if (deadline.getTime() > Date.now() && hasPending) {
       return 'rsvp_open';
     }
     return 'voting_open';
