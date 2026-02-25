@@ -1,6 +1,7 @@
 import { useRef, useState, useCallback, useEffect, useMemo } from 'react';
 import {
   Animated,
+  Easing,
   StyleSheet,
   View,
   AccessibilityInfo,
@@ -10,65 +11,132 @@ import Svg, { Defs, Mask, Rect, Circle } from 'react-native-svg';
 import * as Haptics from 'expo-haptics';
 import { useThemeTransition } from '../context/ThemeTransitionContext';
 
-// MODULE-LEVEL static constants (no screen dimensions used here):
-const COLS = 5;
-const ROWS = 10;
-const COMMIT_DELAY = 150;       // ms — time before isDarkMode flips
-const ANIMATION_DURATION = 600; // ms — total cascade duration after commit
+// ─── ANIMATION TIMING ───────────────────────────────────────────────────────
+// 4 discrete *chomp* bites with pauses between them
+const BITE_COUNT = 4;
+const BITE_DURATION = 200;    // ms per bite's grow animation
+const BITE_PAUSE = 120;       // ms pause between bites
+const COMMIT_DELAY = 150;     // ms before isDarkMode flips
 
-// [DA-FIX-5] Haptic row thresholds: 0.5 so row-0 fires after circles are visibly growing
-const HAPTIC_ROWS = [0.5, 4, 8] as const;
+// [DA-FIX-5] Haptic thresholds: fire at the start of each bite
+const HAPTIC_THRESHOLDS = [0.01, 1.01, 2.01, 3.01] as const;
 
-interface CircleSpec {
-  /** Column index, may be -1 or COLS for edge overlap */
-  col: number;
-  /** Row index 0..ROWS-1 */
-  row: number;
-  /** Horizontal center of circle, accounting for brickwork stagger */
-  cx: number;
-  /** Vertical center — sits at TOP EDGE of row band, i.e. row * CELL_HEIGHT */
-  cy: number;
+// ─── DETERMINISTIC PSEUDO-RANDOM ────────────────────────────────────────────
+// Mulberry32 — consistent across renders, good distribution
+function seededRandom(seed: number): number {
+  let t = (seed + 0x6d2b79f5) | 0;
+  t = Math.imul(t ^ (t >>> 15), t | 1);
+  t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
 }
 
-// Pure function at module level — no hooks needed.
-// getCircleRadius accepts maxRadius as a parameter so it stays pure and testable.
-function getCircleRadius(progress: number, row: number, maxRadius: number): number {
-  const r = (progress - row) * maxRadius;
-  return r < 0 ? 0 : r > maxRadius ? maxRadius : r;
+function seededRange(seed: number, min: number, max: number): number {
+  return min + seededRandom(seed) * (max - min);
+}
+
+// ─── TYPES ──────────────────────────────────────────────────────────────────
+interface ScallopCircle {
+  /** Angular position on the bite arc (radians from bite center) */
+  angle: number;
+  /** Radius of this individual scallop circle */
+  radius: number;
+}
+
+interface BiteSpec {
+  /** Bite center X (positioned off one screen edge) */
+  cx: number;
+  /** Bite center Y */
+  cy: number;
+  /** Maximum reach of the bite from center */
+  targetRadius: number;
+  /** Scallop circles along the bite arc — define the organic irregular edge */
+  scallops: ScallopCircle[];
 }
 
 export default function ChompOverlay() {
   // [DA-FIX-4] Dimensions from hook — updates on rotation
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
 
-  // [DA-FIX-4] All dimension-derived constants computed via useMemo — recalculates on rotation
-  const { CIRCLE_RADIUS, circlesSpec } = useMemo(() => {
-    const cellWidth = screenWidth / COLS;
-    const cellHeight = screenHeight / ROWS;
+  // [DA-FIX-4] Bite specs with scalloped perimeters — recalculates on rotation
+  const biteSpecs = useMemo((): BiteSpec[] => {
+    const scallopBaseR = screenWidth * 0.1; // base scallop circle radius
 
-    // [DA-FIX-2] Use Math.max(cellWidth, cellHeight) to handle tall cells.
-    // On most phones cellHeight > cellWidth (e.g., 85.2px vs 78.6px on iPhone 15 Pro).
-    // Without this, the last row leaves a ~34px uncovered strip at the bottom.
-    // Factor 0.65 gives radius = 0.65 * max(cellWidth, cellHeight).
-    const CIRCLE_RADIUS = Math.max(cellWidth, cellHeight) * 0.65;
+    // Generate scallop circles arranged along an arc of a bite
+    function generateScallops(
+      biteIdx: number,
+      targetR: number,
+      arcStart: number,  // start angle (radians)
+      arcEnd: number,    // end angle (radians)
+    ): ScallopCircle[] {
+      // Spacing: 0.7 * diameter = 30% overlap for continuous scalloping
+      const linearSpacing = scallopBaseR * 2 * 0.7;
+      const angularSpacing = linearSpacing / targetR;
 
-    // Pre-compute all circle specs for this screen size
-    // Col range is -1 to COLS (inclusive) to handle brickwork edge overlap:
-    //   col -1: partially off left edge, covers left side of col 0 on odd rows
-    //   col COLS: partially off right edge, covers right side of last col on odd rows
-    const circlesSpec: CircleSpec[] = [];
-    for (let row = 0; row < ROWS; row++) {
-      const xOffset = row % 2 === 1 ? cellWidth / 2 : 0;
-      const cy = row * cellHeight; // circle center at TOP EDGE → upward-facing semicircle
-      for (let col = -1; col <= COLS; col++) {
-        const cx = col * cellWidth + cellWidth / 2 + xOffset;
-        circlesSpec.push({ col, row, cx, cy });
+      const arcRange = arcEnd - arcStart;
+      const count = Math.ceil(Math.abs(arcRange) / angularSpacing) + 1;
+      const scallops: ScallopCircle[] = [];
+
+      // Main scallop circles along the arc
+      for (let j = 0; j < count; j++) {
+        const frac = count > 1 ? j / (count - 1) : 0.5;
+        const baseAngle = arcStart + frac * arcRange;
+        const seed = biteIdx * 1000 + j;
+        const radiusMult = seededRange(seed * 7 + 1, 0.85, 1.25);
+        const jitter = seededRange(seed * 7 + 2, -0.5, 0.5) * angularSpacing * 0.12;
+
+        scallops.push({
+          angle: baseAngle + jitter,
+          radius: scallopBaseR * radiusMult,
+        });
       }
-    }
-    // Result: 10 rows × 7 circles = 70 total CircleSpec entries
 
-    return { CIRCLE_RADIUS, circlesSpec };
+      // Micro-bites between every 3rd pair for cookie crumb texture
+      const mainCount = scallops.length;
+      for (let j = 0; j < mainCount - 1; j += 3) {
+        const seed = biteIdx * 2000 + j;
+        const midAngle = (scallops[j].angle + scallops[j + 1].angle) / 2;
+        scallops.push({
+          angle: midAngle + seededRange(seed, -0.03, 0.03),
+          radius: scallopBaseR * seededRange(seed + 1, 0.35, 0.55),
+        });
+      }
+
+      return scallops;
+    }
+
+    return [
+      // 1. Top-left bite (SMALLER — first tentative bite)
+      {
+        cx: -screenWidth * 0.15,
+        cy: screenHeight * 0.18,
+        targetRadius: screenHeight * 0.42,
+        scallops: generateScallops(0, screenHeight * 0.42, -1.0, 2.0),
+      },
+      // 2. Right bite (medium)
+      {
+        cx: screenWidth * 1.15,
+        cy: screenHeight * 0.38,
+        targetRadius: screenHeight * 0.50,
+        scallops: generateScallops(1, screenHeight * 0.50, 1.5, 4.7),
+      },
+      // 3. Left bite (medium-large)
+      {
+        cx: -screenWidth * 0.1,
+        cy: screenHeight * 0.65,
+        targetRadius: screenHeight * 0.55,
+        scallops: generateScallops(2, screenHeight * 0.55, -1.2, 1.8),
+      },
+      // 4. Bottom-right bite (BIGGEST — final chomp)
+      {
+        cx: screenWidth * 0.65,
+        cy: screenHeight * 1.08,
+        targetRadius: screenHeight * 0.62,
+        scallops: generateScallops(3, screenHeight * 0.62, -3.0, -0.2),
+      },
+    ];
   }, [screenWidth, screenHeight]);
+
+  // ── Component state ────────────────────────────────────────────────────────
 
   // Whether overlay is rendered at all (null-return gate)
   const [visible, setVisible] = useState(false);
@@ -76,15 +144,14 @@ export default function ChompOverlay() {
   // The captured old-theme background color string (e.g. '#F2F0ED')
   const [overlayColor, setOverlayColor] = useState('#F2F0ED');
 
-  // Animated progress: 0.0 = no circles grown, ROWS+0.01 = all rows fully grown
-  // Driven by Animated.timing, listened to via addListener → setProgress
+  // Animated progress: 0 → BITE_COUNT. Each integer step = one bite fully grown.
+  // Driven by Animated.sequence, listened to via addListener → setProgress
   const progressAnim = useRef(new Animated.Value(0)).current;
 
   // React state copy of progressAnim — needed to re-render the SVG
   const [progress, setProgress] = useState(0);
 
-  // Tracks which haptic row thresholds have already fired this animation run
-  // Reset before each animation starts via .clear()
+  // Tracks which haptic thresholds have already fired this animation run
   const hapticFiredRef = useRef<Set<number>>(new Set());
 
   // [DA-FIX-6] Resource refs for cleanup on unmount
@@ -94,23 +161,17 @@ export default function ChompOverlay() {
   // Context
   const { registerOverlayTrigger } = useThemeTransition();
 
-  // Defined INSIDE the component function so it closes over
-  // setVisible, setOverlayColor, progressAnim, setProgress, hapticFiredRef,
-  // CIRCLE_RADIUS (from useMemo), screenWidth, screenHeight
   const trigger = useCallback(
     async (fromBgColor: string, onCommit: () => void, onDone: () => void) => {
-      // [DA-FIX-3] Check reduced motion BEFORE showing overlay.
-      // In v1, setVisible(true) was called first, then the async check resolved —
-      // causing reduced-motion users to see a flash of the old background color.
+      // [DA-FIX-3] Check reduced motion BEFORE showing overlay
       const reducedMotion = await AccessibilityInfo.isReduceMotionEnabled();
       if (reducedMotion) {
-        // No overlay shown — instant commit and done
         onCommit();
         onDone();
         return;
       }
 
-      // 1. Show overlay with old theme color (only reached if motion is allowed)
+      // 1. Show overlay with old theme color
       setOverlayColor(fromBgColor);
       setProgress(0);
       setVisible(true);
@@ -120,7 +181,6 @@ export default function ChompOverlay() {
       commitTimerRef.current = setTimeout(() => {
         commitTimerRef.current = null;
 
-        // Wrap in try/finally to guarantee onDone() always fires even if onCommit throws
         let animationStarted = false;
         try {
           onCommit();
@@ -129,38 +189,45 @@ export default function ChompOverlay() {
           progressAnim.setValue(0);
           hapticFiredRef.current.clear();
 
-          // 4. Attach listener to drive SVG re-renders
+          // 4. Attach listener to drive SVG re-renders + haptics
           // [DA-FIX-6] Store listener ID for cleanup
           const listenerId = progressAnim.addListener(({ value }) => {
             setProgress(value);
-
-            // Fire haptics at row thresholds (each threshold fires at most once)
-            for (const threshold of HAPTIC_ROWS) {
+            for (const threshold of HAPTIC_THRESHOLDS) {
               if (value >= threshold && !hapticFiredRef.current.has(threshold)) {
                 hapticFiredRef.current.add(threshold);
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
               }
             }
           });
           listenerIdRef.current = listenerId;
 
-          // 5. Start the cascade animation
-          // [DA-FIX-7] Animate to ROWS + 0.01 to guarantee the last row reaches
-          // full radius despite floating-point imprecision at the final frame.
+          // 5. Build stepped animation: *chomp* pause *chomp* pause *chomp* pause *chomp*
+          // Total: 4×200 + 3×120 = 1160ms, plus 150ms commit delay = 1310ms
+          const steps: Animated.CompositeAnimation[] = [];
+          for (let i = 0; i < BITE_COUNT; i++) {
+            steps.push(
+              Animated.timing(progressAnim, {
+                toValue: i + 1 + (i === BITE_COUNT - 1 ? 0.01 : 0),
+                duration: BITE_DURATION,
+                easing: Easing.out(Easing.cubic),
+                useNativeDriver: false,
+              })
+            );
+            if (i < BITE_COUNT - 1) {
+              steps.push(Animated.delay(BITE_PAUSE));
+            }
+          }
+
           animationStarted = true;
-          Animated.timing(progressAnim, {
-            toValue: ROWS + 0.01,
-            duration: ANIMATION_DURATION,
-            useNativeDriver: false, // SVG props cannot use native driver
-          }).start(() => {
-            // 6. Animation complete — remove listener, hide overlay, signal done
+          Animated.sequence(steps).start(() => {
+            // 6. Animation complete — cleanup
             progressAnim.removeListener(listenerId);
             listenerIdRef.current = null;
             setVisible(false);
             onDone();
           });
         } finally {
-          // If animation never started (onCommit threw), clean up immediately
           if (!animationStarted) {
             setVisible(false);
             onDone();
@@ -168,33 +235,23 @@ export default function ChompOverlay() {
         }
       }, COMMIT_DELAY);
     },
-    // [DA-FIX-4] CIRCLE_RADIUS is now from useMemo inside the component,
-    // so it is in scope here and does not need to be a dep (it's in the closure).
-    // progressAnim is stable (useRef(...).current); setters are stable.
-    // The async nature of trigger means useCallback is effectively [].
     [], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   // [DA-FIX-1] Ref that always points to the latest trigger function
   const triggerRef = useRef(trigger);
-  // Update on every render — no deps, runs after every render
   useEffect(() => {
     triggerRef.current = trigger;
   });
 
-  // [DA-FIX-1] Register a STABLE WRAPPER once on mount — this wrapper never goes stale
-  // because it always routes through triggerRef.current
+  // [DA-FIX-1] Register a STABLE WRAPPER once on mount
   useEffect(() => {
     registerOverlayTrigger((...args: Parameters<typeof trigger>) => {
       triggerRef.current(...args);
     });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  // Safe: the registered function is a stable wrapper that reads the ref at call time.
-  // Even if trigger is recreated (new useCallback deps), the wrapper still calls the latest version.
 
   // [DA-FIX-6] Clean up timer and listener on component unmount
-  // Currently ChompOverlay lives for app lifetime (returns null, not unmounted).
-  // This cleanup prevents resource leaks if that invariant ever changes.
   useEffect(() => {
     return () => {
       if (commitTimerRef.current !== null) {
@@ -211,27 +268,12 @@ export default function ChompOverlay() {
 
   return (
     <View
-      style={[
-        StyleSheet.absoluteFillObject,
-        { zIndex: 9999 },
-      ]}
+      style={[StyleSheet.absoluteFillObject, { zIndex: 9999 }]}
       pointerEvents="none"
     >
-      {/* [DA-FIX-4] screenWidth/screenHeight from useWindowDimensions() */}
       <Svg width={screenWidth} height={screenHeight}>
         <Defs>
-          {/*
-            Mask ID "chompMask_overlay" — deliberately namespaced to reduce
-            collision risk if another SVG in the tree ever uses a Mask.
-            CONSTRAINT: Only one ChompOverlay instance must exist in the tree
-            at any time (enforced by placement in _layout.tsx root).
-          */}
           <Mask id="chompMask_overlay">
-            {/*
-              SVG mask convention: white = opaque (overlay shows), black = transparent (overlay hidden).
-              White rect makes the entire overlay Rect visible initially.
-              Growing black Circles punch holes, revealing the new theme beneath.
-            */}
             <Rect
               x={0}
               y={0}
@@ -239,18 +281,39 @@ export default function ChompOverlay() {
               height={screenHeight}
               fill="white"
             />
-            {circlesSpec.map((spec, i) => (
-              <Circle
-                key={i}
-                cx={spec.cx}
-                cy={spec.cy}
-                r={getCircleRadius(progress, spec.row, CIRCLE_RADIUS)}
-                fill="black"
-              />
-            ))}
+            {biteSpecs.map((spec, i) => {
+              // Each bite grows when progress passes its index
+              const t = Math.max(0, Math.min(1, progress - i));
+              if (t <= 0) return null;
+
+              const mainR = t * spec.targetRadius;
+              // Fill circle: slightly smaller than scallop arc, fills the body behind the edge
+              const fillR = mainR * 0.95;
+
+              return [
+                // Interior fill — solid body of the bite
+                <Circle
+                  key={`fill-${i}`}
+                  cx={spec.cx}
+                  cy={spec.cy}
+                  r={fillR}
+                  fill="black"
+                />,
+                // Scallop circles along the arc — creates the organic cookie-bite edge
+                // Each scallop's center sits on the mainR arc, radius scales with t
+                ...spec.scallops.map((sc, j) => (
+                  <Circle
+                    key={`sc-${i}-${j}`}
+                    cx={spec.cx + mainR * Math.cos(sc.angle)}
+                    cy={spec.cy + mainR * Math.sin(sc.angle)}
+                    r={t * sc.radius}
+                    fill="black"
+                  />
+                )),
+              ];
+            })}
           </Mask>
         </Defs>
-        {/* The overlay rect — masked by chompMask_overlay, filled with old theme color */}
         <Rect
           x={0}
           y={0}
