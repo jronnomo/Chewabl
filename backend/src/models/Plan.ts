@@ -54,6 +54,7 @@ export interface IPlan extends Document {
   restaurant?: IPlanRestaurant;
   invites: IPlanInvite[];
   rsvpDeadline?: Date;
+  votingOpenedAt?: Date;
   options: string[];
   votes: Record<string, string[]>;
   restaurantOptions: IPlanRestaurantOption[];
@@ -124,6 +125,7 @@ const PlanSchema = new Schema<IPlan>(
     restaurant: { type: PlanRestaurantSchema },
     invites: { type: [PlanInviteSchema], default: [] },
     rsvpDeadline: { type: Date },
+    votingOpenedAt: { type: Date },
     options: { type: [String], default: [] },
     votes: { type: Map, of: [String], default: {} },
     restaurantOptions: { type: [PlanRestaurantOptionSchema], default: [] },

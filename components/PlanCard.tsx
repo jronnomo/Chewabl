@@ -4,6 +4,7 @@ import { Image } from 'expo-image';
 import { CalendarDays, Users, Check, Vote, Clock, X, Pencil } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { DiningPlan } from '../types';
+import { derivePlanPhase } from '../services/plans';
 import StaticColors from '../constants/colors';
 import { DEFAULT_AVATAR_URI } from '../constants/images';
 import { useColors } from '../context/ThemeContext';
@@ -18,7 +19,8 @@ interface PlanCardProps {
   onRestaurantPress?: () => void;
 }
 
-const statusConfigStatic = {
+const statusConfigStatic: Record<string, { label: string; icon: typeof Vote }> = {
+  rsvp: { label: 'RSVP Open', icon: Clock },
   voting: { label: 'Voting', icon: Vote },
   confirmed: { label: 'Restaurant Set', icon: Check },
   completed: { label: 'Completed', icon: Clock },
@@ -27,6 +29,8 @@ const statusConfigStatic = {
 
 function getStatusColors(status: string, Colors: ReturnType<typeof useColors>) {
   switch (status) {
+    case 'rsvp':
+      return { color: Colors.primary, bg: Colors.primaryLight };
     case 'voting':
       return { color: Colors.secondary, bg: Colors.secondaryLight };
     case 'confirmed':
@@ -112,9 +116,13 @@ function PlanCardFooter({ plan }: { plan: DiningPlan }) {
 
 export default React.memo(function PlanCard({ plan, currentUserId, onPress, onEdit, onRestaurantPress }: PlanCardProps) {
   const Colors = useColors();
+  // Derive display status for planned events
+  const phase = derivePlanPhase(plan);
+  const displayStatus = phase === 'rsvp_open' ? 'rsvp' : plan.status;
+  const configStatic = statusConfigStatic[displayStatus] || statusConfigStatic[plan.status];
+  const statusColors = getStatusColors(displayStatus, Colors);
+
   const scaleAnim = useRef(new Animated.Value(1)).current;
-  const configStatic = statusConfigStatic[plan.status];
-  const statusColors = getStatusColors(plan.status, Colors);
   const StatusIcon = configStatic.icon;
 
   const handlePressIn = useCallback(() => {
@@ -175,6 +183,18 @@ export default React.memo(function PlanCard({ plan, currentUserId, onPress, onEd
               </>
             )}
           </View>
+          {displayStatus === 'rsvp' && plan.rsvpDeadline && (
+            <View style={styles.metaRow}>
+              <Clock size={13} color={Colors.primary} />
+              <Text style={[styles.metaText, { color: Colors.primary }]}>
+                {(() => {
+                  const deadline = new Date(plan.rsvpDeadline);
+                  const hoursLeft = Math.max(0, Math.ceil((deadline.getTime() - Date.now()) / (1000 * 60 * 60)));
+                  return hoursLeft > 0 ? `RSVP deadline in ${hoursLeft}h` : 'RSVP deadline passed';
+                })()}
+              </Text>
+            </View>
+          )}
           <View style={styles.metaRow}>
             <Text style={[styles.cuisineTag, { color: Colors.primary, backgroundColor: Colors.primaryLight }]}>{plan.cuisine}</Text>
             <Text style={[styles.budgetTag, { color: Colors.secondary, backgroundColor: Colors.secondaryLight }]}>{plan.budget}</Text>

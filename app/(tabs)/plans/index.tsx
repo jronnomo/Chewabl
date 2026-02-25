@@ -16,7 +16,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import PlanCard from '../../../components/PlanCard';
 import { useApp } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
-import { rsvpPlan } from '../../../services/plans';
+import { rsvpPlan, derivePlanPhase } from '../../../services/plans';
 import { DiningPlan } from '../../../types';
 import StaticColors from '../../../constants/colors';
 import { useColors } from '../../../context/ThemeContext';
@@ -62,6 +62,8 @@ export default function PlansScreen() {
   const handlePlanPress = useCallback((plan: DiningPlan) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
+    const phase = plan.type === 'group-swipe' ? null : derivePlanPhase(plan);
+
     // Check if user has a pending invite on this plan
     if (isAuthenticated && user && plan.invites) {
       const myInvite = plan.invites.find(i => i.userId === user.id && i.status === 'pending');
@@ -86,8 +88,34 @@ export default function PlansScreen() {
       }
     }
 
+    // Phase-aware routing for planned events
+    if (phase === 'rsvp_open') {
+      // Show info about RSVP status
+      const accepted = plan.invites?.filter(i => i.status === 'accepted').length ?? 0;
+      const pending = plan.invites?.filter(i => i.status === 'pending').length ?? 0;
+      const deadline = plan.rsvpDeadline ? new Date(plan.rsvpDeadline) : null;
+      const timeLeft = deadline ? Math.max(0, Math.ceil((deadline.getTime() - Date.now()) / (1000 * 60 * 60))) : 0;
+
+      Alert.alert(
+        plan.title,
+        `Waiting for RSVPs\n\n${accepted} accepted, ${pending} pending\n${timeLeft > 0 ? `${timeLeft}h until deadline` : 'Deadline passed'}\n\nVoting will open after the RSVP deadline.`,
+      );
+      return;
+    }
+
+    if (phase === 'voting_open') {
+      router.push(`/group-session?planId=${plan.id}&autoStart=true` as never);
+      return;
+    }
+
     // Group-swipe plans: voting → swipe, confirmed → show results
     if (plan.type === 'group-swipe' && (plan.status === 'voting' || plan.status === 'confirmed')) {
+      router.push(`/group-session?planId=${plan.id}&autoStart=true` as never);
+      return;
+    }
+
+    // Confirmed planned events → show results
+    if (phase === 'confirmed') {
       router.push(`/group-session?planId=${plan.id}&autoStart=true` as never);
       return;
     }

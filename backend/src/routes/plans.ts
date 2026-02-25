@@ -3,6 +3,7 @@ import { requireAuth, AuthRequest } from '../middleware/auth';
 import Plan from '../models/Plan';
 import User from '../models/User';
 import { createNotification, createNotificationForMany } from '../utils/createNotification';
+import { tallyWinner } from '../utils/tallyVotes';
 
 const router = Router();
 
@@ -21,11 +22,48 @@ router.get('/', requireAuth, async (req: AuthRequest, res: Response): Promise<vo
   }
 });
 
-// F-005-007: Get single plan (removed auto-decline logic)
+// Get single plan with check-on-access auto-decline
 router.get('/:id', requireAuth, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const plan = await Plan.findById(req.params.id);
     if (!plan) { res.status(404).json({ error: 'Plan not found' }); return; }
+
+    // Check-on-access: auto-decline pending invites if RSVP deadline passed
+    if (plan.type === 'planned' && plan.status === 'voting' && plan.rsvpDeadline && plan.rsvpDeadline.getTime() <= Date.now()) {
+      const pendingInvites = plan.invites.filter(i => i.status === 'pending');
+      if (pendingInvites.length > 0) {
+        for (const invite of pendingInvites) {
+          invite.status = 'declined';
+          invite.respondedAt = new Date();
+        }
+        await plan.save();
+
+        // Fire notifications asynchronously (don't block the response)
+        setImmediate(async () => {
+          try {
+            for (const invite of pendingInvites) {
+              await createNotification({
+                userId: invite.userId.toString(),
+                type: 'rsvp_deadline_passed' as any,
+                title: 'RSVP Deadline Passed',
+                body: `You didn't respond to "${plan.title}" in time.`,
+                data: { planId: plan.id },
+              });
+              await createNotification({
+                userId: plan.ownerId.toString(),
+                type: 'rsvp_deadline_missed_organizer' as any,
+                title: 'RSVP Deadline Missed',
+                body: `${invite.name} didn't respond to "${plan.title}" before the deadline.`,
+                data: { planId: plan.id },
+              });
+            }
+          } catch (err) {
+            console.error('Check-on-access notification error:', err);
+          }
+        });
+      }
+    }
+
     res.json(plan);
   } catch {
     res.status(500).json({ error: 'Server error' });
@@ -65,6 +103,11 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response): Promise<v
     }
     if (options && options.length > 20) {
       res.status(400).json({ error: 'Cannot have more than 20 options' }); return;
+    }
+
+    // Require RSVP deadline for planned events
+    if (type !== 'group-swipe' && !rsvpDeadline) {
+      res.status(400).json({ error: 'RSVP deadline is required for planned events' }); return;
     }
 
     const owner = await User.findById(req.userId).select('name avatarUri');
@@ -131,6 +174,12 @@ router.post('/:id/rsvp', requireAuth, async (req: AuthRequest, res: Response): P
     const plan = await Plan.findById(req.params.id);
     if (!plan) { res.status(404).json({ error: 'Plan not found' }); return; }
 
+    // Reject RSVP if deadline has passed for planned events
+    if (plan.type === 'planned' && plan.rsvpDeadline && plan.rsvpDeadline.getTime() <= Date.now()) {
+      res.status(400).json({ error: 'RSVP deadline has passed' });
+      return;
+    }
+
     // F-005-015: Reject RSVP if plan date+time has passed
     // Group-swipe plans have no date — skip the past-plan check
     if (plan.date) {
@@ -189,20 +238,8 @@ router.post('/:id/rsvp', requireAuth, async (req: AuthRequest, res: Response): P
       ];
       const allDone = allParticipantIds.length > 0 && allParticipantIds.every(pid => plan.swipesCompleted.includes(pid));
       if (allDone) {
-        // Tally votes and pick winner
-        const voteCounts: Record<string, number> = {};
-        const votesObj: Record<string, string[]> = plan.votes instanceof Map ? Object.fromEntries(plan.votes) : (plan.votes as Record<string, string[]>);
-        for (const userVotes of Object.values(votesObj)) {
-          for (const rid of userVotes) {
-            voteCounts[rid] = (voteCounts[rid] || 0) + 1;
-          }
-        }
-        const sorted = plan.restaurantOptions
-          .map(r => ({ restaurant: r, count: voteCounts[r.id] || 0 }))
-          .sort((a, b) => b.count - a.count || b.restaurant.rating - a.restaurant.rating);
-
-        if (sorted.length > 0) {
-          const winner = sorted[0].restaurant;
+        const winner = tallyWinner(plan);
+        if (winner) {
           plan.restaurant = {
             id: winner.id,
             name: winner.name,
@@ -236,6 +273,11 @@ router.post('/:id/swipe', requireAuth, async (req: AuthRequest, res: Response): 
     if (!plan) { res.status(404).json({ error: 'Plan not found' }); return; }
     if (plan.status !== 'voting') {
       res.status(400).json({ error: 'Plan is not in voting status' }); return;
+    }
+
+    // For planned events, reject swipe if RSVP deadline hasn't passed yet (voting not open)
+    if (plan.type === 'planned' && plan.rsvpDeadline && plan.rsvpDeadline.getTime() > Date.now()) {
+      res.status(400).json({ error: 'Voting is not yet open. RSVP deadline has not passed.' }); return;
     }
 
     // Check user is owner or invitee (pending or accepted — swiping auto-accepts)
@@ -299,20 +341,8 @@ router.post('/:id/swipe', requireAuth, async (req: AuthRequest, res: Response): 
     const allDone = allParticipantIds.every(pid => plan.swipesCompleted.includes(pid));
 
     if (allDone) {
-      // Tally votes and pick winner
-      const voteCounts: Record<string, number> = {};
-      const votesObj2: Record<string, string[]> = plan.votes instanceof Map ? Object.fromEntries(plan.votes) : (plan.votes as Record<string, string[]>);
-      for (const userVotes of Object.values(votesObj2)) {
-        for (const rid of userVotes) {
-          voteCounts[rid] = (voteCounts[rid] || 0) + 1;
-        }
-      }
-      const sorted = plan.restaurantOptions
-        .map(r => ({ restaurant: r, count: voteCounts[r.id] || 0 }))
-        .sort((a, b) => b.count - a.count || b.restaurant.rating - a.restaurant.rating);
-
-      if (sorted.length > 0) {
-        const winner = sorted[0].restaurant;
+      const winner = tallyWinner(plan);
+      if (winner) {
         plan.restaurant = {
           id: winner.id,
           name: winner.name,
@@ -410,6 +440,23 @@ router.put('/:id/status', requireAuth, async (req: AuthRequest, res: Response): 
     }
 
     plan.status = status;
+
+    // When confirming a voting plan, tally votes and pick winner
+    if (status === 'confirmed' && !plan.restaurant) {
+      const winner = tallyWinner(plan);
+      if (winner) {
+        plan.restaurant = {
+          id: winner.id,
+          name: winner.name,
+          imageUrl: winner.imageUrl,
+          address: winner.address,
+          cuisine: winner.cuisine,
+          priceLevel: winner.priceLevel,
+          rating: winner.rating,
+        };
+      }
+    }
+
     await plan.save();
     res.json(plan);
   } catch {

@@ -8,7 +8,10 @@ export type NotificationType =
   | 'swipe_completed'
   | 'friend_request'
   | 'friend_accepted'
-  | 'plan_reminder';
+  | 'plan_reminder'
+  | 'rsvp_deadline_passed'
+  | 'rsvp_deadline_missed_organizer'
+  | 'voting_open';
 
 export interface INotification extends Document {
   userId: mongoose.Types.ObjectId;
@@ -26,7 +29,7 @@ const NotificationSchema = new Schema<INotification>(
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     type: {
       type: String,
-      enum: ['plan_invite', 'group_swipe_invite', 'rsvp_response', 'group_swipe_result', 'swipe_completed', 'friend_request', 'friend_accepted', 'plan_reminder'],
+      enum: ['plan_invite', 'group_swipe_invite', 'rsvp_response', 'group_swipe_result', 'swipe_completed', 'friend_request', 'friend_accepted', 'plan_reminder', 'rsvp_deadline_passed', 'rsvp_deadline_missed_organizer', 'voting_open'],
       required: true,
     },
     title: { type: String, required: true },

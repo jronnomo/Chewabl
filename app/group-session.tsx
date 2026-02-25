@@ -33,7 +33,7 @@ import SwipeCard from '@/components/SwipeCard';
 import { useApp, useNearbyRestaurants } from '@/context/AppContext';
 import { useAuth } from '@/context/AuthContext';
 import { getFriends } from '@/services/friends';
-import { createPlan, submitSwipes, getPlan } from '@/services/plans';
+import { createPlan, submitSwipes, getPlan, derivePlanPhase } from '@/services/plans';
 import { Restaurant, GroupMember, SwipeResult, Friend, DiningPlan } from '@/types';
 import StaticColors from '@/constants/colors';
 import { DEFAULT_AVATAR_URI } from '@/constants/images';
@@ -117,6 +117,10 @@ export default function GroupSessionScreen() {
   // Determine initial phase based on plan state when entering from My Plans
   const getInitialPhase = (): Phase => {
     if (activePlan) {
+      // For planned events in RSVP phase, show waiting screen
+      if (activePlan.type === 'planned' && derivePlanPhase(activePlan) === 'rsvp_open') {
+        return 'lobby'; // Will render RSVP gate instead of normal lobby
+      }
       if (activePlan.status === 'confirmed') return 'results';
       if (activePlan.swipesCompleted?.includes(user?.id ?? '')) return 'waiting';
       if (params.autoStart === 'true') return 'swiping';
@@ -360,6 +364,55 @@ export default function GroupSessionScreen() {
   const perfectMatches = results.filter(r => r.isMatch);
 
   if (phase === 'lobby') {
+    // RSVP Gate — show when plan is in RSVP phase
+    if (activePlan?.type === 'planned' && derivePlanPhase(activePlan) === 'rsvp_open') {
+      return (
+        <View style={[styles.container, { paddingTop: insets.top, backgroundColor: Colors.background }]}>
+          <Animated.View style={[styles.phaseContent, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
+            <View style={styles.lobbyHeader}>
+              <Pressable style={[styles.backBtn, { backgroundColor: Colors.card, borderColor: Colors.border }]} onPress={() => router.back()} accessibilityLabel="Go back" accessibilityRole="button">
+                <ArrowLeft size={20} color={Colors.text} />
+              </Pressable>
+              <Text style={[styles.lobbyTitle, { color: Colors.text }]}>{activePlan.title}</Text>
+              <View style={{ width: 40 }} />
+            </View>
+
+            <View style={styles.lobbyHero}>
+              <Text style={{ fontSize: 48, textAlign: 'center', marginBottom: 16 }}>{String.fromCodePoint(0x23F3)}</Text>
+              <Text style={[styles.lobbyHeroTitle, { color: Colors.text }]}>Waiting for RSVPs</Text>
+              <Text style={[styles.lobbyHeroSub, { color: Colors.textSecondary, textAlign: 'center', marginTop: 8 }]}>
+                {(() => {
+                  const deadline = activePlan.rsvpDeadline ? new Date(activePlan.rsvpDeadline) : null;
+                  const timeLeft = deadline ? Math.max(0, Math.ceil((deadline.getTime() - Date.now()) / (1000 * 60 * 60))) : 0;
+                  return timeLeft > 0 ? `${timeLeft}h until RSVP deadline` : 'RSVP deadline passed';
+                })()}
+              </Text>
+            </View>
+
+            <View style={[styles.membersList, { backgroundColor: Colors.card }]}>
+              {activePlan.invites?.map(invite => (
+                <View key={invite.userId} style={styles.memberRow}>
+                  <Image source={invite.avatarUri || DEFAULT_AVATAR_URI} style={styles.memberAvatar} contentFit="cover" />
+                  <Text style={[styles.memberName, { color: Colors.text }]}>{invite.name}</Text>
+                  <Text style={[styles.memberStatus, {
+                    color: invite.status === 'accepted' ? Colors.success
+                      : invite.status === 'declined' ? Colors.error
+                      : Colors.textTertiary
+                  }]}>
+                    {invite.status === 'accepted' ? 'Accepted' : invite.status === 'declined' ? 'Declined' : 'Pending'}
+                  </Text>
+                </View>
+              ))}
+            </View>
+
+            <Text style={[{ color: Colors.textSecondary, textAlign: 'center', marginTop: 16, fontSize: 14 }]}>
+              Voting will open after the RSVP deadline passes.
+            </Text>
+          </Animated.View>
+        </View>
+      );
+    }
+
     return (
       <View style={[styles.container, { paddingTop: insets.top, backgroundColor: Colors.background }]}>
         <Animated.View style={[styles.phaseContent, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
@@ -883,6 +936,15 @@ const styles = StyleSheet.create({
     fontWeight: '600' as const,
     color: Colors.text,
     flex: 1,
+  },
+  membersList: {
+    borderRadius: 16,
+    padding: 12,
+    marginHorizontal: 24,
+  },
+  memberStatus: {
+    fontSize: 13,
+    fontWeight: '600' as const,
   },
   hostBadge: {
     flexDirection: 'row',
