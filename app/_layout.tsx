@@ -7,6 +7,8 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { AppProvider } from "@/context/AppContext";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { ThemeProvider } from "@/context/ThemeContext";
+import { ThemeTransitionProvider } from "@/context/ThemeTransitionContext";
+import ChompOverlay from "@/components/ChompOverlay";
 import { configurePushHandler } from "@/services/notifications";
 import Colors from "@/constants/colors";
 
@@ -141,7 +143,10 @@ export default function RootLayout() {
             <SplashGate>
               <AppProvider>
                 <ThemeProvider>
-                  <RootLayoutNav />
+                  <ThemeTransitionProvider>
+                    <RootLayoutNav />
+                    <ChompOverlay />
+                  </ThemeTransitionProvider>
                 </ThemeProvider>
               </AppProvider>
             </SplashGate>

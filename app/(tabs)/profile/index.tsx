@@ -39,6 +39,7 @@ import { api } from '../../../services/api';
 import { requestNotificationPermissions, registerForPushNotifications } from '../../../services/notifications';
 import StaticColors from '../../../constants/colors';
 import { useColors } from '../../../context/ThemeContext';
+import { useThemeTransition } from '../../../context/ThemeTransitionContext';
 
 const Colors = StaticColors;
 
@@ -48,6 +49,7 @@ export default function ProfileScreen() {
   const Colors = useColors();
   const { preferences, updatePreferences, favorites, favoritedRestaurants, setLocalAvatar, localAvatarUri, plans, setGuestMode } = useApp();
   const { user, signOut, isAuthenticated, updateUser } = useAuth();
+  const { requestThemeToggle, isAnimating } = useThemeTransition();
 
   const [avatarLoading, setAvatarLoading] = useState(false);
 
@@ -93,12 +95,14 @@ export default function ProfileScreen() {
   }, [setLocalAvatar, isAuthenticated, updateUser]);
 
   const handleToggleDarkMode = useCallback(() => {
-    Haptics.selectionAsync();
-    updatePreferences.mutate({
-      ...preferences,
-      isDarkMode: !preferences.isDarkMode,
+    const fromBgColor = Colors.background;
+    requestThemeToggle(fromBgColor, () => {
+      updatePreferences.mutate({
+        ...preferences,
+        isDarkMode: !preferences.isDarkMode,
+      });
     });
-  }, [preferences, updatePreferences]);
+  }, [Colors.background, preferences, updatePreferences, requestThemeToggle]);
 
   const handleToggleNotifications = useCallback(async () => {
     Haptics.selectionAsync();
@@ -250,6 +254,7 @@ export default function ProfileScreen() {
                 trackColor={{ false: Colors.border, true: Colors.primary }}
                 thumbColor="#FFF"
                 style={{ marginLeft: 'auto' }}
+                disabled={isAnimating}
               />
             </View>
             <View style={[styles.prefDivider, { backgroundColor: Colors.borderLight }]} />

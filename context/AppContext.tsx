@@ -238,6 +238,12 @@ export const [AppProvider, useApp] = createContextHook(() => {
       }
       return prefs;
     },
+    onMutate: (newPrefs) => {
+      // [DA-FIX-8] Optimistic update: flip local state synchronously before
+      // the async mutationFn completes. This ensures theme changes (isDarkMode)
+      // take effect within the 150ms COMMIT_DELAY window during Chomp animation.
+      setPreferences(newPrefs);
+    },
     onSuccess: (prefs) => {
       setPreferences(prefs);
     },
