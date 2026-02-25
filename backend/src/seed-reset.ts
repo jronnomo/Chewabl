@@ -9,38 +9,38 @@
  *
  * ─── Sign-in credentials ─────────────────────────────────────────
  *   alice@chewabl.dev / seed1234   ← primary test account
- *   jerry@chewabl.dev / seed1234   ← Jerry's account (invite code: CHEWABL)
  *   (all users share password: seed1234)
  *
  * ─── Users (9) ───────────────────────────────────────────────────
  *   Alice Chen       → main user (sign in as this user)
- *   Jerry Ronnau     → accepted friend of Alice, invite code "CHEWABL"
+ *   Jerry Ronnau     → secondary user, Alice's friend
  *   Maya Johnson     → accepted friend of Alice
  *   Liam Rodriguez   → accepted friend of Alice
  *   Sofia Kim        → pending incoming request (Sofia → Alice)
  *   Noah Williams    → pending outgoing request (Alice → Noah)
  *   Zara Patel       → findable via Scan Contacts (Anna Haro's phone)
- *   Marcus Lee       → findable via Scan Contacts (Daniel Higgins' phone)
+ *   Marcus Lee       → findable via Scan Contacts (Daniel Higgins' phone), pending request to Jerry
  *   Olivia Brown     → no connection, not findable via contacts
  *
- * ─── Friendships (7) ────────────────────────────────────────────
- *   Alice ↔ Jerry      (accepted)
+ * ─── Friendships (8) ────────────────────────────────────────────
  *   Alice ↔ Maya       (accepted)
+ *   Alice ↔ Jerry      (accepted)
  *   Alice ↔ Liam       (accepted)
- *   Jerry → Liam       (pending — shows on Liam's Requests as incoming)
  *   Maya  ↔ Liam       (accepted)
- *   Sofia → Alice      (pending — shows on Alice's Requests tab as incoming)
- *   Alice → Noah       (pending — shows on Alice's Requests tab as sent)
+ *   Jerry → Liam       (pending — Jerry sent)
+ *   Marcus → Jerry     (pending — Jerry received)
+ *   Sofia → Alice      (pending — Alice received)
+ *   Alice → Noah       (pending — Alice sent)
  *
  * ─── Plans (9) ───────────────────────────────────────────────────
- *   1. Taco Tuesday       │ voting    │ upcoming │ Alice owns │ Jerry+Maya voted, Liam partial, Alice not yet
+ *   1. Taco Tuesday       │ voting    │ upcoming │ Alice owns │ Maya+Jerry partial, Liam partial, Alice not yet
  *   2. Weekend Brunch      │ voting    │ upcoming │ Alice owns │ Maya+Liam voted, Alice not yet
  *   3. Friday Night Out    │ voting    │ upcoming │ Alice owns │ Alice voted, Maya+Liam not yet
  *   4. Team Lunch          │ voting    │ upcoming │ Maya owns  │ Alice accepted, Liam pending invite
- *   5. Sushi Saturday      │ confirmed │ upcoming │ Alice owns │ all (Alice+Jerry+Maya+Liam) voted, confirmed
- *   6. Birthday Dinner     │ completed │ past     │ Liam owns  │ all voted, completed
+ *   5. Sushi Saturday      │ confirmed │ upcoming │ Alice owns │ all voted, plan confirmed
+ *   6. Birthday Dinner     │ completed │ past     │ Liam owns  │ all voted, completed (Jerry included)
  *   7. Cancelled Meetup    │ cancelled │ past     │ Alice owns │ Maya declined, Liam accepted
- *   8. Group Pick: Thai Garden  │ group-swipe │ confirmed │ Alice owns │ no date/time, Jerry+Maya+Liam
+ *   8. Group Pick: Thai Garden  │ group-swipe │ confirmed │ Alice owns │ no date/time, Maya+Liam
  *   9. Group Pick: Burger Barn  │ group-swipe │ confirmed │ Liam owns  │ no date/time, Alice+Maya
  */
 
@@ -51,6 +51,7 @@ import { nanoid } from 'nanoid';
 import User from './models/User';
 import Friendship from './models/Friendship';
 import Plan from './models/Plan';
+import Notification from './models/Notification';
 
 dotenv.config();
 
@@ -96,12 +97,14 @@ async function seedReset() {
   const userCount = await User.countDocuments();
   const friendCount = await Friendship.countDocuments();
   const planCount = await Plan.countDocuments();
+  const notifCount = await Notification.countDocuments();
 
   await User.deleteMany({});
   await Friendship.deleteMany({});
   await Plan.deleteMany({});
+  await Notification.deleteMany({});
 
-  console.log(`Cleared: ${userCount} users, ${friendCount} friendships, ${planCount} plans\n`);
+  console.log(`Cleared: ${userCount} users, ${friendCount} friendships, ${planCount} plans, ${notifCount} notifications\n`);
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // 2. CREATE USERS
@@ -133,7 +136,7 @@ async function seedReset() {
       email: 'jerry@chewabl.dev',
       phone: '+14155550102',
       passwordHash,
-      inviteCode: 'CHEWABL',
+      inviteCode: nanoid(8).toUpperCase(),
       favorites: [],
       preferences: {
         name: 'Jerry',
@@ -230,14 +233,17 @@ async function seedReset() {
     { requester: sofia._id, recipient: alice._id, status: 'pending' },
     // Pending outgoing: Alice sent request to Noah (Alice sees "Pending" in Requests)
     { requester: alice._id, recipient: noah._id, status: 'pending' },
+    // Pending incoming to Jerry: Marcus sent request to Jerry
+    { requester: marcus._id, recipient: jerry._id, status: 'pending' },
   ]);
 
-  console.log('Created 7 friendships:');
+  console.log('Created 8 friendships:');
   console.log('  Alice ↔ Maya       (accepted)');
   console.log('  Alice ↔ Jerry      (accepted)');
-  console.log('  Jerry → Liam       (pending)');
-  console.log('  Liam  ↔ Alice      (accepted)');
+  console.log('  Alice ↔ Liam       (accepted)');
   console.log('  Maya  ↔ Liam       (accepted)');
+  console.log('  Jerry → Liam       (pending — Jerry sent)');
+  console.log('  Marcus → Jerry     (pending — Jerry received)');
   console.log('  Sofia → Alice      (pending incoming)');
   console.log('  Alice → Noah       (pending outgoing)');
   console.log();
@@ -278,7 +284,7 @@ async function seedReset() {
   plan5Votes.set(aliceId, ['rest_sushi_heaven', 'rest_thai_garden']);
   plan5Votes.set(mayaId, ['rest_sushi_heaven', 'rest_pizza_palace']);
   plan5Votes.set(liamId, ['rest_sushi_heaven', 'rest_burger_barn']);
-  plan5Votes.set(jerryId, ['rest_sushi_heaven', 'rest_thai_garden']);
+  // Jerry not invited to this plan — no vote for him
 
   // ── Plan 6: Birthday Dinner ───────────────────────────────────────────────
   // Status: completed │ Past │ Liam owns │ All voted
@@ -286,6 +292,7 @@ async function seedReset() {
   plan6Votes.set(aliceId, ['rest_tacos_supreme', 'rest_sushi_heaven']);
   plan6Votes.set(mayaId, ['rest_sushi_heaven', 'rest_thai_garden']);
   plan6Votes.set(liamId, ['rest_sushi_heaven', 'rest_pizza_palace']);
+  plan6Votes.set(jerryId, ['rest_sushi_heaven', 'rest_thai_garden']);
 
   await Plan.insertMany([
     // 1. Taco Tuesday — voting, upcoming, Alice owns, mixed votes
@@ -298,8 +305,8 @@ async function seedReset() {
       cuisine: 'Mexican',
       budget: '$$',
       invites: [
-        { userId: jerry._id, name: jerry.name, status: 'accepted', respondedAt: daysAgo(3) },
         { userId: maya._id, name: maya.name, status: 'accepted', respondedAt: daysAgo(2) },
+        { userId: jerry._id, name: jerry.name, status: 'accepted', respondedAt: daysAgo(2) },
         { userId: liam._id, name: liam.name, status: 'accepted', respondedAt: daysAgo(1) },
       ],
       rsvpDeadline: daysFromNow(3),
@@ -365,7 +372,6 @@ async function seedReset() {
       cuisine: 'Japanese',
       budget: '$$$$',
       invites: [
-        { userId: jerry._id, name: jerry.name, status: 'accepted', respondedAt: daysAgo(6) },
         { userId: maya._id, name: maya.name, status: 'accepted', respondedAt: daysAgo(5) },
         { userId: liam._id, name: liam.name, status: 'accepted', respondedAt: daysAgo(4) },
       ],
@@ -384,6 +390,7 @@ async function seedReset() {
       invites: [
         { userId: alice._id, name: alice.name, status: 'accepted', respondedAt: daysAgo(20) },
         { userId: maya._id, name: maya.name, status: 'accepted', respondedAt: daysAgo(18) },
+        { userId: jerry._id, name: jerry.name, status: 'accepted', respondedAt: daysAgo(17) },
       ],
       options: RESTAURANT_OPTIONS,
       votes: plan6Votes,
@@ -413,7 +420,6 @@ async function seedReset() {
       cuisine: 'Thai',
       budget: '$$',
       invites: [
-        { userId: jerry._id, name: jerry.name, status: 'accepted', respondedAt: daysAgo(1) },
         { userId: maya._id, name: maya.name, status: 'accepted', respondedAt: daysAgo(1) },
         { userId: liam._id, name: liam.name, status: 'accepted', respondedAt: daysAgo(1) },
       ],
@@ -439,18 +445,190 @@ async function seedReset() {
 
   console.log('Created 9 plans:');
   console.log('  UPCOMING (voting):');
-  console.log('    1. Taco Tuesday       — Jerry+Maya voted, Liam partial, Alice not yet');
+  console.log('    1. Taco Tuesday       — Maya+Jerry partial, Liam partial, Alice not yet');
   console.log('    2. Weekend Brunch     — Maya+Liam voted, Alice not yet');
   console.log('    3. Friday Night Out   — Alice voted, Maya+Liam not yet');
   console.log('    4. Team Lunch         — Maya owns, Alice guest, Liam pending RSVP');
   console.log('  UPCOMING (confirmed):');
-  console.log('    5. Sushi Saturday     — All (Alice+Jerry+Maya+Liam) voted, confirmed');
+  console.log('    5. Sushi Saturday     — All voted, plan confirmed');
   console.log('  PAST:');
-  console.log('    6. Birthday Dinner    — Completed, Liam owns');
+  console.log('    6. Birthday Dinner    — Completed, Liam owns, Jerry included');
   console.log('    7. Cancelled Meetup   — Cancelled, Alice owns');
   console.log('  GROUP SWIPE (confirmed, no date/time):');
-  console.log('    8. Group Pick: Thai Garden — group swipe, Alice owns, Jerry+Maya+Liam');
+  console.log('    8. Group Pick: Thai Garden — group swipe, Alice owns, Maya+Liam');
   console.log('    9. Group Pick: Burger Barn — group swipe, Liam owns, Alice+Maya');
+  console.log();
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // 5. CREATE NOTIFICATIONS — realistic history for Alice and Jerry
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  /** Return a Date that is `hoursAgo` hours in the past */
+  function hoursAgo(h: number): Date {
+    return new Date(Date.now() - h * 60 * 60 * 1000);
+  }
+
+  await Notification.insertMany([
+    // ── Alice's notifications (mix of read + unread, newest first) ───────
+
+    // Unread — recent
+    {
+      userId: alice._id,
+      type: 'friend_request',
+      title: 'New Friend Request',
+      body: 'Sofia Kim wants to be your friend on Chewabl',
+      data: {},
+      read: false,
+      createdAt: hoursAgo(1),
+    },
+    {
+      userId: alice._id,
+      type: 'swipe_completed',
+      title: 'Swipe Update',
+      body: 'Maya Johnson finished swiping for "Weekend Brunch"',
+      data: {},
+      read: false,
+      createdAt: hoursAgo(3),
+    },
+    {
+      userId: alice._id,
+      type: 'swipe_completed',
+      title: 'Swipe Update',
+      body: 'Liam Rodriguez finished swiping for "Weekend Brunch"',
+      data: {},
+      read: false,
+      createdAt: hoursAgo(4),
+    },
+    {
+      userId: alice._id,
+      type: 'plan_invite',
+      title: 'Dining Plan Invite',
+      body: 'Maya Johnson invited you to "Team Lunch"',
+      data: {},
+      read: false,
+      createdAt: hoursAgo(6),
+    },
+
+    // Read — older
+    {
+      userId: alice._id,
+      type: 'rsvp_response',
+      title: 'RSVP Accepted',
+      body: 'Maya Johnson accepted your invite to "Taco Tuesday"',
+      data: {},
+      read: true,
+      createdAt: hoursAgo(48),
+    },
+    {
+      userId: alice._id,
+      type: 'rsvp_response',
+      title: 'RSVP Accepted',
+      body: 'Jerry Ronnau accepted your invite to "Taco Tuesday"',
+      data: {},
+      read: true,
+      createdAt: hoursAgo(50),
+    },
+    {
+      userId: alice._id,
+      type: 'rsvp_response',
+      title: 'RSVP Accepted',
+      body: 'Liam Rodriguez accepted your invite to "Taco Tuesday"',
+      data: {},
+      read: true,
+      createdAt: hoursAgo(52),
+    },
+    {
+      userId: alice._id,
+      type: 'friend_accepted',
+      title: 'Friend Request Accepted',
+      body: 'Maya Johnson accepted your friend request',
+      data: {},
+      read: true,
+      createdAt: hoursAgo(168), // 1 week ago
+    },
+    {
+      userId: alice._id,
+      type: 'group_swipe_result',
+      title: 'Group Pick Decided!',
+      body: 'The group picked Burger Barn for "Group Pick: Burger Barn"',
+      data: {},
+      read: true,
+      createdAt: hoursAgo(72),
+    },
+    {
+      userId: alice._id,
+      type: 'plan_invite',
+      title: 'Dining Plan Invite',
+      body: 'Liam Rodriguez invited you to "Birthday Dinner"',
+      data: {},
+      read: true,
+      createdAt: hoursAgo(480), // 20 days ago
+    },
+    {
+      userId: alice._id,
+      type: 'rsvp_response',
+      title: 'RSVP Declined',
+      body: 'Maya Johnson declined your invite to "Cancelled Meetup"',
+      data: {},
+      read: true,
+      createdAt: hoursAgo(240), // 10 days ago
+    },
+
+    // ── Jerry's notifications (mix of read + unread) ─────────────────────
+
+    // Unread — recent
+    {
+      userId: jerry._id,
+      type: 'friend_request',
+      title: 'New Friend Request',
+      body: 'Marcus Lee wants to be your friend on Chewabl',
+      data: {},
+      read: false,
+      createdAt: hoursAgo(2),
+    },
+    {
+      userId: jerry._id,
+      type: 'plan_invite',
+      title: 'Dining Plan Invite',
+      body: 'Alice Chen invited you to "Taco Tuesday"',
+      data: {},
+      read: false,
+      createdAt: hoursAgo(5),
+    },
+
+    // Read — older
+    {
+      userId: jerry._id,
+      type: 'friend_accepted',
+      title: 'Friend Request Accepted',
+      body: 'Alice Chen accepted your friend request',
+      data: {},
+      read: true,
+      createdAt: hoursAgo(192), // 8 days ago
+    },
+    {
+      userId: jerry._id,
+      type: 'plan_invite',
+      title: 'Dining Plan Invite',
+      body: 'Liam Rodriguez invited you to "Birthday Dinner"',
+      data: {},
+      read: true,
+      createdAt: hoursAgo(408), // 17 days ago
+    },
+    {
+      userId: jerry._id,
+      type: 'group_swipe_invite',
+      title: 'Group Swipe Started!',
+      body: 'Liam Rodriguez started a group swipe — tap to vote!',
+      data: {},
+      read: true,
+      createdAt: hoursAgo(96), // 4 days ago
+    },
+  ]);
+
+  console.log('Created 16 notifications:');
+  console.log('  Alice: 11 (4 unread, 7 read)');
+  console.log('  Jerry:  5 (2 unread, 3 read)');
   console.log();
 
   // ── Summary ──────────────────────────────────────────────────────────────
@@ -458,13 +636,16 @@ async function seedReset() {
   console.log('  SEED RESET COMPLETE');
   console.log('━'.repeat(50));
   console.log();
-  console.log('  Sign in as Alice: alice@chewabl.dev / seed1234');
-  console.log('  Sign in as Jerry: jerry@chewabl.dev / seed1234  (invite code: CHEWABL)');
+  console.log('  Sign in: alice@chewabl.dev / seed1234');
   console.log();
-  console.log('  Alice\'s Friends tab:');
+  console.log('  Friends tab (Alice):');
   console.log('    Friends:  Jerry Ronnau, Maya Johnson, Liam Rodriguez');
   console.log('    Requests: Sofia Kim (incoming), Noah Williams (sent)');
   console.log('    Add:      Zara Patel, Marcus Lee (via Scan Contacts)');
+  console.log();
+  console.log('  Friends tab (Jerry):');
+  console.log('    Friends:  Alice Chen');
+  console.log('    Requests: Marcus Lee (incoming), Liam Rodriguez (sent)');
   console.log();
   console.log('  Plans tab:');
   console.log('    Upcoming: Taco Tuesday, Weekend Brunch, Friday Night Out,');

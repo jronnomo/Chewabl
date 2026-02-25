@@ -97,8 +97,10 @@ function NotificationHandler() {
             router.push("/group-session" as never);
             break;
           case "friend_request":
+            router.push("/(tabs)/friends?tab=requests" as never);
+            break;
           case "friend_accepted":
-            router.push("/friends" as never);
+            router.push("/(tabs)/friends" as never);
             break;
         }
       }

@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
   Share,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useLocalSearchParams } from 'expo-router';
 import { Image } from 'expo-image';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -57,8 +58,16 @@ export default function FriendsTabScreen() {
   const Colors = useColors();
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const params = useLocalSearchParams<{ tab?: string }>();
 
   const [tab, setTab] = useState<Tab>('friends');
+
+  // Deep link: switch to the requested tab (e.g. ?tab=requests from notifications)
+  useEffect(() => {
+    if (params.tab === 'requests' || params.tab === 'add') {
+      setTab(params.tab);
+    }
+  }, [params.tab]);
   const [inviteCode, setInviteCode] = useState('');
   const [codeResult, setCodeResult] = useState<{ id: string; name: string; avatarUri?: string } | null>(null);
   const [scanLoading, setScanLoading] = useState(false);
