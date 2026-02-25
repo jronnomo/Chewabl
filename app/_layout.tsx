@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Stack } from "expo-router";
+import { Stack, useRouter } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
+import * as Notifications from "expo-notifications";
 import React, { useEffect } from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -72,6 +73,42 @@ const errorStyles = StyleSheet.create({
   },
 });
 
+function NotificationHandler() {
+  const router = useRouter();
+
+  useEffect(() => {
+    const subscription = Notifications.addNotificationResponseReceivedListener(
+      (response) => {
+        const data = response.notification.request.content.data as
+          | Record<string, unknown>
+          | undefined;
+        if (!data?.type) return;
+
+        const type = data.type as string;
+        switch (type) {
+          case "plan_invite":
+          case "rsvp_response":
+          case "group_swipe_result":
+          case "swipe_completed":
+          case "plan_reminder":
+            if (data.planId) router.push("/(tabs)/plans" as never);
+            break;
+          case "group_swipe_invite":
+            router.push("/group-session" as never);
+            break;
+          case "friend_request":
+          case "friend_accepted":
+            router.push("/friends" as never);
+            break;
+        }
+      }
+    );
+    return () => subscription.remove();
+  }, [router]);
+
+  return null;
+}
+
 function RootLayoutNav() {
   return (
     <Stack
@@ -118,6 +155,13 @@ function RootLayoutNav() {
           animation: 'slide_from_bottom',
         }}
       />
+      <Stack.Screen
+        name="notifications"
+        options={{
+          headerShown: false,
+          animation: 'slide_from_right',
+        }}
+      />
     </Stack>
   );
 }
@@ -144,6 +188,7 @@ export default function RootLayout() {
               <AppProvider>
                 <ThemeProvider>
                   <ThemeTransitionProvider>
+                    <NotificationHandler />
                     <RootLayoutNav />
                     <ChompOverlay />
                   </ThemeTransitionProvider>

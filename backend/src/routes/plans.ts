@@ -2,7 +2,7 @@ import { Router, Response } from 'express';
 import { requireAuth, AuthRequest } from '../middleware/auth';
 import Plan from '../models/Plan';
 import User from '../models/User';
-import { sendPushNotification, sendPushToMany } from '../utils/pushNotifications';
+import { createNotification, createNotificationForMany } from '../utils/createNotification';
 
 const router = Router();
 
@@ -72,13 +72,11 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response): Promise<v
 
     const isGroupSwipe = type === 'group-swipe';
     const invites: { userId: string; name: string; avatarUri?: string; status: 'pending' }[] = [];
-    const pushTokens: string[] = [];
 
     if (inviteeIds && inviteeIds.length > 0) {
-      const invitees = await User.find({ _id: { $in: inviteeIds } }).select('name avatarUri pushToken');
+      const invitees = await User.find({ _id: { $in: inviteeIds } }).select('name avatarUri');
       invitees.forEach(u => {
         invites.push({ userId: u.id, name: u.name, avatarUri: u.avatarUri, status: 'pending' });
-        if (u.pushToken) pushTokens.push(u.pushToken);
       });
     }
 
@@ -101,16 +99,17 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response): Promise<v
     });
 
     // Notify invitees
-    if (pushTokens.length > 0) {
-      const notifTitle = isGroupSwipe ? 'Group Swipe Started!' : 'Dining Plan Invite';
-      const notifBody = isGroupSwipe
-        ? `${owner.name} started a group swipe — tap to vote!`
-        : `${owner.name} invited you to "${title}"`;
-      await sendPushToMany(
-        pushTokens,
-        notifTitle,
-        notifBody,
-        { type: isGroupSwipe ? 'group_swipe_invite' : 'plan_invite', planId: plan.id }
+    if (invites.length > 0) {
+      const inviteeUserIds = invites.map(i => i.userId);
+      const notifType = isGroupSwipe ? 'group_swipe_invite' : 'plan_invite';
+      await createNotificationForMany(
+        inviteeUserIds,
+        notifType as any,
+        isGroupSwipe ? 'Group Swipe Started!' : 'Dining Plan Invite',
+        isGroupSwipe
+          ? `${owner.name} started a group swipe — tap to vote!`
+          : `${owner.name} invited you to "${title}"`,
+        { planId: plan.id }
       );
     }
 
@@ -171,17 +170,15 @@ router.post('/:id/rsvp', requireAuth, async (req: AuthRequest, res: Response): P
     invite.respondedAt = new Date();
     await plan.save();
 
-    const [owner, responder] = await Promise.all([
-      User.findById(plan.ownerId).select('pushToken'),
-      User.findById(req.userId).select('name'),
-    ]);
-    if (owner?.pushToken && responder) {
-      await sendPushNotification(
-        owner.pushToken,
-        action === 'accept' ? 'RSVP Accepted' : 'RSVP Declined',
-        `${responder.name} ${action === 'accept' ? 'accepted' : 'declined'} your invite to "${plan.title}"`,
-        { type: 'rsvp_response', planId: plan.id, action }
-      );
+    const responder = await User.findById(req.userId).select('name');
+    if (responder) {
+      await createNotification({
+        userId: plan.ownerId.toString(),
+        type: 'rsvp_response',
+        title: action === 'accept' ? 'RSVP Accepted' : 'RSVP Declined',
+        body: `${responder.name} ${action === 'accept' ? 'accepted' : 'declined'} your invite to "${plan.title}"`,
+        data: { planId: plan.id, action },
+      });
     }
 
     // When an invitee declines a voting group-swipe plan, check if remaining participants are all done
@@ -276,6 +273,24 @@ router.post('/:id/swipe', requireAuth, async (req: AuthRequest, res: Response): 
     }
     plan.swipesCompleted.push(userId);
 
+    // Notify other participants that this user finished swiping
+    const swiper = await User.findById(userId).select('name');
+    if (swiper) {
+      const otherIds = [
+        plan.ownerId.toString(),
+        ...plan.invites.filter(i => i.status !== 'declined').map(i => i.userId.toString()),
+      ].filter(pid => pid !== userId);
+      if (otherIds.length > 0) {
+        await createNotificationForMany(
+          otherIds,
+          'swipe_completed',
+          'Swipe Update',
+          `${swiper.name} finished swiping for "${plan.title}"`,
+          { planId: plan.id }
+        );
+      }
+    }
+
     // Check if all participants have swiped (owner + non-declined invitees)
     const allParticipantIds = [
       plan.ownerId.toString(),
@@ -309,17 +324,15 @@ router.post('/:id/swipe', requireAuth, async (req: AuthRequest, res: Response): 
         };
         plan.status = 'confirmed';
 
-        // Send push notification to all participants
-        const participantUsers = await User.find({ _id: { $in: allParticipantIds } }).select('pushToken');
-        const pushTokens = participantUsers
-          .filter(u => u.pushToken && u.id !== userId)
-          .map(u => u.pushToken!);
-        if (pushTokens.length > 0) {
-          await sendPushToMany(
-            pushTokens,
+        // Notify other participants about the result
+        const otherParticipantIds = allParticipantIds.filter(pid => pid !== userId);
+        if (otherParticipantIds.length > 0) {
+          await createNotificationForMany(
+            otherParticipantIds,
+            'group_swipe_result',
             'Group Pick Decided!',
             `The group picked ${winner.name} for "${plan.title}"`,
-            { type: 'group_swipe_result', planId: plan.id }
+            { planId: plan.id }
           );
         }
       }

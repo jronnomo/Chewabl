@@ -153,3 +153,23 @@ export interface SwipeResult {
   totalMembers: number;
   isMatch: boolean;
 }
+
+export type NotificationType =
+  | 'plan_invite'
+  | 'group_swipe_invite'
+  | 'rsvp_response'
+  | 'group_swipe_result'
+  | 'swipe_completed'
+  | 'friend_request'
+  | 'friend_accepted'
+  | 'plan_reminder';
+
+export interface AppNotification {
+  id: string;
+  type: NotificationType;
+  title: string;
+  body: string;
+  data?: Record<string, unknown>;
+  read: boolean;
+  createdAt: string;
+}

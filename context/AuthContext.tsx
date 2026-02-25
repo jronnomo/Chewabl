@@ -5,6 +5,7 @@ import createContextHook from '@nkzw/create-context-hook';
 import { BackendUser } from '../types';
 import * as authService from '../services/auth';
 import { getToken, clearToken, NetworkError, api } from '../services/api';
+import { registerForPushNotifications } from '../services/notifications';
 
 const CACHED_USER_KEY = 'chewabl_cached_user';
 
@@ -24,6 +25,8 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
             const me = await authService.getMe();
             setUser(me);
             setIsAuthenticated(true);
+            // Re-register push token on app restart when authenticated
+            registerForPushNotifications().catch(() => {});
             // Cache user for offline resilience
             await AsyncStorage.setItem(CACHED_USER_KEY, JSON.stringify(me));
           } catch (err: unknown) {
@@ -33,6 +36,8 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
               if (cached) {
                 setUser(JSON.parse(cached) as BackendUser);
                 setIsAuthenticated(true);
+                // Re-register push token on app restart when authenticated
+                registerForPushNotifications().catch(() => {});
               }
             } else {
               // Likely 401/invalid token — clear it
@@ -53,6 +58,8 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
     const res = await authService.login(email, password);
     setUser(res.user);
     setIsAuthenticated(true);
+    // Register push token (non-blocking)
+    registerForPushNotifications().catch(() => {});
     AsyncStorage.setItem(CACHED_USER_KEY, JSON.stringify(res.user)).catch(() => {});
     return res.user;
   }, []);
@@ -66,6 +73,8 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
     const res = await authService.register(name, email, password, phone);
     setUser(res.user);
     setIsAuthenticated(true);
+    // Register push token (non-blocking)
+    registerForPushNotifications().catch(() => {});
     AsyncStorage.setItem(CACHED_USER_KEY, JSON.stringify(res.user)).catch(() => {});
   }, []);
 

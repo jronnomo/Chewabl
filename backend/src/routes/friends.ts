@@ -3,7 +3,7 @@ import mongoose from 'mongoose';
 import { requireAuth, AuthRequest } from '../middleware/auth';
 import Friendship from '../models/Friendship';
 import User from '../models/User';
-import { sendPushNotification } from '../utils/pushNotifications';
+import { createNotification } from '../utils/createNotification';
 
 const router = Router();
 
@@ -100,17 +100,15 @@ router.post('/request', requireAuth, async (req: AuthRequest, res: Response): Pr
 
     const friendship = await Friendship.create({ requester: req.userId, recipient: userId, status: 'pending' });
 
-    const [requester, recipient] = await Promise.all([
-      User.findById(req.userId).select('name pushToken'),
-      User.findById(userId).select('pushToken'),
-    ]);
-    if (recipient?.pushToken && requester) {
-      await sendPushNotification(
-        recipient.pushToken,
-        'New Friend Request',
-        `${requester.name} wants to be your friend on Chewabl`,
-        { type: 'friend_request', friendshipId: friendship.id }
-      );
+    const requester = await User.findById(req.userId).select('name');
+    if (requester) {
+      await createNotification({
+        userId,
+        type: 'friend_request',
+        title: 'New Friend Request',
+        body: `${requester.name} wants to be your friend on Chewabl`,
+        data: { friendshipId: friendship.id },
+      });
     }
 
     res.status(201).json(friendship);
@@ -130,17 +128,15 @@ router.put('/request/:id', requireAuth, async (req: AuthRequest, res: Response):
     await friendship.save();
 
     if (action === 'accept') {
-      const [requester, recipient] = await Promise.all([
-        User.findById(friendship.requester).select('pushToken'),
-        User.findById(req.userId).select('name'),
-      ]);
-      if (requester?.pushToken && recipient) {
-        await sendPushNotification(
-          requester.pushToken,
-          'Friend Request Accepted',
-          `${recipient.name} accepted your friend request`,
-          { type: 'friend_accepted' }
-        );
+      const recipient = await User.findById(req.userId).select('name');
+      if (recipient) {
+        await createNotification({
+          userId: friendship.requester.toString(),
+          type: 'friend_accepted',
+          title: 'Friend Request Accepted',
+          body: `${recipient.name} accepted your friend request`,
+          data: {},
+        });
       }
     }
 

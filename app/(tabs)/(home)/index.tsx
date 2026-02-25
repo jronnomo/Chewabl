@@ -12,12 +12,13 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, Redirect } from 'expo-router';
-import { Zap, CalendarPlus, Flame, TrendingUp, Sparkles, ChevronRight, Heart, Users, Clock, MapPin } from 'lucide-react-native';
+import { Zap, CalendarPlus, Flame, TrendingUp, Sparkles, ChevronRight, Heart, Users, Clock, MapPin, Bell } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { openSettings } from 'expo-linking';
 import { useApp, useNearbyRestaurants } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
 import RestaurantCard from '../../../components/RestaurantCard';
+import { useUnreadCount } from '../../../hooks/useNotifications';
 import StaticColors from '../../../constants/colors';
 import { useColors } from '../../../context/ThemeContext';
 
@@ -30,6 +31,8 @@ export default function HomeScreen() {
   const { preferences, isOnboarded, isGuest, isLoading, locationPermission, requestLocation } = useApp();
   const { user, isAuthenticated } = useAuth();
   const { data: allRestaurants = [] } = useNearbyRestaurants();
+  const { data: unreadData } = useUnreadCount();
+  const unreadCount = unreadData?.count ?? 0;
 
   const tonightNearYou = allRestaurants.filter(r => r.isOpenNow).slice(0, 5);
   const lastCallDeals = allRestaurants.filter(r => r.lastCallDeal);
@@ -92,8 +95,23 @@ export default function HomeScreen() {
           contentContainerStyle={styles.scrollContent}
         >
           <View style={styles.greeting}>
-            <Text style={[styles.greetingText, { color: Colors.text }]}>Hey {firstName} 👋</Text>
-            <Text style={[styles.greetingSubtext, { color: Colors.textSecondary }]}>Where are we eating?</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.greetingText, { color: Colors.text }]}>Hey {firstName} 👋</Text>
+              <Text style={[styles.greetingSubtext, { color: Colors.textSecondary }]}>Where are we eating?</Text>
+            </View>
+            <Pressable
+              onPress={() => router.push('/notifications' as never)}
+              style={styles.bellBtn}
+              accessibilityLabel={`Notifications${unreadCount > 0 ? `, ${unreadCount} unread` : ''}`}
+              accessibilityRole="button"
+            >
+              <Bell size={24} color={Colors.text} />
+              {unreadCount > 0 && (
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>{unreadCount > 99 ? '99+' : unreadCount}</Text>
+                </View>
+              )}
+            </Pressable>
           </View>
 
           {locationPermission === 'denied' && (
@@ -280,6 +298,9 @@ const styles = StyleSheet.create({
     paddingBottom: 30,
   },
   greeting: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     marginTop: 16,
     marginBottom: 20,
   },
@@ -449,5 +470,26 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     fontStyle: 'italic',
     paddingVertical: 8,
+  },
+  bellBtn: {
+    position: 'relative',
+    padding: 8,
+  },
+  badge: {
+    position: 'absolute',
+    top: 2,
+    right: 2,
+    backgroundColor: '#FF3B30',
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  badgeText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '700',
   },
 });
