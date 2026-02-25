@@ -540,16 +540,21 @@ export default function GroupSessionScreen() {
           <Pressable style={[styles.backBtn, { backgroundColor: Colors.card, borderColor: Colors.border }]} onPress={() => params.autoStart === 'true' ? router.back() : setPhase('lobby')} accessibilityLabel="Go back" accessibilityRole="button">
             <ArrowLeft size={20} color={Colors.text} />
           </Pressable>
+          <View style={styles.membersAvatarRow}>
+            {members.slice(0, 4).map(m => (
+              <Image key={m.id} source={m.avatar || DEFAULT_AVATAR_URI} style={[styles.miniAvatar, { borderColor: Colors.card }]} contentFit="cover" />
+            ))}
+            {members.length > 4 && (
+              <View style={[styles.miniAvatar, { borderColor: Colors.card, backgroundColor: Colors.primaryLight, alignItems: 'center', justifyContent: 'center' }]}>
+                <Text style={{ fontSize: 9, fontWeight: '700', color: Colors.primary }}>+{members.length - 4}</Text>
+              </View>
+            )}
+          </View>
           <View style={styles.swipeHeaderCenter}>
             <Text style={[styles.swipeHeaderTitle, { color: Colors.text }]}>Group Swipe</Text>
-            <View style={styles.membersAvatarRow}>
-              {members.slice(0, 4).map(m => (
-                <Image key={m.id} source={m.avatar || DEFAULT_AVATAR_URI} style={[styles.miniAvatar, { borderColor: Colors.card }]} contentFit="cover" />
-              ))}
-              <Text style={[styles.swipeCount, { color: Colors.textTertiary }]}>
-                {currentIndex}/{sessionRestaurants.length}
-              </Text>
-            </View>
+            <Text style={[styles.swipeCount, { color: Colors.textTertiary }]}>
+              {currentIndex}/{sessionRestaurants.length} restaurants
+            </Text>
           </View>
           {!isSolo && (
             <View style={[styles.friendProgress, { backgroundColor: Colors.success + '18' }]}>
