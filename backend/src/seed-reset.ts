@@ -314,6 +314,7 @@ async function seedReset() {
       votes: plan1Votes,
     },
     // 2. Weekend Brunch — voting, upcoming, Alice owns, friends voted, Alice hasn't
+    //    RSVP deadline already passed → voting phase active
     {
       title: 'Weekend Brunch',
       date: fmt(daysFromNow(10)),
@@ -326,10 +327,13 @@ async function seedReset() {
         { userId: maya._id, name: maya.name, status: 'accepted', respondedAt: daysAgo(3) },
         { userId: liam._id, name: liam.name, status: 'accepted', respondedAt: daysAgo(2) },
       ],
+      rsvpDeadline: daysAgo(1),
+      votingOpenedAt: daysAgo(1),
       options: RESTAURANT_OPTIONS,
       votes: plan2Votes,
     },
     // 3. Friday Night Out — voting, upcoming, Alice owns, Alice voted, friends haven't
+    //    RSVP deadline still open → RSVP phase
     {
       title: 'Friday Night Out',
       date: fmt(daysFromNow(15)),
@@ -342,6 +346,7 @@ async function seedReset() {
         { userId: maya._id, name: maya.name, status: 'accepted', respondedAt: daysAgo(1) },
         { userId: liam._id, name: liam.name, status: 'accepted', respondedAt: daysAgo(1) },
       ],
+      rsvpDeadline: daysFromNow(10),
       options: RESTAURANT_OPTIONS,
       votes: plan3Votes,
     },
@@ -375,6 +380,8 @@ async function seedReset() {
         { userId: maya._id, name: maya.name, status: 'accepted', respondedAt: daysAgo(5) },
         { userId: liam._id, name: liam.name, status: 'accepted', respondedAt: daysAgo(4) },
       ],
+      rsvpDeadline: daysAgo(7),
+      votingOpenedAt: daysAgo(7),
       options: RESTAURANT_OPTIONS,
       votes: plan5Votes,
     },
@@ -392,6 +399,8 @@ async function seedReset() {
         { userId: maya._id, name: maya.name, status: 'accepted', respondedAt: daysAgo(18) },
         { userId: jerry._id, name: jerry.name, status: 'accepted', respondedAt: daysAgo(17) },
       ],
+      rsvpDeadline: daysAgo(21),
+      votingOpenedAt: daysAgo(21),
       options: RESTAURANT_OPTIONS,
       votes: plan6Votes,
     },
@@ -408,6 +417,7 @@ async function seedReset() {
         { userId: maya._id, name: maya.name, status: 'declined', respondedAt: daysAgo(10) },
         { userId: liam._id, name: liam.name, status: 'accepted', respondedAt: daysAgo(9) },
       ],
+      rsvpDeadline: daysAgo(12),
       options: [],
       votes: new Map(),
     },
