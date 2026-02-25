@@ -13,6 +13,7 @@ const basePlan = {
   time: '19:00',
   cuisine: 'Italian',
   budget: '$$',
+  rsvpDeadline: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // 24h from now
 };
 
 describe('POST /plans', () => {
@@ -43,6 +44,23 @@ describe('POST /plans', () => {
     expect(res.body.invites.length).toBe(1);
     expect(res.body.invites[0].status).toBe('pending');
     expect(res.body.invites[0].userId).toBe(bob.userId);
+  });
+
+  it('rejects planned event without rsvpDeadline', async () => {
+    const alice = await createTestUser({ name: 'Alice' });
+    const res = await request(app)
+      .post('/plans')
+      .set(authHeader(alice.token))
+      .send({
+        title: 'No Deadline',
+        date: '2026-03-01',
+        time: '19:00',
+        cuisine: 'Italian',
+        budget: '$$',
+        // No rsvpDeadline
+      });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/RSVP deadline/i);
   });
 });
 

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,14 +9,14 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
-import { Plus } from 'lucide-react-native';
+import { useRouter, useLocalSearchParams } from 'expo-router';
+import { Plus, ArrowLeft } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import PlanCard from '../../../components/PlanCard';
 import { useApp } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
-import { rsvpPlan } from '../../../services/plans';
+import { rsvpPlan, derivePlanPhase } from '../../../services/plans';
 import { DiningPlan } from '../../../types';
 import StaticColors from '../../../constants/colors';
 import { useColors } from '../../../context/ThemeContext';
@@ -33,6 +33,19 @@ export default function PlansScreen() {
   const { user, isAuthenticated } = useAuth();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<TabFilter>('upcoming');
+  const { planId, from } = useLocalSearchParams<{ planId?: string; from?: string }>();
+
+  // Auto-switch tab when navigating with a planId deep link
+  useEffect(() => {
+    if (!planId || plans.length === 0) return;
+    const target = plans.find(p => p.id === planId);
+    if (!target) return;
+    if (target.status === 'completed' || target.status === 'cancelled') {
+      setActiveTab('past');
+    } else {
+      setActiveTab('upcoming');
+    }
+  }, [planId, plans]);
 
   const rsvpMutation = useMutation({
     mutationFn: ({ planId, action }: { planId: string; action: 'accept' | 'decline' }) =>
@@ -48,6 +61,8 @@ export default function PlansScreen() {
 
   const handlePlanPress = useCallback((plan: DiningPlan) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+    const phase = plan.type === 'group-swipe' ? null : derivePlanPhase(plan);
 
     // Check if user has a pending invite on this plan
     if (isAuthenticated && user && plan.invites) {
@@ -73,8 +88,34 @@ export default function PlansScreen() {
       }
     }
 
+    // Phase-aware routing for planned events
+    if (phase === 'rsvp_open') {
+      // Show info about RSVP status
+      const accepted = plan.invites?.filter(i => i.status === 'accepted').length ?? 0;
+      const pending = plan.invites?.filter(i => i.status === 'pending').length ?? 0;
+      const deadline = plan.rsvpDeadline ? new Date(plan.rsvpDeadline) : null;
+      const timeLeft = deadline ? Math.max(0, Math.ceil((deadline.getTime() - Date.now()) / (1000 * 60 * 60))) : 0;
+
+      Alert.alert(
+        plan.title,
+        `Waiting for RSVPs\n\n${accepted} accepted, ${pending} pending\n${timeLeft > 0 ? `${timeLeft}h until deadline` : 'Deadline passed'}\n\nVoting will open after the RSVP deadline.`,
+      );
+      return;
+    }
+
+    if (phase === 'voting_open') {
+      router.push(`/group-session?planId=${plan.id}&autoStart=true` as never);
+      return;
+    }
+
     // Group-swipe plans: voting → swipe, confirmed → show results
     if (plan.type === 'group-swipe' && (plan.status === 'voting' || plan.status === 'confirmed')) {
+      router.push(`/group-session?planId=${plan.id}&autoStart=true` as never);
+      return;
+    }
+
+    // Confirmed planned events → show results
+    if (phase === 'confirmed') {
       router.push(`/group-session?planId=${plan.id}&autoStart=true` as never);
       return;
     }
@@ -117,7 +158,19 @@ export default function PlansScreen() {
   return (
     <View style={[styles.container, { paddingTop: insets.top, backgroundColor: Colors.background }]}>
       <View style={styles.header}>
-        <Text style={[styles.headerTitle, { color: Colors.text }]}>My Plans</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          {from === 'notifications' && (
+            <Pressable
+              onPress={() => router.push('/notifications' as never)}
+              style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: Colors.card, borderWidth: 1, borderColor: Colors.border, alignItems: 'center', justifyContent: 'center' }}
+              accessibilityLabel="Back to notifications"
+              accessibilityRole="button"
+            >
+              <ArrowLeft size={18} color={Colors.text} />
+            </Pressable>
+          )}
+          <Text style={[styles.headerTitle, { color: Colors.text }]}>My Plans</Text>
+        </View>
         <Pressable style={styles.addBtn} onPress={handleNewPlan} testID="new-plan-btn" accessibilityLabel="Create new plan" accessibilityRole="button">
           <Plus size={20} color="#FFF" />
         </Pressable>

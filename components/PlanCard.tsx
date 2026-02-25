@@ -4,6 +4,7 @@ import { Image } from 'expo-image';
 import { CalendarDays, Users, Check, Vote, Clock, X, Pencil } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { DiningPlan } from '../types';
+import { derivePlanPhase } from '../services/plans';
 import StaticColors from '../constants/colors';
 import { DEFAULT_AVATAR_URI } from '../constants/images';
 import { useColors } from '../context/ThemeContext';
@@ -18,7 +19,8 @@ interface PlanCardProps {
   onRestaurantPress?: () => void;
 }
 
-const statusConfigStatic = {
+const statusConfigStatic: Record<string, { label: string; icon: typeof Vote }> = {
+  rsvp: { label: 'RSVP Open', icon: Clock },
   voting: { label: 'Voting', icon: Vote },
   confirmed: { label: 'Restaurant Set', icon: Check },
   completed: { label: 'Completed', icon: Clock },
@@ -27,6 +29,8 @@ const statusConfigStatic = {
 
 function getStatusColors(status: string, Colors: ReturnType<typeof useColors>) {
   switch (status) {
+    case 'rsvp':
+      return { color: Colors.primary, bg: Colors.primaryLight };
     case 'voting':
       return { color: Colors.secondary, bg: Colors.secondaryLight };
     case 'confirmed':
@@ -47,39 +51,46 @@ function PlanCardFooter({ plan }: { plan: DiningPlan }) {
     const accepted = plan.invites.filter(i => i.status === 'accepted').length;
     const pending = plan.invites.filter(i => i.status === 'pending').length;
 
-    // Group-swipe: owner is always "accepted", show total including owner
-    const isGroupSwipe = plan.type === 'group-swipe';
-    const totalMembers = isGroupSwipe ? plan.invites.length + 1 : plan.invites.length;
-    const acceptedCount = isGroupSwipe ? accepted + 1 : accepted;
+    // Always include owner in total — owner is implicitly "accepted"
+    const totalMembers = plan.invites.length + 1;
+    const acceptedCount = accepted + 1;
+
+    // Build avatar list: owner first, then invitees
+    const allAvatars: { key: string; uri?: string; status: string }[] = [
+      { key: `owner-${plan.ownerId ?? 'host'}`, uri: undefined, status: 'accepted' },
+      ...plan.invites.map(inv => ({ key: inv.userId, uri: inv.avatarUri, status: inv.status })),
+    ];
 
     return (
       <View style={[styles.footer, { borderTopColor: Colors.borderLight }]}>
-        <View style={styles.avatarsRow}>
-          {plan.invites.slice(0, 4).map((invite, i) => (
-            <View
-              key={invite.userId}
-              style={[
-                styles.avatarContainer,
-                { borderColor: Colors.card },
-                i > 0 && { marginLeft: -8 },
-                invite.status === 'accepted' && styles.avatarAccepted,
-                invite.status === 'declined' && styles.avatarDeclined,
-              ]}
-            >
-              <Image source={invite.avatarUri || DEFAULT_AVATAR_URI} style={styles.avatar} contentFit="cover" />
-            </View>
-          ))}
-          {plan.invites.length > 4 && (
-            <View style={[styles.avatarContainer, { marginLeft: -8, backgroundColor: Colors.primaryLight }]}>
-              <Text style={[styles.moreText, { color: Colors.primary }]}>+{plan.invites.length - 4}</Text>
-            </View>
-          )}
-        </View>
-        <View style={styles.inviteeInfo}>
-          <Users size={13} color={Colors.textSecondary} />
-          <Text style={[styles.inviteeText, { color: Colors.textSecondary }]}>
-            {acceptedCount}/{totalMembers} accepted{pending > 0 ? ` · ${pending} pending` : ''}
-          </Text>
+        <View style={styles.footerParticipants}>
+          <View style={styles.avatarsRow}>
+            {allAvatars.slice(0, 5).map((av, i) => (
+              <View
+                key={av.key}
+                style={[
+                  styles.avatarContainer,
+                  { borderColor: Colors.card },
+                  i > 0 && { marginLeft: -8 },
+                  av.status === 'accepted' && styles.avatarAccepted,
+                  av.status === 'declined' && styles.avatarDeclined,
+                ]}
+              >
+                <Image source={av.uri || DEFAULT_AVATAR_URI} style={styles.avatar} contentFit="cover" />
+              </View>
+            ))}
+            {allAvatars.length > 5 && (
+              <View style={[styles.avatarContainer, { marginLeft: -8, backgroundColor: Colors.primaryLight }]}>
+                <Text style={[styles.moreText, { color: Colors.primary }]}>+{allAvatars.length - 5}</Text>
+              </View>
+            )}
+          </View>
+          <View style={styles.inviteeInfo}>
+            <Users size={13} color={Colors.textSecondary} />
+            <Text style={[styles.inviteeText, { color: Colors.textSecondary }]}>
+              {acceptedCount}/{totalMembers} accepted{pending > 0 ? ` · ${pending} pending` : ''}
+            </Text>
+          </View>
         </View>
       </View>
     );
@@ -112,9 +123,13 @@ function PlanCardFooter({ plan }: { plan: DiningPlan }) {
 
 export default React.memo(function PlanCard({ plan, currentUserId, onPress, onEdit, onRestaurantPress }: PlanCardProps) {
   const Colors = useColors();
+  // Derive display status for planned events
+  const phase = derivePlanPhase(plan);
+  const displayStatus = phase === 'rsvp_open' ? 'rsvp' : plan.status;
+  const configStatic = statusConfigStatic[displayStatus] || statusConfigStatic[plan.status];
+  const statusColors = getStatusColors(displayStatus, Colors);
+
   const scaleAnim = useRef(new Animated.Value(1)).current;
-  const configStatic = statusConfigStatic[plan.status];
-  const statusColors = getStatusColors(plan.status, Colors);
   const StatusIcon = configStatic.icon;
 
   const handlePressIn = useCallback(() => {
@@ -175,6 +190,18 @@ export default React.memo(function PlanCard({ plan, currentUserId, onPress, onEd
               </>
             )}
           </View>
+          {displayStatus === 'rsvp' && plan.rsvpDeadline && (
+            <View style={styles.metaRow}>
+              <Clock size={13} color={Colors.primary} />
+              <Text style={[styles.metaText, { color: Colors.primary }]}>
+                {(() => {
+                  const deadline = new Date(plan.rsvpDeadline);
+                  const hoursLeft = Math.max(0, Math.ceil((deadline.getTime() - Date.now()) / (1000 * 60 * 60)));
+                  return hoursLeft > 0 ? `RSVP deadline in ${hoursLeft}h` : 'RSVP deadline passed';
+                })()}
+              </Text>
+            </View>
+          )}
           <View style={styles.metaRow}>
             <Text style={[styles.cuisineTag, { color: Colors.primary, backgroundColor: Colors.primaryLight }]}>{plan.cuisine}</Text>
             <Text style={[styles.budgetTag, { color: Colors.secondary, backgroundColor: Colors.secondaryLight }]}>{plan.budget}</Text>
@@ -317,13 +344,14 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   footer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
     marginTop: 14,
     paddingTop: 12,
     borderTopWidth: 1,
     borderTopColor: Colors.borderLight,
+  },
+  footerParticipants: {
+    alignItems: 'flex-start',
+    gap: 6,
   },
   avatarsRow: {
     flexDirection: 'row',

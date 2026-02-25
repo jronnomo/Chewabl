@@ -18,7 +18,7 @@ import { Image } from 'expo-image';
 import { X, CalendarDays, Clock, MapPin, UtensilsCrossed, DollarSign, Users, Sparkles, UserCheck, Timer } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useQuery } from '@tanstack/react-query';
-import { useApp } from '../context/AppContext';
+import { useApp, useNearbyRestaurants } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { CUISINES, BUDGET_OPTIONS, restaurants } from '../mocks/restaurants';
 import { getRegisteredRestaurant } from '../lib/restaurantRegistry';
@@ -62,6 +62,7 @@ export default function PlanEventScreen() {
   const Colors = useColors();
   const { addPlan, plans } = useApp();
   const { isAuthenticated } = useAuth();
+  const { data: nearbyRestaurants = [] } = useNearbyRestaurants();
   const { restaurantId, planId } = useLocalSearchParams<{ restaurantId?: string; planId?: string }>();
 
   const existingPlan = planId ? plans.find(p => p.id === planId) : undefined;
@@ -85,7 +86,7 @@ export default function PlanEventScreen() {
   const [selectedFriendIds, setSelectedFriendIds] = useState<string[]>(
     existingPlan?.invites?.map(i => i.userId) ?? []
   );
-  const [rsvpHours, setRsvpHours] = useState<number | null>(null);
+  const [rsvpHours, setRsvpHours] = useState<number>(24);
   const [loading, setLoading] = useState(false);
   const isEditMode = !!existingPlan;
 
@@ -152,18 +153,20 @@ export default function PlanEventScreen() {
         : selectedCuisines.length > 0 ? selectedCuisines.join(', ') : 'Any';
       const effectiveBudget = pinnedRestaurant ? '$'.repeat(pinnedRestaurant.priceLevel) : selectedBudget;
 
+      // Use Google Places results if available, otherwise fall back to mock data
+      const restaurantPool = nearbyRestaurants.length > 0 ? nearbyRestaurants : restaurants;
       const suggestedOptions = pinnedRestaurant
         ? [pinnedRestaurant]
-        : restaurants
+        : restaurantPool
             .filter(r => {
               const matchesCuisine = selectedCuisines.length === 0 || selectedCuisines.includes(r.cuisine);
               const matchesBudget = '$'.repeat(r.priceLevel) === selectedBudget;
               return matchesCuisine || matchesBudget;
             })
-            .slice(0, 3);
+            .slice(0, 10);
 
       let rsvpDeadline: string | undefined;
-      if (rsvpHours !== null) {
+      if (rsvpHours) {
         const dl = new Date();
         dl.setHours(dl.getHours() + rsvpHours);
         rsvpDeadline = dl.toISOString();
@@ -190,6 +193,7 @@ export default function PlanEventScreen() {
           inviteeIds: selectedFriendIds,
           rsvpDeadline,
           options: suggestedOptions.map(r => r.id),
+          restaurantOptions: suggestedOptions,
         };
         let plan: DiningPlan;
         if (isEditMode && existingPlan) {
@@ -239,14 +243,8 @@ export default function PlanEventScreen() {
       } else {
         Alert.alert(
           'Plan Created!',
-          'Start a Group Swipe session now?',
-          [
-            { text: 'Later', onPress: () => router.back() },
-            {
-              text: 'Start Swipe',
-              onPress: () => router.replace(`/group-session?planId=${resultPlanId}&curveball=${allowCurveball}&autoStart=true` as never),
-            },
-          ]
+          'Invites sent! Voting will open after your RSVP deadline.',
+          [{ text: 'OK', onPress: () => router.back() }]
         );
       }
     } catch (err: unknown) {
@@ -440,12 +438,6 @@ export default function PlanEventScreen() {
               <Text style={[styles.label, { color: Colors.text }]}>RSVP Deadline</Text>
             </View>
               <View style={styles.chipRow}>
-                <Pressable
-                  style={[styles.timeChip, { backgroundColor: Colors.card, borderColor: Colors.border }, rsvpHours === null && [styles.chipActive, { backgroundColor: Colors.primary, borderColor: Colors.primary }]]}
-                  onPress={() => { Haptics.selectionAsync(); setRsvpHours(null); }}
-                >
-                  <Text style={[styles.timeChipText, { color: Colors.text }, rsvpHours === null && styles.chipTextActive]}>None</Text>
-                </Pressable>
                 {RSVP_DEADLINE_OPTIONS.map(opt => (
                   <Pressable
                     key={opt.hours}

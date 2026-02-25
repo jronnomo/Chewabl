@@ -5,6 +5,7 @@ import authRoutes from './routes/auth';
 import userRoutes from './routes/users';
 import friendRoutes from './routes/friends';
 import planRoutes from './routes/plans';
+import notificationRoutes from './routes/notifications';
 import uploadRoutes from './routes/uploads';
 
 dotenv.config();
@@ -20,6 +21,7 @@ app.use('/auth', authRoutes);
 app.use('/users', userRoutes);
 app.use('/friends', friendRoutes);
 app.use('/plans', planRoutes);
+app.use('/notifications', notificationRoutes);
 app.use('/uploads', uploadRoutes);
 app.get('/health', (_req, res) => res.json({ ok: true }));
 

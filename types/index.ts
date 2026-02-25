@@ -46,6 +46,7 @@ export interface DiningPlan {
   /** Backend-driven invites with RSVP status */
   invites?: PlanInvite[];
   rsvpDeadline?: string;
+  votingOpenedAt?: string;
   ownerId?: string;
   options: Restaurant[];
   votes: Record<string, string[]>;
@@ -53,6 +54,8 @@ export interface DiningPlan {
   swipesCompleted?: string[];
   createdAt: string;
 }
+
+export type PlanPhase = 'rsvp_open' | 'voting_open' | 'confirmed' | 'completed' | 'cancelled';
 
 export interface Invitee {
   id: string;
@@ -152,4 +155,27 @@ export interface SwipeResult {
   yesCount: number;
   totalMembers: number;
   isMatch: boolean;
+}
+
+export type NotificationType =
+  | 'plan_invite'
+  | 'group_swipe_invite'
+  | 'rsvp_response'
+  | 'group_swipe_result'
+  | 'swipe_completed'
+  | 'friend_request'
+  | 'friend_accepted'
+  | 'plan_reminder'
+  | 'rsvp_deadline_passed'
+  | 'rsvp_deadline_missed_organizer'
+  | 'voting_open';
+
+export interface AppNotification {
+  id: string;
+  type: NotificationType;
+  title: string;
+  body: string;
+  data?: Record<string, unknown>;
+  read: boolean;
+  createdAt: string;
 }

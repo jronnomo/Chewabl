@@ -1,5 +1,5 @@
 import { api } from './api';
-import { DiningPlan, Restaurant } from '../types';
+import { DiningPlan, PlanPhase, Restaurant } from '../types';
 
 export interface CreatePlanInput {
   type?: 'planned' | 'group-swipe';
@@ -44,4 +44,32 @@ export async function submitSwipes(
   votes: string[]
 ): Promise<DiningPlan> {
   return api.post<DiningPlan>(`/plans/${planId}/swipe`, { votes });
+}
+
+/**
+ * Derive the current phase of a plan based on its type, status, and RSVP deadline.
+ * This is computed (not stored) so it's always up-to-date.
+ */
+export function derivePlanPhase(plan: DiningPlan): PlanPhase {
+  // Terminal states pass through
+  if (plan.status === 'confirmed') return 'confirmed';
+  if (plan.status === 'completed') return 'completed';
+  if (plan.status === 'cancelled') return 'cancelled';
+
+  // Group-swipe plans don't have RSVP phases
+  if (plan.type === 'group-swipe') return 'voting_open';
+
+  // Planned events: check RSVP deadline
+  if (plan.rsvpDeadline) {
+    const deadline = new Date(plan.rsvpDeadline);
+    // If all invitees have responded (none pending), skip straight to voting
+    const hasPending = plan.invites?.some(i => i.status === 'pending') ?? false;
+    if (deadline.getTime() > Date.now() && hasPending) {
+      return 'rsvp_open';
+    }
+    return 'voting_open';
+  }
+
+  // No deadline set — treat as voting open
+  return 'voting_open';
 }

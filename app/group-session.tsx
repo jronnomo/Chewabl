@@ -33,7 +33,7 @@ import SwipeCard from '@/components/SwipeCard';
 import { useApp, useNearbyRestaurants } from '@/context/AppContext';
 import { useAuth } from '@/context/AuthContext';
 import { getFriends } from '@/services/friends';
-import { createPlan, submitSwipes, getPlan } from '@/services/plans';
+import { createPlan, submitSwipes, getPlan, derivePlanPhase } from '@/services/plans';
 import { Restaurant, GroupMember, SwipeResult, Friend, DiningPlan } from '@/types';
 import StaticColors from '@/constants/colors';
 import { DEFAULT_AVATAR_URI } from '@/constants/images';
@@ -93,18 +93,31 @@ export default function GroupSessionScreen() {
     };
 
     const plan = activePlan;
+    const myId = user?.id ?? '';
     if (plan?.invites && plan.invites.length > 0) {
       // For group-swipe: all non-declined invitees are members (pending or accepted)
+      // Exclude self from invitees list (already added as meEntry)
       const eligible = plan.type === 'group-swipe'
-        ? plan.invites.filter(i => i.status !== 'declined')
-        : plan.invites.filter(i => i.status === 'accepted');
-      if (eligible.length > 0) {
-        const others: GroupMember[] = eligible.map(inv => ({
-          id: inv.userId,
-          name: inv.name,
-          avatar: inv.avatarUri,
-          completedSwiping: plan.swipesCompleted?.includes(inv.userId) ?? false,
-        }));
+        ? plan.invites.filter(i => i.status !== 'declined' && i.userId !== myId)
+        : plan.invites.filter(i => i.status === 'accepted' && i.userId !== myId);
+      const others: GroupMember[] = eligible.map(inv => ({
+        id: inv.userId,
+        name: inv.name,
+        avatar: inv.avatarUri,
+        completedSwiping: plan.swipesCompleted?.includes(inv.userId) ?? false,
+      }));
+      // If current user is an invitee (not owner), add the owner to the member list
+      const isOwner = plan.ownerId === myId;
+      if (!isOwner && plan.ownerId) {
+        const ownerEntry: GroupMember = {
+          id: plan.ownerId,
+          name: 'Host',
+          avatar: undefined,
+          completedSwiping: plan.swipesCompleted?.includes(plan.ownerId) ?? false,
+        };
+        return [meEntry, ownerEntry, ...others];
+      }
+      if (others.length > 0) {
         return [meEntry, ...others];
       }
     }
@@ -117,6 +130,10 @@ export default function GroupSessionScreen() {
   // Determine initial phase based on plan state when entering from My Plans
   const getInitialPhase = (): Phase => {
     if (activePlan) {
+      // For planned events in RSVP phase, show waiting screen
+      if (activePlan.type === 'planned' && derivePlanPhase(activePlan) === 'rsvp_open') {
+        return 'lobby'; // Will render RSVP gate instead of normal lobby
+      }
       if (activePlan.status === 'confirmed') return 'results';
       if (activePlan.swipesCompleted?.includes(user?.id ?? '')) return 'waiting';
       if (params.autoStart === 'true') return 'swiping';
@@ -360,6 +377,55 @@ export default function GroupSessionScreen() {
   const perfectMatches = results.filter(r => r.isMatch);
 
   if (phase === 'lobby') {
+    // RSVP Gate — show when plan is in RSVP phase
+    if (activePlan?.type === 'planned' && derivePlanPhase(activePlan) === 'rsvp_open') {
+      return (
+        <View style={[styles.container, { paddingTop: insets.top, backgroundColor: Colors.background }]}>
+          <Animated.View style={[styles.phaseContent, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
+            <View style={styles.lobbyHeader}>
+              <Pressable style={[styles.backBtn, { backgroundColor: Colors.card, borderColor: Colors.border }]} onPress={() => router.back()} accessibilityLabel="Go back" accessibilityRole="button">
+                <ArrowLeft size={20} color={Colors.text} />
+              </Pressable>
+              <Text style={[styles.lobbyTitle, { color: Colors.text }]}>{activePlan.title}</Text>
+              <View style={{ width: 40 }} />
+            </View>
+
+            <View style={styles.lobbyHero}>
+              <Text style={{ fontSize: 48, textAlign: 'center', marginBottom: 16 }}>{String.fromCodePoint(0x23F3)}</Text>
+              <Text style={[styles.lobbyHeroTitle, { color: Colors.text }]}>Waiting for RSVPs</Text>
+              <Text style={[styles.lobbyHeroSub, { color: Colors.textSecondary, textAlign: 'center', marginTop: 8 }]}>
+                {(() => {
+                  const deadline = activePlan.rsvpDeadline ? new Date(activePlan.rsvpDeadline) : null;
+                  const timeLeft = deadline ? Math.max(0, Math.ceil((deadline.getTime() - Date.now()) / (1000 * 60 * 60))) : 0;
+                  return timeLeft > 0 ? `${timeLeft}h until RSVP deadline` : 'RSVP deadline passed';
+                })()}
+              </Text>
+            </View>
+
+            <View style={[styles.membersList, { backgroundColor: Colors.card }]}>
+              {activePlan.invites?.map(invite => (
+                <View key={invite.userId} style={styles.memberRow}>
+                  <Image source={invite.avatarUri || DEFAULT_AVATAR_URI} style={styles.memberAvatar} contentFit="cover" />
+                  <Text style={[styles.memberName, { color: Colors.text }]}>{invite.name}</Text>
+                  <Text style={[styles.memberStatus, {
+                    color: invite.status === 'accepted' ? Colors.success
+                      : invite.status === 'declined' ? Colors.error
+                      : Colors.textTertiary
+                  }]}>
+                    {invite.status === 'accepted' ? 'Accepted' : invite.status === 'declined' ? 'Declined' : 'Pending'}
+                  </Text>
+                </View>
+              ))}
+            </View>
+
+            <Text style={[{ color: Colors.textSecondary, textAlign: 'center', marginTop: 16, fontSize: 14 }]}>
+              Voting will open after the RSVP deadline passes.
+            </Text>
+          </Animated.View>
+        </View>
+      );
+    }
+
     return (
       <View style={[styles.container, { paddingTop: insets.top, backgroundColor: Colors.background }]}>
         <Animated.View style={[styles.phaseContent, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
@@ -470,21 +536,28 @@ export default function GroupSessionScreen() {
 
     return (
       <View style={[styles.container, { paddingTop: insets.top, backgroundColor: Colors.background }]}>
-        <View style={styles.swipeHeader}>
+        <View style={styles.swipeTitleRow}>
           <Pressable style={[styles.backBtn, { backgroundColor: Colors.card, borderColor: Colors.border }]} onPress={() => params.autoStart === 'true' ? router.back() : setPhase('lobby')} accessibilityLabel="Go back" accessibilityRole="button">
             <ArrowLeft size={20} color={Colors.text} />
           </Pressable>
-          <View style={styles.swipeHeaderCenter}>
-            <Text style={[styles.swipeHeaderTitle, { color: Colors.text }]}>Group Swipe</Text>
-            <View style={styles.membersAvatarRow}>
-              {members.slice(0, 4).map(m => (
-                <Image key={m.id} source={m.avatar || DEFAULT_AVATAR_URI} style={[styles.miniAvatar, { borderColor: Colors.card }]} contentFit="cover" />
-              ))}
-              <Text style={[styles.swipeCount, { color: Colors.textTertiary }]}>
-                {currentIndex}/{sessionRestaurants.length}
-              </Text>
-            </View>
+          <Text style={[styles.swipeHeaderTitle, { color: Colors.text }]}>Group Swipe</Text>
+          <View style={{ width: 40 }} />
+        </View>
+
+        <View style={styles.swipeSubHeader}>
+          <View style={styles.membersAvatarRow}>
+            {members.slice(0, 4).map(m => (
+              <Image key={m.id} source={m.avatar || DEFAULT_AVATAR_URI} style={[styles.miniAvatar, { borderColor: Colors.card }]} contentFit="cover" />
+            ))}
+            {members.length > 4 && (
+              <View style={[styles.miniAvatar, { borderColor: Colors.card, backgroundColor: Colors.primaryLight, alignItems: 'center', justifyContent: 'center' }]}>
+                <Text style={{ fontSize: 9, fontWeight: '700', color: Colors.primary }}>+{members.length - 4}</Text>
+              </View>
+            )}
           </View>
+          <Text style={[styles.swipeCount, { color: Colors.textTertiary }]}>
+            {currentIndex}/{sessionRestaurants.length} restaurants
+          </Text>
           {!isSolo && (
             <View style={[styles.friendProgress, { backgroundColor: Colors.success + '18' }]}>
               <Check size={14} color={Colors.success} />
@@ -493,7 +566,6 @@ export default function GroupSessionScreen() {
               </Text>
             </View>
           )}
-          {isSolo && <View style={{ width: 40 }} />}
         </View>
 
         <View style={styles.progressBarContainer}>
@@ -884,6 +956,15 @@ const styles = StyleSheet.create({
     color: Colors.text,
     flex: 1,
   },
+  membersList: {
+    borderRadius: 16,
+    padding: 12,
+    marginHorizontal: 24,
+  },
+  memberStatus: {
+    fontSize: 13,
+    fontWeight: '600' as const,
+  },
   hostBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -960,18 +1041,23 @@ const styles = StyleSheet.create({
     fontWeight: '700' as const,
     color: '#FFF',
   },
-  swipeHeader: {
+  swipeTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingVertical: 10,
+    paddingTop: 10,
+    paddingBottom: 4,
   },
-  swipeHeaderCenter: {
+  swipeSubHeader: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingBottom: 8,
   },
   swipeHeaderTitle: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '800' as const,
     color: Colors.text,
   },

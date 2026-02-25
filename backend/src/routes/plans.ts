@@ -2,7 +2,8 @@ import { Router, Response } from 'express';
 import { requireAuth, AuthRequest } from '../middleware/auth';
 import Plan from '../models/Plan';
 import User from '../models/User';
-import { sendPushNotification, sendPushToMany } from '../utils/pushNotifications';
+import { createNotification, createNotificationForMany } from '../utils/createNotification';
+import { tallyWinner } from '../utils/tallyVotes';
 
 const router = Router();
 
@@ -21,11 +22,48 @@ router.get('/', requireAuth, async (req: AuthRequest, res: Response): Promise<vo
   }
 });
 
-// F-005-007: Get single plan (removed auto-decline logic)
+// Get single plan with check-on-access auto-decline
 router.get('/:id', requireAuth, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const plan = await Plan.findById(req.params.id);
     if (!plan) { res.status(404).json({ error: 'Plan not found' }); return; }
+
+    // Check-on-access: auto-decline pending invites if RSVP deadline passed
+    if (plan.type === 'planned' && plan.status === 'voting' && plan.rsvpDeadline && plan.rsvpDeadline.getTime() <= Date.now()) {
+      const pendingInvites = plan.invites.filter(i => i.status === 'pending');
+      if (pendingInvites.length > 0) {
+        for (const invite of pendingInvites) {
+          invite.status = 'declined';
+          invite.respondedAt = new Date();
+        }
+        await plan.save();
+
+        // Fire notifications asynchronously (don't block the response)
+        setImmediate(async () => {
+          try {
+            for (const invite of pendingInvites) {
+              await createNotification({
+                userId: invite.userId.toString(),
+                type: 'rsvp_deadline_passed' as any,
+                title: 'RSVP Deadline Passed',
+                body: `You didn't respond to "${plan.title}" in time.`,
+                data: { planId: plan.id },
+              });
+              await createNotification({
+                userId: plan.ownerId.toString(),
+                type: 'rsvp_deadline_missed_organizer' as any,
+                title: 'RSVP Deadline Missed',
+                body: `${invite.name} didn't respond to "${plan.title}" before the deadline.`,
+                data: { planId: plan.id },
+              });
+            }
+          } catch (err) {
+            console.error('Check-on-access notification error:', err);
+          }
+        });
+      }
+    }
+
     res.json(plan);
   } catch {
     res.status(500).json({ error: 'Server error' });
@@ -67,18 +105,21 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response): Promise<v
       res.status(400).json({ error: 'Cannot have more than 20 options' }); return;
     }
 
+    // Require RSVP deadline for planned events
+    if (type !== 'group-swipe' && !rsvpDeadline) {
+      res.status(400).json({ error: 'RSVP deadline is required for planned events' }); return;
+    }
+
     const owner = await User.findById(req.userId).select('name avatarUri');
     if (!owner) { res.status(404).json({ error: 'User not found' }); return; }
 
     const isGroupSwipe = type === 'group-swipe';
     const invites: { userId: string; name: string; avatarUri?: string; status: 'pending' }[] = [];
-    const pushTokens: string[] = [];
 
     if (inviteeIds && inviteeIds.length > 0) {
-      const invitees = await User.find({ _id: { $in: inviteeIds } }).select('name avatarUri pushToken');
+      const invitees = await User.find({ _id: { $in: inviteeIds } }).select('name avatarUri');
       invitees.forEach(u => {
         invites.push({ userId: u.id, name: u.name, avatarUri: u.avatarUri, status: 'pending' });
-        if (u.pushToken) pushTokens.push(u.pushToken);
       });
     }
 
@@ -101,16 +142,17 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response): Promise<v
     });
 
     // Notify invitees
-    if (pushTokens.length > 0) {
-      const notifTitle = isGroupSwipe ? 'Group Swipe Started!' : 'Dining Plan Invite';
-      const notifBody = isGroupSwipe
-        ? `${owner.name} started a group swipe — tap to vote!`
-        : `${owner.name} invited you to "${title}"`;
-      await sendPushToMany(
-        pushTokens,
-        notifTitle,
-        notifBody,
-        { type: isGroupSwipe ? 'group_swipe_invite' : 'plan_invite', planId: plan.id }
+    if (invites.length > 0) {
+      const inviteeUserIds = invites.map(i => i.userId);
+      const notifType = isGroupSwipe ? 'group_swipe_invite' : 'plan_invite';
+      await createNotificationForMany(
+        inviteeUserIds,
+        notifType as any,
+        isGroupSwipe ? 'Group Swipe Started!' : 'Dining Plan Invite',
+        isGroupSwipe
+          ? `${owner.name} started a group swipe — tap to vote!`
+          : `${owner.name} invited you to "${title}"`,
+        { planId: plan.id }
       );
     }
 
@@ -131,6 +173,12 @@ router.post('/:id/rsvp', requireAuth, async (req: AuthRequest, res: Response): P
     const { action } = req.body as { action: 'accept' | 'decline' };
     const plan = await Plan.findById(req.params.id);
     if (!plan) { res.status(404).json({ error: 'Plan not found' }); return; }
+
+    // Reject RSVP if deadline has passed for planned events
+    if (plan.type === 'planned' && plan.rsvpDeadline && plan.rsvpDeadline.getTime() <= Date.now()) {
+      res.status(400).json({ error: 'RSVP deadline has passed' });
+      return;
+    }
 
     // F-005-015: Reject RSVP if plan date+time has passed
     // Group-swipe plans have no date — skip the past-plan check
@@ -171,17 +219,15 @@ router.post('/:id/rsvp', requireAuth, async (req: AuthRequest, res: Response): P
     invite.respondedAt = new Date();
     await plan.save();
 
-    const [owner, responder] = await Promise.all([
-      User.findById(plan.ownerId).select('pushToken'),
-      User.findById(req.userId).select('name'),
-    ]);
-    if (owner?.pushToken && responder) {
-      await sendPushNotification(
-        owner.pushToken,
-        action === 'accept' ? 'RSVP Accepted' : 'RSVP Declined',
-        `${responder.name} ${action === 'accept' ? 'accepted' : 'declined'} your invite to "${plan.title}"`,
-        { type: 'rsvp_response', planId: plan.id, action }
-      );
+    const responder = await User.findById(req.userId).select('name');
+    if (responder) {
+      await createNotification({
+        userId: plan.ownerId.toString(),
+        type: 'rsvp_response',
+        title: action === 'accept' ? 'RSVP Accepted' : 'RSVP Declined',
+        body: `${responder.name} ${action === 'accept' ? 'accepted' : 'declined'} your invite to "${plan.title}"`,
+        data: { planId: plan.id, action },
+      });
     }
 
     // When an invitee declines a voting group-swipe plan, check if remaining participants are all done
@@ -192,20 +238,8 @@ router.post('/:id/rsvp', requireAuth, async (req: AuthRequest, res: Response): P
       ];
       const allDone = allParticipantIds.length > 0 && allParticipantIds.every(pid => plan.swipesCompleted.includes(pid));
       if (allDone) {
-        // Tally votes and pick winner
-        const voteCounts: Record<string, number> = {};
-        const votesObj: Record<string, string[]> = plan.votes instanceof Map ? Object.fromEntries(plan.votes) : (plan.votes as Record<string, string[]>);
-        for (const userVotes of Object.values(votesObj)) {
-          for (const rid of userVotes) {
-            voteCounts[rid] = (voteCounts[rid] || 0) + 1;
-          }
-        }
-        const sorted = plan.restaurantOptions
-          .map(r => ({ restaurant: r, count: voteCounts[r.id] || 0 }))
-          .sort((a, b) => b.count - a.count || b.restaurant.rating - a.restaurant.rating);
-
-        if (sorted.length > 0) {
-          const winner = sorted[0].restaurant;
+        const winner = tallyWinner(plan);
+        if (winner) {
           plan.restaurant = {
             id: winner.id,
             name: winner.name,
@@ -239,6 +273,12 @@ router.post('/:id/swipe', requireAuth, async (req: AuthRequest, res: Response): 
     if (!plan) { res.status(404).json({ error: 'Plan not found' }); return; }
     if (plan.status !== 'voting') {
       res.status(400).json({ error: 'Plan is not in voting status' }); return;
+    }
+
+    // For planned events, reject swipe if RSVP deadline hasn't passed AND invites are still pending
+    const hasPendingInvites = plan.invites.some(i => i.status === 'pending');
+    if (plan.type === 'planned' && plan.rsvpDeadline && plan.rsvpDeadline.getTime() > Date.now() && hasPendingInvites) {
+      res.status(400).json({ error: 'Voting is not yet open. RSVP deadline has not passed.' }); return;
     }
 
     // Check user is owner or invitee (pending or accepted — swiping auto-accepts)
@@ -276,6 +316,24 @@ router.post('/:id/swipe', requireAuth, async (req: AuthRequest, res: Response): 
     }
     plan.swipesCompleted.push(userId);
 
+    // Notify other participants that this user finished swiping
+    const swiper = await User.findById(userId).select('name');
+    if (swiper) {
+      const otherIds = [
+        plan.ownerId.toString(),
+        ...plan.invites.filter(i => i.status !== 'declined').map(i => i.userId.toString()),
+      ].filter(pid => pid !== userId);
+      if (otherIds.length > 0) {
+        await createNotificationForMany(
+          otherIds,
+          'swipe_completed',
+          'Swipe Update',
+          `${swiper.name} finished swiping for "${plan.title}"`,
+          { planId: plan.id }
+        );
+      }
+    }
+
     // Check if all participants have swiped (owner + non-declined invitees)
     const allParticipantIds = [
       plan.ownerId.toString(),
@@ -284,20 +342,8 @@ router.post('/:id/swipe', requireAuth, async (req: AuthRequest, res: Response): 
     const allDone = allParticipantIds.every(pid => plan.swipesCompleted.includes(pid));
 
     if (allDone) {
-      // Tally votes and pick winner
-      const voteCounts: Record<string, number> = {};
-      const votesObj2: Record<string, string[]> = plan.votes instanceof Map ? Object.fromEntries(plan.votes) : (plan.votes as Record<string, string[]>);
-      for (const userVotes of Object.values(votesObj2)) {
-        for (const rid of userVotes) {
-          voteCounts[rid] = (voteCounts[rid] || 0) + 1;
-        }
-      }
-      const sorted = plan.restaurantOptions
-        .map(r => ({ restaurant: r, count: voteCounts[r.id] || 0 }))
-        .sort((a, b) => b.count - a.count || b.restaurant.rating - a.restaurant.rating);
-
-      if (sorted.length > 0) {
-        const winner = sorted[0].restaurant;
+      const winner = tallyWinner(plan);
+      if (winner) {
         plan.restaurant = {
           id: winner.id,
           name: winner.name,
@@ -309,17 +355,15 @@ router.post('/:id/swipe', requireAuth, async (req: AuthRequest, res: Response): 
         };
         plan.status = 'confirmed';
 
-        // Send push notification to all participants
-        const participantUsers = await User.find({ _id: { $in: allParticipantIds } }).select('pushToken');
-        const pushTokens = participantUsers
-          .filter(u => u.pushToken && u.id !== userId)
-          .map(u => u.pushToken!);
-        if (pushTokens.length > 0) {
-          await sendPushToMany(
-            pushTokens,
+        // Notify other participants about the result
+        const otherParticipantIds = allParticipantIds.filter(pid => pid !== userId);
+        if (otherParticipantIds.length > 0) {
+          await createNotificationForMany(
+            otherParticipantIds,
+            'group_swipe_result',
             'Group Pick Decided!',
             `The group picked ${winner.name} for "${plan.title}"`,
-            { type: 'group_swipe_result', planId: plan.id }
+            { planId: plan.id }
           );
         }
       }
@@ -397,6 +441,23 @@ router.put('/:id/status', requireAuth, async (req: AuthRequest, res: Response): 
     }
 
     plan.status = status;
+
+    // When confirming a voting plan, tally votes and pick winner
+    if (status === 'confirmed' && !plan.restaurant) {
+      const winner = tallyWinner(plan);
+      if (winner) {
+        plan.restaurant = {
+          id: winner.id,
+          name: winner.name,
+          imageUrl: winner.imageUrl,
+          address: winner.address,
+          cuisine: winner.cuisine,
+          priceLevel: winner.priceLevel,
+          rating: winner.rating,
+        };
+      }
+    }
+
     await plan.save();
     res.json(plan);
   } catch {
