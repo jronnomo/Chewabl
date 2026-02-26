@@ -210,7 +210,8 @@ export function buildSearchNearbyParams(
     atmosphere: string;
     distance: string;
   },
-  location: Coords
+  location: Coords,
+  maxResultCount?: number
 ): SearchNearbyParams {
   const radiusMiles = parseFloat(preferences.distance) || 5;
   const radiusMeters = Math.round(radiusMiles * 1609.34);
@@ -232,6 +233,6 @@ export function buildSearchNearbyParams(
     includedTypes: includedTypes.length > 0 ? includedTypes : undefined,
     priceLevels: priceLevels.length > 0 ? priceLevels : undefined,
     minRating,
-    maxResultCount: 20,
+    maxResultCount: maxResultCount ?? 10,
   };
 }

@@ -49,9 +49,11 @@ export interface DiningPlan {
   votingOpenedAt?: string;
   ownerId?: string;
   ownerName?: string;
+  ownerAvatarUri?: string;
   options: Restaurant[];
   votes: Record<string, string[]>;
   restaurantOptions?: Restaurant[];
+  restaurantCount?: number;
   swipesCompleted?: string[];
   createdAt: string;
 }

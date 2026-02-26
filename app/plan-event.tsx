@@ -19,6 +19,7 @@ import { X, CalendarDays, Clock, MapPin, UtensilsCrossed, DollarSign, Users, Spa
 import * as Haptics from 'expo-haptics';
 import { useQuery } from '@tanstack/react-query';
 import { useApp, useNearbyRestaurants } from '../context/AppContext';
+import RestaurantCountSlider from '../components/RestaurantCountSlider';
 import { useAuth } from '../context/AuthContext';
 import { CUISINES, BUDGET_OPTIONS, restaurants } from '../mocks/restaurants';
 import { getRegisteredRestaurant } from '../lib/restaurantRegistry';
@@ -87,6 +88,7 @@ export default function PlanEventScreen() {
     existingPlan?.invites?.map(i => i.userId) ?? []
   );
   const [rsvpHours, setRsvpHours] = useState<number>(24);
+  const [restaurantCount, setRestaurantCount] = useState<number>(10);
   const [loading, setLoading] = useState(false);
   const isEditMode = !!existingPlan;
 
@@ -163,7 +165,7 @@ export default function PlanEventScreen() {
               const matchesBudget = '$'.repeat(r.priceLevel) === selectedBudget;
               return matchesCuisine || matchesBudget;
             })
-            .slice(0, 10);
+            .slice(0, restaurantCount);
 
       let rsvpDeadline: string | undefined;
       if (rsvpHours) {
@@ -194,6 +196,7 @@ export default function PlanEventScreen() {
           rsvpDeadline,
           options: suggestedOptions.map(r => r.id),
           restaurantOptions: suggestedOptions,
+          restaurantCount,
         };
         let plan: DiningPlan;
         if (isEditMode && existingPlan) {
@@ -254,7 +257,7 @@ export default function PlanEventScreen() {
       submittingRef.current = false;
       setLoading(false);
     }
-  }, [title, selectedDate, selectedTime, selectedCuisines, selectedBudget, selectedFriendIds, rsvpHours, isAuthenticated, isEditMode, existingPlan, addPlan, router, allowCurveball, pinnedRestaurant]);
+  }, [title, selectedDate, selectedTime, selectedCuisines, selectedBudget, selectedFriendIds, rsvpHours, restaurantCount, isAuthenticated, isEditMode, existingPlan, addPlan, router, allowCurveball, pinnedRestaurant]);
 
   return (
     <KeyboardAvoidingView
@@ -384,6 +387,10 @@ export default function PlanEventScreen() {
                     </Pressable>
                   ))}
                 </View>
+              </View>
+
+              <View style={styles.inputGroup}>
+                <RestaurantCountSlider value={restaurantCount} onValueChange={setRestaurantCount} />
               </View>
 
               <View style={styles.inputGroup}>
