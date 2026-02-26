@@ -57,7 +57,7 @@ function PlanCardFooter({ plan }: { plan: DiningPlan }) {
 
     // Build avatar list: owner first, then invitees
     const allAvatars: { key: string; uri?: string; status: string }[] = [
-      { key: `owner-${plan.ownerId ?? 'host'}`, uri: undefined, status: 'accepted' },
+      { key: `owner-${plan.ownerId ?? 'host'}`, uri: plan.ownerAvatarUri, status: 'accepted' },
       ...plan.invites.map(inv => ({ key: inv.userId, uri: inv.avatarUri, status: inv.status })),
     ];
 
@@ -167,7 +167,7 @@ export default React.memo(function PlanCard({ plan, currentUserId, onPress, onEd
                 <StatusIcon size={11} color={statusColors.color} />
                 <Text style={[styles.statusText, { color: statusColors.color }]}>{configStatic.label}</Text>
               </View>
-              {onEdit && (
+              {onEdit && plan.status !== 'completed' && plan.status !== 'cancelled' && (
                 <Pressable
                   style={[styles.editBtn, { backgroundColor: Colors.surfaceElevated }]}
                   onPress={e => { e.stopPropagation?.(); onEdit(); }}
