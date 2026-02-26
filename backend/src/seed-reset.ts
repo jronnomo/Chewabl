@@ -32,7 +32,7 @@
  *   Sofia → Alice      (pending — Alice received)
  *   Alice → Noah       (pending — Alice sent)
  *
- * ─── Plans (9) ───────────────────────────────────────────────────
+ * ─── Plans (10) ──────────────────────────────────────────────────
  *   1. Taco Tuesday       │ voting    │ upcoming │ Alice owns │ Maya+Jerry partial, Liam partial, Alice not yet
  *   2. Weekend Brunch      │ voting    │ upcoming │ Alice owns │ Maya+Liam voted, Alice not yet
  *   3. Friday Night Out    │ voting    │ upcoming │ Alice owns │ Alice voted, Maya+Liam not yet
@@ -42,6 +42,7 @@
  *   7. Cancelled Meetup    │ cancelled │ past     │ Alice owns │ Maya declined, Liam accepted
  *   8. Group Pick: Thai Garden  │ group-swipe │ confirmed │ Alice owns │ no date/time, Maya+Liam
  *   9. Group Pick: Burger Barn  │ group-swipe │ confirmed │ Liam owns  │ no date/time, Alice+Maya
+ *  10. Last Call Sushi     │ group-swipe │ voting  │ Alice owns │ Jerry last to swipe
  */
 
 import mongoose from 'mongoose';
@@ -303,6 +304,15 @@ async function seedReset() {
   plan6Votes.set(liamId, ['rest_sushi_heaven', 'rest_pizza_palace']);
   plan6Votes.set(jerryId, ['rest_sushi_heaven', 'rest_thai_garden']);
 
+  // ── Plan 10: Last Call Sushi ─────────────────────────────────────────────
+  // Status: voting │ group-swipe │ Alice owns
+  // Alice, Maya, Liam: finished swiping │ Jerry: hasn't swiped (he's last!)
+  // Sushi Heaven is the common vote — will be confirmed when Jerry swipes
+  const plan10Votes = new Map<string, string[]>();
+  plan10Votes.set(aliceId, ['rest_sushi_heaven', 'rest_thai_garden']);
+  plan10Votes.set(mayaId, ['rest_sushi_heaven', 'rest_pizza_palace']);
+  plan10Votes.set(liamId, ['rest_sushi_heaven', 'rest_burger_barn']);
+
   const seededPlans = await Plan.insertMany([
     // 1. Taco Tuesday — voting, upcoming, Alice owns, mixed votes
     {
@@ -466,11 +476,29 @@ async function seedReset() {
       options: [],
       votes: new Map(),
     },
+    // 10. Last Call Sushi — group-swipe, voting, Alice owns, Jerry is last to swipe
+    {
+      type: 'group-swipe',
+      title: 'Last Call Sushi',
+      ownerId: alice._id,
+      status: 'voting',
+      cuisine: 'Japanese',
+      budget: '$$$',
+      invites: [
+        { userId: maya._id, name: maya.name, status: 'accepted', respondedAt: daysAgo(1) },
+        { userId: liam._id, name: liam.name, status: 'accepted', respondedAt: daysAgo(1) },
+        { userId: jerry._id, name: jerry.name, status: 'accepted', respondedAt: daysAgo(1) },
+      ],
+      swipesCompleted: [aliceId, mayaId, liamId],
+      options: RESTAURANT_OPTIONS,
+      restaurantOptions: RESTAURANT_OPTION_OBJECTS,
+      votes: plan10Votes,
+    },
   ]);
 
   const [planTaco, planBrunch, planFriday, planTeamLunch, planSushi, planBirthday, planCancelled, planThaiGroup, planBurgerGroup] = seededPlans;
 
-  console.log('Created 9 plans:');
+  console.log('Created 10 plans:');
   console.log('  UPCOMING (voting):');
   console.log('    1. Taco Tuesday       — Maya+Jerry partial, Liam partial, Alice not yet');
   console.log('    2. Weekend Brunch     — Maya+Liam voted, Alice not yet');
@@ -484,6 +512,8 @@ async function seedReset() {
   console.log('  GROUP SWIPE (confirmed, no date/time):');
   console.log('    8. Group Pick: Thai Garden — group swipe, Alice owns, Maya+Liam');
   console.log('    9. Group Pick: Burger Barn — group swipe, Liam owns, Alice+Maya');
+  console.log('  GROUP SWIPE (voting, Jerry last to swipe):');
+  console.log('   10. Last Call Sushi    — group swipe, Alice owns, Jerry hasn\'t swiped');
   console.log();
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -678,7 +708,8 @@ async function seedReset() {
   console.log('    Upcoming: Taco Tuesday, Weekend Brunch, Friday Night Out,');
   console.log('              Team Lunch (guest), Sushi Saturday (confirmed),');
   console.log('              Group Pick: Thai Garden (group-swipe),');
-  console.log('              Group Pick: Burger Barn (group-swipe, Liam owns)');
+  console.log('              Group Pick: Burger Barn (group-swipe, Liam owns),');
+  console.log('              Last Call Sushi (group-swipe, Jerry last to swipe)');
   console.log('    Past:     Birthday Dinner (completed), Cancelled Meetup');
   console.log();
   console.log('  Scan Contacts matches (iOS Simulator):');

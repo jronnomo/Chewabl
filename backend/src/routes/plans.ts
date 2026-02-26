@@ -16,7 +16,14 @@ router.get('/', requireAuth, async (req: AuthRequest, res: Response): Promise<vo
         { 'invites.userId': req.userId },
       ],
     }).sort({ createdAt: -1 });
-    res.json(plans);
+
+    // Attach ownerName to each plan
+    const ownerIds = [...new Set(plans.map(p => p.ownerId.toString()))];
+    const owners = await User.find({ _id: { $in: ownerIds } }, 'name').lean();
+    const ownerMap = new Map(owners.map(o => [o._id.toString(), o.name]));
+    const enriched = plans.map(p => ({ ...p.toJSON(), ownerName: ownerMap.get(p.ownerId.toString()) }));
+
+    res.json(enriched);
   } catch {
     res.status(500).json({ error: 'Server error' });
   }
@@ -64,7 +71,8 @@ router.get('/:id', requireAuth, async (req: AuthRequest, res: Response): Promise
       }
     }
 
-    res.json(plan);
+    const owner = await User.findById(plan.ownerId, 'name').lean();
+    res.json({ ...plan.toJSON(), ownerName: owner?.name });
   } catch {
     res.status(500).json({ error: 'Server error' });
   }
@@ -160,7 +168,7 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response): Promise<v
     // The previous setTimeout-based approach is unreliable (lost on restart).
     // TODO: Implement with a job scheduler when infrastructure supports it.
 
-    res.status(201).json(plan);
+    res.status(201).json({ ...plan.toJSON(), ownerName: owner.name });
   } catch (err) {
     console.error('POST /plans error:', err);
     res.status(500).json({ error: 'Server error' });
@@ -370,7 +378,8 @@ router.post('/:id/swipe', requireAuth, async (req: AuthRequest, res: Response): 
     }
 
     await plan.save();
-    res.json(plan);
+    const swipeOwner = await User.findById(plan.ownerId, 'name').lean();
+    res.json({ ...plan.toJSON(), ownerName: swipeOwner?.name });
   } catch (err) {
     console.error('POST /plans/:id/swipe error:', err);
     res.status(500).json({ error: 'Server error' });
@@ -407,7 +416,8 @@ router.put('/:id', requireAuth, async (req: AuthRequest, res: Response): Promise
     if (restaurant !== undefined) plan.restaurant = restaurant || undefined;
 
     await plan.save();
-    res.json(plan);
+    const putOwner = await User.findById(plan.ownerId, 'name').lean();
+    res.json({ ...plan.toJSON(), ownerName: putOwner?.name });
   } catch {
     res.status(500).json({ error: 'Server error' });
   }
@@ -459,7 +469,8 @@ router.put('/:id/status', requireAuth, async (req: AuthRequest, res: Response): 
     }
 
     await plan.save();
-    res.json(plan);
+    const statusOwner = await User.findById(plan.ownerId, 'name').lean();
+    res.json({ ...plan.toJSON(), ownerName: statusOwner?.name });
   } catch {
     res.status(500).json({ error: 'Server error' });
   }
