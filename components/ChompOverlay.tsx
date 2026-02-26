@@ -13,13 +13,13 @@ import { useThemeTransition } from '../context/ThemeTransitionContext';
 
 // ─── ANIMATION TIMING ───────────────────────────────────────────────────────
 // 4 discrete *chomp* bites with pauses between them
-const BITE_COUNT = 4;
+const BITE_COUNT = 5;
 const BITE_DURATION = 200;    // ms per bite's grow animation
 const BITE_PAUSE = 120;       // ms pause between bites
 const COMMIT_DELAY = 150;     // ms before isDarkMode flips
 
 // [DA-FIX-5] Haptic thresholds: fire at the start of each bite
-const HAPTIC_THRESHOLDS = [0.01, 1.01, 2.01, 3.01] as const;
+const HAPTIC_THRESHOLDS = [0.01, 1.01, 2.01, 3.01, 4.01] as const;
 
 // ─── DETERMINISTIC PSEUDO-RANDOM ────────────────────────────────────────────
 // Mulberry32 — consistent across renders, good distribution
@@ -105,33 +105,40 @@ export default function ChompOverlay() {
     }
 
     return [
-      // 1. Top-left bite (SMALLER — first tentative bite)
+      // 1. Top-left bite (small — first tentative nibble)
       {
         cx: -screenWidth * 0.15,
         cy: screenHeight * 0.18,
-        targetRadius: screenHeight * 0.42,
-        scallops: generateScallops(0, screenHeight * 0.42, -1.0, 2.0),
+        targetRadius: screenHeight * 0.30,
+        scallops: generateScallops(0, screenHeight * 0.30, -1.0, 2.0),
       },
-      // 2. Right bite (medium)
+      // 2. Right bite (small-medium)
       {
         cx: screenWidth * 1.15,
         cy: screenHeight * 0.38,
-        targetRadius: screenHeight * 0.50,
-        scallops: generateScallops(1, screenHeight * 0.50, 1.5, 4.7),
+        targetRadius: screenHeight * 0.34,
+        scallops: generateScallops(1, screenHeight * 0.34, 1.5, 4.7),
       },
-      // 3. Left bite (medium-large)
+      // 3. Left bite (medium)
       {
         cx: -screenWidth * 0.1,
         cy: screenHeight * 0.65,
-        targetRadius: screenHeight * 0.55,
-        scallops: generateScallops(2, screenHeight * 0.55, -1.2, 1.8),
+        targetRadius: screenHeight * 0.38,
+        scallops: generateScallops(2, screenHeight * 0.38, -1.2, 1.8),
       },
-      // 4. Bottom-right bite (BIGGEST — final chomp)
+      // 4. Bottom-right bite (clears the corner)
       {
-        cx: screenWidth * 0.65,
-        cy: screenHeight * 1.08,
-        targetRadius: screenHeight * 0.62,
-        scallops: generateScallops(3, screenHeight * 0.62, -3.0, -0.2),
+        cx: screenWidth * 1.1,
+        cy: screenHeight * 0.88,
+        targetRadius: screenHeight * 0.45,
+        scallops: generateScallops(3, screenHeight * 0.45, 1.5, 4.5),
+      },
+      // 5. Center bite (MASSIVE — grand finale, devours all remaining content)
+      {
+        cx: screenWidth * 0.45,
+        cy: screenHeight * 0.45,
+        targetRadius: screenHeight * 0.85,
+        scallops: generateScallops(4, screenHeight * 0.85, -0.5, 6.8),
       },
     ];
   }, [screenWidth, screenHeight]);
@@ -202,8 +209,8 @@ export default function ChompOverlay() {
           });
           listenerIdRef.current = listenerId;
 
-          // 5. Build stepped animation: *chomp* pause *chomp* pause *chomp* pause *chomp*
-          // Total: 4×200 + 3×120 = 1160ms, plus 150ms commit delay = 1310ms
+          // 5. Build stepped animation: *chomp* pause ×5
+          // Total: 5×200 + 4×120 = 1480ms, plus 150ms commit delay = 1630ms
           const steps: Animated.CompositeAnimation[] = [];
           for (let i = 0; i < BITE_COUNT; i++) {
             steps.push(
