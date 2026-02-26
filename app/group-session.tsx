@@ -32,6 +32,7 @@ import * as Haptics from 'expo-haptics';
 import ConfettiCannon from 'react-native-confetti-cannon';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import SwipeCard from '@/components/SwipeCard';
+import RestaurantCountSlider from '@/components/RestaurantCountSlider';
 import { useApp, useNearbyRestaurants } from '@/context/AppContext';
 import { useAuth } from '@/context/AuthContext';
 import { getFriends } from '@/services/friends';
@@ -53,7 +54,8 @@ export default function GroupSessionScreen() {
   const { preferences, plans, localAvatarUri } = useApp();
   const { user, isAuthenticated } = useAuth();
   const queryClient = useQueryClient();
-  const { data: nearbyRestaurants = [] } = useNearbyRestaurants();
+  const [restaurantCount, setRestaurantCount] = useState<number>(10);
+  const { data: nearbyRestaurants = [] } = useNearbyRestaurants(restaurantCount);
 
   // Active plan state — set when creating or fetching an existing plan
   const [activePlan, setActivePlan] = useState<DiningPlan | null>(() => {
@@ -290,6 +292,7 @@ export default function GroupSessionScreen() {
           budget: preferences.budget || '$$',
           status: 'voting',
           restaurantOptions: sessionRestaurants,
+          restaurantCount,
           inviteeIds: inviteeIds.length > 0 ? inviteeIds : undefined,
         });
         setActivePlan(plan);
@@ -494,6 +497,10 @@ export default function GroupSessionScreen() {
               <UserPlus size={16} color={Colors.primary} />
               <Text style={{ fontSize: 14, fontWeight: '600', color: Colors.primary }}>Add Person</Text>
             </Pressable>
+          </View>
+
+          <View style={[styles.sliderSection, { backgroundColor: Colors.card }]}>
+            <RestaurantCountSlider value={restaurantCount} onValueChange={setRestaurantCount} />
           </View>
 
         </Animated.View>
@@ -963,6 +970,12 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 6,
     lineHeight: 20,
+  },
+  sliderSection: {
+    marginHorizontal: 20,
+    borderRadius: 18,
+    padding: 16,
+    marginBottom: 16,
   },
   membersSection: {
     marginHorizontal: 20,

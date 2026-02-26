@@ -17,11 +17,27 @@ router.get('/', requireAuth, async (req: AuthRequest, res: Response): Promise<vo
       ],
     }).sort({ createdAt: -1 });
 
-    // Attach ownerName to each plan
-    const ownerIds = [...new Set(plans.map(p => p.ownerId.toString()))];
-    const owners = await User.find({ _id: { $in: ownerIds } }, 'name').lean();
-    const ownerMap = new Map(owners.map(o => [o._id.toString(), o.name]));
-    const enriched = plans.map(p => ({ ...p.toJSON(), ownerName: ownerMap.get(p.ownerId.toString()) }));
+    // Collect all user IDs (owners + invitees) to fetch fresh avatars
+    const allUserIds = new Set<string>();
+    for (const p of plans) {
+      allUserIds.add(p.ownerId.toString());
+      for (const inv of p.invites) allUserIds.add(inv.userId.toString());
+    }
+    const users = await User.find({ _id: { $in: [...allUserIds] } }, 'name avatarUri').lean();
+    const userMap = new Map(users.map(u => [u._id.toString(), { name: u.name, avatarUri: (u as any).avatarUri }]));
+
+    const enriched = plans.map(p => {
+      const ownerInfo = userMap.get(p.ownerId.toString());
+      const planJson = p.toJSON();
+      // Freshen invite avatars from current user data
+      if (planJson.invites) {
+        planJson.invites = planJson.invites.map((inv: any) => {
+          const fresh = userMap.get(inv.userId.toString());
+          return fresh ? { ...inv, avatarUri: fresh.avatarUri } : inv;
+        });
+      }
+      return { ...planJson, ownerName: ownerInfo?.name, ownerAvatarUri: ownerInfo?.avatarUri };
+    });
 
     res.json(enriched);
   } catch {
@@ -71,8 +87,8 @@ router.get('/:id', requireAuth, async (req: AuthRequest, res: Response): Promise
       }
     }
 
-    const owner = await User.findById(plan.ownerId, 'name').lean();
-    res.json({ ...plan.toJSON(), ownerName: owner?.name });
+    const owner = await User.findById(plan.ownerId, 'name avatarUri').lean();
+    res.json({ ...plan.toJSON(), ownerName: owner?.name, ownerAvatarUri: (owner as any)?.avatarUri });
   } catch {
     res.status(500).json({ error: 'Server error' });
   }
@@ -81,7 +97,7 @@ router.get('/:id', requireAuth, async (req: AuthRequest, res: Response): Promise
 // Create plan
 router.post('/', requireAuth, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { title, date, time, cuisine, budget, inviteeIds, rsvpDeadline, options, type, status: reqStatus, restaurant, restaurantOptions } = req.body as {
+    const { title, date, time, cuisine, budget, inviteeIds, rsvpDeadline, options, type, status: reqStatus, restaurant, restaurantOptions, restaurantCount } = req.body as {
       title: string;
       date?: string;
       time?: string;
@@ -94,6 +110,7 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response): Promise<v
       status?: 'voting' | 'confirmed';
       restaurant?: { id: string; name: string; imageUrl: string; address: string; cuisine: string; priceLevel: number; rating: number };
       restaurantOptions?: Array<Record<string, unknown>>;
+      restaurantCount?: number;
     };
 
     // Input length validation
@@ -111,6 +128,13 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response): Promise<v
     }
     if (options && options.length > 20) {
       res.status(400).json({ error: 'Cannot have more than 20 options' }); return;
+    }
+
+    // Validate restaurantCount if provided
+    if (restaurantCount !== undefined) {
+      if (!Number.isInteger(restaurantCount) || restaurantCount < 5 || restaurantCount > 20) {
+        res.status(400).json({ error: 'restaurantCount must be an integer between 5 and 20' }); return;
+      }
     }
 
     // Require RSVP deadline for planned events
@@ -141,6 +165,7 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response): Promise<v
       cuisine: cuisine || 'Any',
       budget: budget || '$$',
       ...(restaurant ? { restaurant } : {}),
+      ...(restaurantCount !== undefined ? { restaurantCount } : {}),
       invites,
       rsvpDeadline: rsvpDeadline ? new Date(rsvpDeadline) : undefined,
       options: options || [],
@@ -168,7 +193,7 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response): Promise<v
     // The previous setTimeout-based approach is unreliable (lost on restart).
     // TODO: Implement with a job scheduler when infrastructure supports it.
 
-    res.status(201).json({ ...plan.toJSON(), ownerName: owner.name });
+    res.status(201).json({ ...plan.toJSON(), ownerName: owner.name, ownerAvatarUri: owner.avatarUri });
   } catch (err) {
     console.error('POST /plans error:', err);
     res.status(500).json({ error: 'Server error' });
@@ -378,8 +403,8 @@ router.post('/:id/swipe', requireAuth, async (req: AuthRequest, res: Response): 
     }
 
     await plan.save();
-    const swipeOwner = await User.findById(plan.ownerId, 'name').lean();
-    res.json({ ...plan.toJSON(), ownerName: swipeOwner?.name });
+    const swipeOwner = await User.findById(plan.ownerId, 'name avatarUri').lean();
+    res.json({ ...plan.toJSON(), ownerName: swipeOwner?.name, ownerAvatarUri: (swipeOwner as any)?.avatarUri });
   } catch (err) {
     console.error('POST /plans/:id/swipe error:', err);
     res.status(500).json({ error: 'Server error' });
@@ -416,8 +441,8 @@ router.put('/:id', requireAuth, async (req: AuthRequest, res: Response): Promise
     if (restaurant !== undefined) plan.restaurant = restaurant || undefined;
 
     await plan.save();
-    const putOwner = await User.findById(plan.ownerId, 'name').lean();
-    res.json({ ...plan.toJSON(), ownerName: putOwner?.name });
+    const putOwner = await User.findById(plan.ownerId, 'name avatarUri').lean();
+    res.json({ ...plan.toJSON(), ownerName: putOwner?.name, ownerAvatarUri: (putOwner as any)?.avatarUri });
   } catch {
     res.status(500).json({ error: 'Server error' });
   }
@@ -469,8 +494,8 @@ router.put('/:id/status', requireAuth, async (req: AuthRequest, res: Response): 
     }
 
     await plan.save();
-    const statusOwner = await User.findById(plan.ownerId, 'name').lean();
-    res.json({ ...plan.toJSON(), ownerName: statusOwner?.name });
+    const statusOwner = await User.findById(plan.ownerId, 'name avatarUri').lean();
+    res.json({ ...plan.toJSON(), ownerName: statusOwner?.name, ownerAvatarUri: (statusOwner as any)?.avatarUri });
   } catch {
     res.status(500).json({ error: 'Server error' });
   }

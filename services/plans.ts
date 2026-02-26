@@ -14,6 +14,7 @@ export interface CreatePlanInput {
   rsvpDeadline?: string;
   options?: string[];
   restaurantOptions?: Restaurant[];
+  restaurantCount?: number;
 }
 
 export async function getPlans(): Promise<DiningPlan[]> {

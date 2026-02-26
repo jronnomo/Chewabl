@@ -15,6 +15,7 @@ import { Image } from 'expo-image';
 import { X, Heart, ArrowLeft, RotateCcw, Star, MapPin, CheckCircle } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import SwipeCard from '@/components/SwipeCard';
+import RestaurantCountSlider from '@/components/RestaurantCountSlider';
 import { useApp, useNearbyRestaurants } from '@/context/AppContext';
 import { Restaurant } from '@/types';
 import StaticColors from '@/constants/colors';
@@ -28,7 +29,9 @@ export default function SwipeScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { preferences, toggleFavorite, favorites, locationPermission, requestLocation } = useApp();
-  const { data: restaurantData = [], isFetching } = useNearbyRestaurants();
+  const [restaurantCount, setRestaurantCount] = useState<number>(10);
+  const [hasStarted, setHasStarted] = useState(false);
+  const { data: restaurantData = [], isFetching } = useNearbyRestaurants(restaurantCount);
 
   const sortedRestaurants = React.useMemo(() => {
     return [...restaurantData].sort((a, b) => {
@@ -151,6 +154,35 @@ export default function SwipeScreen() {
   const progress = sortedRestaurants.length > 0
     ? currentIndex / sortedRestaurants.length
     : 0;
+
+  // Pre-swipe setup — let user pick restaurant count
+  if (!hasStarted) {
+    return (
+      <View style={[styles.container, styles.centeredState, { paddingTop: insets.top, backgroundColor: Colors.background }]}>
+        <View style={styles.setupContent}>
+          <Text style={[styles.setupTitle, { color: Colors.text }]}>Quick Setup</Text>
+          <Text style={[styles.setupSub, { color: Colors.textSecondary }]}>
+            How many restaurants do you want to swipe through?
+          </Text>
+          <View style={[styles.setupSliderWrap, { backgroundColor: Colors.card, borderColor: Colors.border }]}>
+            <RestaurantCountSlider value={restaurantCount} onValueChange={setRestaurantCount} />
+          </View>
+          <Pressable
+            style={styles.setupStartBtn}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              setHasStarted(true);
+            }}
+          >
+            <Text style={styles.setupStartBtnText}>Start Swiping</Text>
+          </Pressable>
+          <Pressable style={[styles.setupBackBtn, { borderColor: Colors.border }]} onPress={() => router.back()}>
+            <Text style={[styles.setupBackBtnText, { color: Colors.textSecondary }]}>Go Back</Text>
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
 
   // Loading state — differentiate from empty stack
   if (isFetching && sortedRestaurants.length === 0) {
@@ -645,6 +677,55 @@ const styles = StyleSheet.create({
   locationBannerText: {
     fontSize: 13,
     color: Colors.primary,
+    fontWeight: '600' as const,
+  },
+  setupContent: {
+    paddingHorizontal: 32,
+    alignItems: 'center',
+    width: '100%',
+  },
+  setupTitle: {
+    fontSize: 24,
+    fontWeight: '800' as const,
+    marginBottom: 8,
+  },
+  setupSub: {
+    fontSize: 15,
+    textAlign: 'center',
+    marginBottom: 28,
+  },
+  setupSliderWrap: {
+    width: '100%',
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    marginBottom: 28,
+  },
+  setupStartBtn: {
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 48,
+    paddingVertical: 16,
+    borderRadius: 28,
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+    marginBottom: 12,
+  },
+  setupStartBtnText: {
+    fontSize: 16,
+    fontWeight: '700' as const,
+    color: '#FFF',
+  },
+  setupBackBtn: {
+    paddingHorizontal: 24,
+    paddingVertical: 10,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  setupBackBtnText: {
+    fontSize: 14,
     fontWeight: '600' as const,
   },
 });

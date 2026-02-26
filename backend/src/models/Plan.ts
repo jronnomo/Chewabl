@@ -58,6 +58,7 @@ export interface IPlan extends Document {
   options: string[];
   votes: Record<string, string[]>;
   restaurantOptions: IPlanRestaurantOption[];
+  restaurantCount?: number;
   swipesCompleted: string[];
   createdAt: Date;
   updatedAt: Date;
@@ -128,6 +129,7 @@ const PlanSchema = new Schema<IPlan>(
     votingOpenedAt: { type: Date },
     options: { type: [String], default: [] },
     votes: { type: Map, of: [String], default: {} },
+    restaurantCount: { type: Number, default: 10 },
     restaurantOptions: { type: [PlanRestaurantOptionSchema], default: [] },
     swipesCompleted: { type: [String], default: [] },
   },
