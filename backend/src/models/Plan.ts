@@ -49,6 +49,7 @@ export interface IPlan extends Document {
   time?: string;
   ownerId: mongoose.Types.ObjectId;
   status: 'voting' | 'confirmed' | 'completed' | 'cancelled';
+  cancelledAt?: Date;
   cuisine: string;
   budget: string;
   restaurant?: IPlanRestaurant;
@@ -121,6 +122,7 @@ const PlanSchema = new Schema<IPlan>(
     time: { type: String },
     ownerId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     status: { type: String, enum: ['voting', 'confirmed', 'completed', 'cancelled'], default: 'voting' },
+    cancelledAt: { type: Date },
     cuisine: { type: String, default: 'Any' },
     budget: { type: String, default: '$$' },
     restaurant: { type: PlanRestaurantSchema },

@@ -74,3 +74,15 @@ export function derivePlanPhase(plan: DiningPlan): PlanPhase {
   // No deadline set — treat as voting open
   return 'voting_open';
 }
+
+export async function cancelPlan(planId: string): Promise<DiningPlan> {
+  return api.put<DiningPlan>(`/plans/${planId}/status`, { status: 'cancelled' });
+}
+
+export async function delegateOrganizer(planId: string, newOwnerId: string): Promise<DiningPlan> {
+  return api.post<DiningPlan>(`/plans/${planId}/delegate`, { newOwnerId });
+}
+
+export async function leavePlan(planId: string): Promise<{ ok: boolean; autoCancelled: boolean }> {
+  return api.post<{ ok: boolean; autoCancelled: boolean }>(`/plans/${planId}/leave`, {});
+}

@@ -1,7 +1,7 @@
 import React, { useRef, useCallback } from 'react';
 import { View, Text, StyleSheet, Pressable, Animated } from 'react-native';
 import { Image } from 'expo-image';
-import { CalendarDays, Users, Check, Vote, Clock, X, Pencil, Crown } from 'lucide-react-native';
+import { CalendarDays, Users, Check, Vote, Clock, X, MoreVertical, Crown } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { DiningPlan } from '../types';
 import { derivePlanPhase } from '../services/plans';
@@ -14,8 +14,9 @@ const Colors = StaticColors;
 interface PlanCardProps {
   plan: DiningPlan;
   currentUserId?: string;
+  currentUserAvatarUri?: string;
   onPress?: () => void;
-  onEdit?: () => void;
+  onMorePress?: () => void;
   onRestaurantPress?: () => void;
 }
 
@@ -44,7 +45,7 @@ function getStatusColors(status: string, Colors: ReturnType<typeof useColors>) {
   }
 }
 
-function PlanCardFooter({ plan }: { plan: DiningPlan }) {
+function PlanCardFooter({ plan, currentUserId, currentUserAvatarUri }: { plan: DiningPlan; currentUserId?: string; currentUserAvatarUri?: string }) {
   const Colors = useColors(); // F-005-001: Module-level helper needs its own useColors()
   // Prefer the backend invites shape; fall back to legacy invitees
   if (plan.invites !== undefined) {
@@ -55,10 +56,17 @@ function PlanCardFooter({ plan }: { plan: DiningPlan }) {
     const totalMembers = plan.invites.length + 1;
     const acceptedCount = accepted + 1;
 
+    const isCurrentUserOwner = currentUserId && plan.ownerId && currentUserId === plan.ownerId;
+    const ownerAvatarUri = isCurrentUserOwner ? (currentUserAvatarUri ?? plan.ownerAvatarUri) : plan.ownerAvatarUri;
+
     // Build avatar list: owner first, then invitees
     const allAvatars: { key: string; uri?: string; status: string }[] = [
-      { key: `owner-${plan.ownerId ?? 'host'}`, uri: plan.ownerAvatarUri, status: 'accepted' },
-      ...plan.invites.map(inv => ({ key: inv.userId, uri: inv.avatarUri, status: inv.status })),
+      { key: `owner-${plan.ownerId ?? 'host'}`, uri: ownerAvatarUri, status: 'accepted' },
+      ...plan.invites.map(inv => ({
+        key: inv.userId,
+        uri: (currentUserId && inv.userId === currentUserId) ? (currentUserAvatarUri ?? inv.avatarUri) : inv.avatarUri,
+        status: inv.status,
+      })),
     ];
 
     return (
@@ -124,7 +132,7 @@ function PlanCardFooter({ plan }: { plan: DiningPlan }) {
   );
 }
 
-export default React.memo(function PlanCard({ plan, currentUserId, onPress, onEdit, onRestaurantPress }: PlanCardProps) {
+export default React.memo(function PlanCard({ plan, currentUserId, currentUserAvatarUri, onPress, onMorePress, onRestaurantPress }: PlanCardProps) {
   const Colors = useColors();
   // Derive display status for planned events
   const phase = derivePlanPhase(plan);
@@ -167,15 +175,15 @@ export default React.memo(function PlanCard({ plan, currentUserId, onPress, onEd
                 <StatusIcon size={11} color={statusColors.color} />
                 <Text style={[styles.statusText, { color: statusColors.color }]}>{configStatic.label}</Text>
               </View>
-              {onEdit && plan.status !== 'completed' && plan.status !== 'cancelled' && (
+              {onMorePress && plan.status !== 'completed' && plan.status !== 'cancelled' && (
                 <Pressable
                   style={[styles.editBtn, { backgroundColor: Colors.surfaceElevated }]}
-                  onPress={e => { e.stopPropagation?.(); onEdit(); }}
+                  onPress={e => { e.stopPropagation?.(); onMorePress(); }}
                   hitSlop={8}
-                  accessibilityLabel="Edit plan"
+                  accessibilityLabel="Plan options"
                   accessibilityRole="button"
                 >
-                  <Pencil size={14} color={Colors.textSecondary} />
+                  <MoreVertical size={16} color={Colors.textSecondary} />
                 </Pressable>
               )}
             </View>
@@ -233,7 +241,7 @@ export default React.memo(function PlanCard({ plan, currentUserId, onPress, onEd
           </Pressable>
         )}
 
-        <PlanCardFooter plan={plan} />
+        <PlanCardFooter plan={plan} currentUserId={currentUserId} currentUserAvatarUri={currentUserAvatarUri} />
       </Animated.View>
     </Pressable>
   );

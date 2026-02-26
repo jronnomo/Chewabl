@@ -59,6 +59,11 @@ export default function NotificationsScreen() {
         case 'group_swipe_result':
         case 'swipe_completed':
         case 'plan_reminder':
+        case 'plan_cancelled':
+        case 'organizer_delegated':
+        case 'organizer_changed':
+        case 'participant_left':
+        case 'plan_auto_cancelled':
           if (notifData?.planId) {
             router.push(`/(tabs)/plans?planId=${notifData.planId}&from=notifications` as never);
           } else {

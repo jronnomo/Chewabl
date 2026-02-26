@@ -39,6 +39,7 @@ export interface DiningPlan {
   time?: string;
   restaurant?: Restaurant;
   status: 'voting' | 'confirmed' | 'completed' | 'cancelled';
+  cancelledAt?: string;
   cuisine: string;
   budget: string;
   /** @deprecated Use `invites` instead. Kept for mock data compatibility. */
@@ -171,7 +172,12 @@ export type NotificationType =
   | 'plan_reminder'
   | 'rsvp_deadline_passed'
   | 'rsvp_deadline_missed_organizer'
-  | 'voting_open';
+  | 'voting_open'
+  | 'plan_cancelled'
+  | 'organizer_delegated'
+  | 'organizer_changed'
+  | 'participant_left'
+  | 'plan_auto_cancelled';
 
 export interface AppNotification {
   id: string;

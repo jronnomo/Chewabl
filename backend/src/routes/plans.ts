@@ -477,6 +477,22 @@ router.put('/:id/status', requireAuth, async (req: AuthRequest, res: Response): 
 
     plan.status = status;
 
+    // When cancelling, set cancelledAt and notify invitees
+    if (status === 'cancelled') {
+      plan.cancelledAt = new Date();
+      const inviteeIds = plan.invites.map(i => i.userId.toString());
+      if (inviteeIds.length > 0) {
+        const owner = await User.findById(req.userId).select('name');
+        await createNotificationForMany(
+          inviteeIds,
+          'plan_cancelled',
+          'Plan Cancelled',
+          `"${plan.title}" has been cancelled by ${owner?.name ?? 'the organizer'}`,
+          { planId: plan.id }
+        );
+      }
+    }
+
     // When confirming a voting plan, tally votes and pick winner
     if (status === 'confirmed' && !plan.restaurant) {
       const winner = tallyWinner(plan);
@@ -497,6 +513,158 @@ router.put('/:id/status', requireAuth, async (req: AuthRequest, res: Response): 
     const statusOwner = await User.findById(plan.ownerId, 'name avatarUri').lean();
     res.json({ ...plan.toJSON(), ownerName: statusOwner?.name, ownerAvatarUri: (statusOwner as any)?.avatarUri });
   } catch {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Delegate organizer role to an accepted invitee
+router.post('/:id/delegate', requireAuth, async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { newOwnerId } = req.body as { newOwnerId: string };
+    if (!newOwnerId) { res.status(400).json({ error: 'newOwnerId is required' }); return; }
+
+    const plan = await Plan.findById(req.params.id);
+    if (!plan) { res.status(404).json({ error: 'Plan not found' }); return; }
+    if (plan.ownerId.toString() !== req.userId) {
+      res.status(403).json({ error: 'Only the plan owner can delegate' }); return;
+    }
+    if (plan.status === 'completed' || plan.status === 'cancelled') {
+      res.status(400).json({ error: 'Cannot delegate on a completed or cancelled plan' }); return;
+    }
+
+    const newOwnerInvite = plan.invites.find(
+      i => i.userId.toString() === newOwnerId && i.status === 'accepted'
+    );
+    if (!newOwnerInvite) {
+      res.status(400).json({ error: 'New owner must be an accepted invitee' }); return;
+    }
+
+    // Block on 2-person plans (owner + 1 invitee) — old owner leaving would leave 1 person
+    if (plan.invites.length < 2) {
+      res.status(400).json({ error: 'Cannot delegate on a 2-person plan. Cancel instead.' }); return;
+    }
+
+    const oldOwnerId = plan.ownerId.toString();
+    const oldOwner = await User.findById(oldOwnerId).select('name');
+    const newOwner = await User.findById(newOwnerId).select('name');
+
+    // Transfer ownership
+    plan.ownerId = newOwnerId as any;
+    // Remove new owner from invites (they're now the owner)
+    plan.invites = plan.invites.filter(i => i.userId.toString() !== newOwnerId);
+    // Old owner leaves entirely — don't add them back to invites
+
+    // Clean up old owner's votes and swipes
+    if (plan.votes instanceof Map) {
+      plan.votes.delete(oldOwnerId);
+    }
+    plan.swipesCompleted = plan.swipesCompleted.filter(id => id !== oldOwnerId);
+
+    await plan.save();
+
+    // Notify new organizer
+    await createNotification({
+      userId: newOwnerId,
+      type: 'organizer_delegated',
+      title: "You're Now the Organizer",
+      body: `${oldOwner?.name ?? 'Someone'} made you the organizer of "${plan.title}"`,
+      data: { planId: plan.id },
+    });
+
+    // Notify other participants
+    const otherInviteeIds = plan.invites
+      .map(i => i.userId.toString())
+      .filter(id => id !== newOwnerId);
+    if (otherInviteeIds.length > 0) {
+      await createNotificationForMany(
+        otherInviteeIds,
+        'organizer_changed',
+        'New Organizer',
+        `${newOwner?.name ?? 'Someone'} is now the organizer of "${plan.title}"`,
+        { planId: plan.id }
+      );
+    }
+
+    const enrichedOwner = await User.findById(plan.ownerId, 'name avatarUri').lean();
+    res.json({ ...plan.toJSON(), ownerName: enrichedOwner?.name, ownerAvatarUri: (enrichedOwner as any)?.avatarUri });
+  } catch (err) {
+    console.error('POST /plans/:id/delegate error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Leave plan (non-owner participant)
+router.post('/:id/leave', requireAuth, async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const plan = await Plan.findById(req.params.id);
+    if (!plan) { res.status(404).json({ error: 'Plan not found' }); return; }
+    if (plan.ownerId.toString() === req.userId) {
+      res.status(403).json({ error: 'Owner cannot leave. Cancel or delegate instead.' }); return;
+    }
+
+    const inviteIndex = plan.invites.findIndex(i => i.userId.toString() === req.userId);
+    if (inviteIndex === -1) {
+      res.status(403).json({ error: 'You are not a participant in this plan' }); return;
+    }
+    if (plan.status === 'completed' || plan.status === 'cancelled') {
+      res.status(400).json({ error: 'Cannot leave a completed or cancelled plan' }); return;
+    }
+
+    const leavingInvite = plan.invites[inviteIndex];
+    const wasAccepted = leavingInvite.status === 'accepted';
+    const leaver = await User.findById(req.userId).select('name');
+
+    // Remove from invites
+    plan.invites.splice(inviteIndex, 1);
+
+    // Clean up votes and swipes
+    if (plan.votes instanceof Map) {
+      plan.votes.delete(req.userId!);
+    }
+    plan.swipesCompleted = plan.swipesCompleted.filter(id => id !== req.userId);
+
+    // Check if auto-cancel needed: if leaver was accepted and no accepted invitees remain
+    let autoCancelled = false;
+    if (wasAccepted) {
+      const acceptedRemaining = plan.invites.filter(i => i.status === 'accepted').length;
+      if (acceptedRemaining === 0) {
+        plan.status = 'cancelled';
+        plan.cancelledAt = new Date();
+        autoCancelled = true;
+      }
+    }
+
+    await plan.save();
+
+    if (autoCancelled) {
+      // Notify owner about auto-cancellation
+      await createNotification({
+        userId: plan.ownerId.toString(),
+        type: 'plan_auto_cancelled',
+        title: 'Plan Auto-Cancelled',
+        body: `"${plan.title}" was cancelled — not enough participants`,
+        data: { planId: plan.id },
+      });
+    } else {
+      // Notify remaining participants
+      const remainingIds = [
+        plan.ownerId.toString(),
+        ...plan.invites.map(i => i.userId.toString()),
+      ];
+      if (remainingIds.length > 0) {
+        await createNotificationForMany(
+          remainingIds,
+          'participant_left',
+          'Participant Left',
+          `${leaver?.name ?? 'Someone'} has left "${plan.title}"`,
+          { planId: plan.id }
+        );
+      }
+    }
+
+    res.json({ ok: true, autoCancelled });
+  } catch (err) {
+    console.error('POST /plans/:id/leave error:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });

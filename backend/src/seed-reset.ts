@@ -32,7 +32,7 @@
  *   Sofia → Alice      (pending — Alice received)
  *   Alice → Noah       (pending — Alice sent)
  *
- * ─── Plans (10) ──────────────────────────────────────────────────
+ * ─── Plans (15) ──────────────────────────────────────────────────
  *   1. Taco Tuesday       │ voting    │ upcoming │ Alice owns │ Maya+Jerry partial, Liam partial, Alice not yet
  *   2. Weekend Brunch      │ voting    │ upcoming │ Alice owns │ Maya+Liam voted, Alice not yet
  *   3. Friday Night Out    │ voting    │ upcoming │ Alice owns │ Alice voted, Maya+Liam not yet
@@ -43,6 +43,11 @@
  *   8. Group Pick: Thai Garden  │ group-swipe │ confirmed │ Alice owns │ no date/time, Maya+Liam
  *   9. Group Pick: Burger Barn  │ group-swipe │ confirmed │ Liam owns  │ no date/time, Alice+Maya
  *  10. Last Call Sushi     │ group-swipe │ voting  │ Alice owns │ Jerry last to swipe
+ *  11. Jerry's Pizza Night │ voting    │ upcoming │ Jerry owns │ 3 accepted → test Cancel + Delegate
+ *  12. Jerry's Quick Lunch │ voting    │ upcoming │ Jerry owns │ 1 invitee → Cancel, Delegate BLOCKED
+ *  13. Maya's Game Night   │ voting    │ upcoming │ Maya owns  │ Jerry+Liam accepted → test Leave (no auto-cancel)
+ *  14. Liam's Coffee Run   │ voting    │ upcoming │ Liam owns  │ Jerry only accepted → test Leave (auto-cancel)
+ *  15. Group Pick: Ramen Run│ group-swipe│ voting  │ Jerry owns │ 3 invitees → test Cancel + Delegate on group-swipe
  */
 
 import mongoose from 'mongoose';
@@ -494,11 +499,108 @@ async function seedReset() {
       restaurantOptions: RESTAURANT_OPTION_OBJECTS,
       votes: plan10Votes,
     },
+
+    // ── Plans 11-15: Plan Management test plans (Jerry-focused) ────────────
+
+    // 11. Jerry's Pizza Night — voting, Jerry owns, 3 accepted invitees
+    //     Tests: Cancel Plan, Delegate Organizer (3+ person, multiple accepted)
+    {
+      title: "Jerry's Pizza Night",
+      date: fmt(daysFromNow(4)),
+      time: '7:00 PM',
+      ownerId: jerry._id,
+      status: 'voting',
+      cuisine: 'Italian',
+      budget: '$$',
+      invites: [
+        { userId: alice._id, name: alice.name, status: 'accepted', respondedAt: daysAgo(1) },
+        { userId: maya._id, name: maya.name, status: 'accepted', respondedAt: daysAgo(1) },
+        { userId: liam._id, name: liam.name, status: 'accepted', respondedAt: daysAgo(1) },
+      ],
+      rsvpDeadline: daysFromNow(2),
+      options: RESTAURANT_OPTIONS,
+      restaurantOptions: RESTAURANT_OPTION_OBJECTS,
+      votes: new Map(),
+    },
+    // 12. Jerry's Quick Lunch — voting, Jerry owns, only 1 invitee (2-person plan)
+    //     Tests: Cancel Plan works, Delegate BLOCKED (2-person)
+    {
+      title: "Jerry's Quick Lunch",
+      date: fmt(daysFromNow(3)),
+      time: '12:00 PM',
+      ownerId: jerry._id,
+      status: 'voting',
+      cuisine: 'American',
+      budget: '$',
+      invites: [
+        { userId: alice._id, name: alice.name, status: 'accepted', respondedAt: daysAgo(1) },
+      ],
+      rsvpDeadline: daysFromNow(1),
+      options: RESTAURANT_OPTIONS,
+      restaurantOptions: RESTAURANT_OPTION_OBJECTS,
+      votes: new Map(),
+    },
+    // 13. Maya's Game Night — voting, Maya owns, Jerry + Liam accepted
+    //     Tests: Leave Plan (Jerry leaves, Liam still accepted → no auto-cancel)
+    {
+      title: "Maya's Game Night",
+      date: fmt(daysFromNow(6)),
+      time: '6:00 PM',
+      ownerId: maya._id,
+      status: 'voting',
+      cuisine: 'Korean',
+      budget: '$$',
+      invites: [
+        { userId: jerry._id, name: jerry.name, status: 'accepted', respondedAt: daysAgo(1) },
+        { userId: liam._id, name: liam.name, status: 'accepted', respondedAt: daysAgo(1) },
+      ],
+      rsvpDeadline: daysFromNow(4),
+      options: RESTAURANT_OPTIONS,
+      restaurantOptions: RESTAURANT_OPTION_OBJECTS,
+      votes: new Map(),
+    },
+    // 14. Liam's Coffee Run — voting, Liam owns, Jerry is ONLY accepted invitee
+    //     Tests: Leave Plan → auto-cancel (Jerry leaving = 0 accepted = auto-cancel)
+    {
+      title: "Liam's Coffee Run",
+      date: fmt(daysFromNow(2)),
+      time: '10:00 AM',
+      ownerId: liam._id,
+      status: 'voting',
+      cuisine: 'American',
+      budget: '$',
+      invites: [
+        { userId: jerry._id, name: jerry.name, status: 'accepted', respondedAt: daysAgo(1) },
+        { userId: alice._id, name: alice.name, status: 'pending' },
+      ],
+      rsvpDeadline: daysFromNow(1),
+      options: [],
+      restaurantOptions: [],
+      votes: new Map(),
+    },
+    // 15. Jerry's Group Swipe: Ramen — group-swipe, voting, Jerry owns, 3 accepted
+    //     Tests: Cancel + Delegate on group-swipe type
+    {
+      type: 'group-swipe',
+      title: 'Group Pick: Ramen Run',
+      ownerId: jerry._id,
+      status: 'voting',
+      cuisine: 'Japanese',
+      budget: '$$',
+      invites: [
+        { userId: alice._id, name: alice.name, status: 'accepted', respondedAt: daysAgo(1) },
+        { userId: maya._id, name: maya.name, status: 'accepted', respondedAt: daysAgo(1) },
+        { userId: liam._id, name: liam.name, status: 'pending' },
+      ],
+      options: RESTAURANT_OPTIONS,
+      restaurantOptions: RESTAURANT_OPTION_OBJECTS,
+      votes: new Map(),
+    },
   ]);
 
-  const [planTaco, planBrunch, planFriday, planTeamLunch, planSushi, planBirthday, planCancelled, planThaiGroup, planBurgerGroup] = seededPlans;
+  const [planTaco, planBrunch, planFriday, planTeamLunch, planSushi, planBirthday, planCancelled, planThaiGroup, planBurgerGroup, _planLastCall, planPizzaNight, planQuickLunch, planGameNight, planCoffeeRun, planRamenGroup] = seededPlans;
 
-  console.log('Created 10 plans:');
+  console.log('Created 15 plans:');
   console.log('  UPCOMING (voting):');
   console.log('    1. Taco Tuesday       — Maya+Jerry partial, Liam partial, Alice not yet');
   console.log('    2. Weekend Brunch     — Maya+Liam voted, Alice not yet');
@@ -514,6 +616,12 @@ async function seedReset() {
   console.log('    9. Group Pick: Burger Barn — group swipe, Liam owns, Alice+Maya');
   console.log('  GROUP SWIPE (voting, Jerry last to swipe):');
   console.log('   10. Last Call Sushi    — group swipe, Alice owns, Jerry hasn\'t swiped');
+  console.log('  PLAN MANAGEMENT (Jerry-focused):');
+  console.log('   11. Jerry\'s Pizza Night  — Jerry owns, 3 accepted → test Cancel + Delegate');
+  console.log('   12. Jerry\'s Quick Lunch  — Jerry owns, 1 invitee → test Cancel, Delegate BLOCKED');
+  console.log('   13. Maya\'s Game Night    — Jerry is accepted invitee → test Leave (no auto-cancel)');
+  console.log('   14. Liam\'s Coffee Run    — Jerry is ONLY accepted → test Leave (auto-cancel)');
+  console.log('   15. Group Pick: Ramen Run — Jerry owns group-swipe → test Cancel + Delegate');
   console.log();
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -681,11 +789,100 @@ async function seedReset() {
       read: true,
       createdAt: hoursAgo(96), // 4 days ago
     },
+
+    // ── Jerry's plan management notifications ─────────────────────────────
+
+    // RSVPs for Jerry's Pizza Night (unread — recent)
+    {
+      userId: jerry._id,
+      type: 'rsvp_response',
+      title: 'RSVP Accepted',
+      body: 'Alice Chen accepted your invite to "Jerry\'s Pizza Night"',
+      data: { planId: planPizzaNight._id.toString() },
+      read: false,
+      createdAt: hoursAgo(8),
+    },
+    {
+      userId: jerry._id,
+      type: 'rsvp_response',
+      title: 'RSVP Accepted',
+      body: 'Maya Johnson accepted your invite to "Jerry\'s Pizza Night"',
+      data: { planId: planPizzaNight._id.toString() },
+      read: false,
+      createdAt: hoursAgo(9),
+    },
+    {
+      userId: jerry._id,
+      type: 'rsvp_response',
+      title: 'RSVP Accepted',
+      body: 'Liam Rodriguez accepted your invite to "Jerry\'s Pizza Night"',
+      data: { planId: planPizzaNight._id.toString() },
+      read: false,
+      createdAt: hoursAgo(10),
+    },
+    // RSVP for Jerry's Quick Lunch
+    {
+      userId: jerry._id,
+      type: 'rsvp_response',
+      title: 'RSVP Accepted',
+      body: 'Alice Chen accepted your invite to "Jerry\'s Quick Lunch"',
+      data: { planId: planQuickLunch._id.toString() },
+      read: false,
+      createdAt: hoursAgo(7),
+    },
+    // Invite notifications for plans Jerry is invited to
+    {
+      userId: jerry._id,
+      type: 'plan_invite',
+      title: 'Dining Plan Invite',
+      body: 'Maya Johnson invited you to "Maya\'s Game Night"',
+      data: { planId: planGameNight._id.toString() },
+      read: false,
+      createdAt: hoursAgo(6),
+    },
+    {
+      userId: jerry._id,
+      type: 'plan_invite',
+      title: 'Dining Plan Invite',
+      body: 'Liam Rodriguez invited you to "Liam\'s Coffee Run"',
+      data: { planId: planCoffeeRun._id.toString() },
+      read: false,
+      createdAt: hoursAgo(5),
+    },
+
+    // ── Alice's notifications for plan management plans ───────────────────
+    {
+      userId: alice._id,
+      type: 'plan_invite',
+      title: 'Dining Plan Invite',
+      body: 'Jerry Ronnau invited you to "Jerry\'s Pizza Night"',
+      data: { planId: planPizzaNight._id.toString() },
+      read: false,
+      createdAt: hoursAgo(10),
+    },
+    {
+      userId: alice._id,
+      type: 'plan_invite',
+      title: 'Dining Plan Invite',
+      body: 'Jerry Ronnau invited you to "Jerry\'s Quick Lunch"',
+      data: { planId: planQuickLunch._id.toString() },
+      read: false,
+      createdAt: hoursAgo(8),
+    },
+    {
+      userId: alice._id,
+      type: 'plan_invite',
+      title: 'Dining Plan Invite',
+      body: 'Liam Rodriguez invited you to "Liam\'s Coffee Run"',
+      data: { planId: planCoffeeRun._id.toString() },
+      read: false,
+      createdAt: hoursAgo(6),
+    },
   ]);
 
-  console.log('Created 16 notifications:');
-  console.log('  Alice: 11 (4 unread, 7 read)');
-  console.log('  Jerry:  5 (2 unread, 3 read)');
+  console.log('Created 25 notifications:');
+  console.log('  Alice: 14 (7 unread, 7 read)');
+  console.log('  Jerry: 11 (8 unread, 3 read)');
   console.log();
 
   // ── Summary ──────────────────────────────────────────────────────────────
@@ -704,13 +901,20 @@ async function seedReset() {
   console.log('    Friends:  Alice Chen');
   console.log('    Requests: Marcus Lee (incoming), Liam Rodriguez (sent)');
   console.log();
-  console.log('  Plans tab:');
+  console.log('  Plans tab (Alice):');
   console.log('    Upcoming: Taco Tuesday, Weekend Brunch, Friday Night Out,');
   console.log('              Team Lunch (guest), Sushi Saturday (confirmed),');
   console.log('              Group Pick: Thai Garden (group-swipe),');
   console.log('              Group Pick: Burger Barn (group-swipe, Liam owns),');
   console.log('              Last Call Sushi (group-swipe, Jerry last to swipe)');
   console.log('    Past:     Birthday Dinner (completed), Cancelled Meetup');
+  console.log();
+  console.log('  Plans tab (Jerry) — Plan Management test plans:');
+  console.log('    11. Jerry\'s Pizza Night  — OWNER, 3 accepted → Cancel + Delegate');
+  console.log('    12. Jerry\'s Quick Lunch  — OWNER, 1 invitee → Cancel, Delegate BLOCKED');
+  console.log('    13. Maya\'s Game Night    — INVITEE accepted → Leave (no auto-cancel)');
+  console.log('    14. Liam\'s Coffee Run    — ONLY accepted    → Leave (triggers auto-cancel)');
+  console.log('    15. Group Pick: Ramen Run — OWNER group-swipe → Cancel + Delegate');
   console.log();
   console.log('  Scan Contacts matches (iOS Simulator):');
   console.log('    Sofia Kim    → Kate Bell\'s phone');
