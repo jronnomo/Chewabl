@@ -146,7 +146,7 @@ async function seedReset() {
       email: 'jerry@chewabl.dev',
       phone: '+14155550102',
       passwordHash,
-      inviteCode: nanoid(8).toUpperCase(),
+      inviteCode: 'Chewabl',
       favorites: [],
       preferences: {
         name: 'Jerry',
