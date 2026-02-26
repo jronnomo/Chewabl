@@ -313,3 +313,245 @@ describe('POST /plans/:id/swipe', () => {
     expect(carolSwipe.body.restaurant.id).toBe('r1');
   });
 });
+
+// ─── Cancel Plan Tests ─────────────────────────────────────────────────────
+
+describe('PUT /plans/:id/status (cancel)', () => {
+  it('owner can cancel a voting plan — sets cancelledAt', async () => {
+    const alice = await createTestUser({ name: 'Alice' });
+    const bob = await createTestUser({ name: 'Bob' });
+    const createRes = await request(app)
+      .post('/plans')
+      .set(authHeader(alice.token))
+      .send({ ...basePlan, inviteeIds: [bob.userId] });
+    const planId = createRes.body.id;
+
+    const res = await request(app)
+      .put(`/plans/${planId}/status`)
+      .set(authHeader(alice.token))
+      .send({ status: 'cancelled' });
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('cancelled');
+    expect(res.body.cancelledAt).toBeTruthy();
+  });
+
+  it('non-owner cannot cancel', async () => {
+    const alice = await createTestUser({ name: 'Alice' });
+    const bob = await createTestUser({ name: 'Bob' });
+    const createRes = await request(app)
+      .post('/plans')
+      .set(authHeader(alice.token))
+      .send({ ...basePlan, inviteeIds: [bob.userId] });
+    const planId = createRes.body.id;
+
+    const res = await request(app)
+      .put(`/plans/${planId}/status`)
+      .set(authHeader(bob.token))
+      .send({ status: 'cancelled' });
+    expect(res.status).toBe(403);
+  });
+});
+
+// ─── Delegate Tests ─────────────────────────────────────────────────────
+
+describe('POST /plans/:id/delegate', () => {
+  it('owner can delegate to an accepted invitee on 3+ person plan', async () => {
+    const alice = await createTestUser({ name: 'Alice' });
+    const bob = await createTestUser({ name: 'Bob' });
+    const carol = await createTestUser({ name: 'Carol' });
+
+    const createRes = await request(app)
+      .post('/plans')
+      .set(authHeader(alice.token))
+      .send({ ...basePlan, inviteeIds: [bob.userId, carol.userId] });
+    const planId = createRes.body.id;
+
+    // Bob accepts
+    await request(app)
+      .post(`/plans/${planId}/rsvp`)
+      .set(authHeader(bob.token))
+      .send({ action: 'accept' });
+
+    const res = await request(app)
+      .post(`/plans/${planId}/delegate`)
+      .set(authHeader(alice.token))
+      .send({ newOwnerId: bob.userId });
+    expect(res.status).toBe(200);
+    expect(res.body.ownerId).toBe(bob.userId);
+    // Bob removed from invites (now owner), Carol still there
+    expect(res.body.invites.find((i: any) => i.userId === bob.userId)).toBeUndefined();
+    expect(res.body.invites.find((i: any) => i.userId === carol.userId)).toBeDefined();
+  });
+
+  it('blocks delegation on 2-person plan', async () => {
+    const alice = await createTestUser({ name: 'Alice' });
+    const bob = await createTestUser({ name: 'Bob' });
+
+    const createRes = await request(app)
+      .post('/plans')
+      .set(authHeader(alice.token))
+      .send({ ...basePlan, inviteeIds: [bob.userId] });
+    const planId = createRes.body.id;
+
+    await request(app)
+      .post(`/plans/${planId}/rsvp`)
+      .set(authHeader(bob.token))
+      .send({ action: 'accept' });
+
+    const res = await request(app)
+      .post(`/plans/${planId}/delegate`)
+      .set(authHeader(alice.token))
+      .send({ newOwnerId: bob.userId });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/2-person/i);
+  });
+
+  it('rejects delegation to pending invitee', async () => {
+    const alice = await createTestUser({ name: 'Alice' });
+    const bob = await createTestUser({ name: 'Bob' });
+    const carol = await createTestUser({ name: 'Carol' });
+
+    const createRes = await request(app)
+      .post('/plans')
+      .set(authHeader(alice.token))
+      .send({ ...basePlan, inviteeIds: [bob.userId, carol.userId] });
+    const planId = createRes.body.id;
+
+    // Bob is still pending
+    const res = await request(app)
+      .post(`/plans/${planId}/delegate`)
+      .set(authHeader(alice.token))
+      .send({ newOwnerId: bob.userId });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/accepted/i);
+  });
+
+  it('non-owner cannot delegate', async () => {
+    const alice = await createTestUser({ name: 'Alice' });
+    const bob = await createTestUser({ name: 'Bob' });
+    const carol = await createTestUser({ name: 'Carol' });
+
+    const createRes = await request(app)
+      .post('/plans')
+      .set(authHeader(alice.token))
+      .send({ ...basePlan, inviteeIds: [bob.userId, carol.userId] });
+    const planId = createRes.body.id;
+
+    const res = await request(app)
+      .post(`/plans/${planId}/delegate`)
+      .set(authHeader(bob.token))
+      .send({ newOwnerId: carol.userId });
+    expect(res.status).toBe(403);
+  });
+});
+
+// ─── Leave Plan Tests ─────────────────────────────────────────────────────
+
+describe('POST /plans/:id/leave', () => {
+  it('accepted invitee can leave — removed from invites and votes', async () => {
+    const alice = await createTestUser({ name: 'Alice' });
+    const bob = await createTestUser({ name: 'Bob' });
+
+    const createRes = await request(app)
+      .post('/plans')
+      .set(authHeader(alice.token))
+      .send({ ...basePlan, inviteeIds: [bob.userId] });
+    const planId = createRes.body.id;
+
+    await request(app)
+      .post(`/plans/${planId}/rsvp`)
+      .set(authHeader(bob.token))
+      .send({ action: 'accept' });
+
+    const res = await request(app)
+      .post(`/plans/${planId}/leave`)
+      .set(authHeader(bob.token));
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    // Since Bob was the only accepted invitee, auto-cancel
+    expect(res.body.autoCancelled).toBe(true);
+  });
+
+  it('leaving with other accepted invitees does not auto-cancel', async () => {
+    const alice = await createTestUser({ name: 'Alice' });
+    const bob = await createTestUser({ name: 'Bob' });
+    const carol = await createTestUser({ name: 'Carol' });
+
+    const createRes = await request(app)
+      .post('/plans')
+      .set(authHeader(alice.token))
+      .send({ ...basePlan, inviteeIds: [bob.userId, carol.userId] });
+    const planId = createRes.body.id;
+
+    // Both accept
+    await request(app).post(`/plans/${planId}/rsvp`).set(authHeader(bob.token)).send({ action: 'accept' });
+    await request(app).post(`/plans/${planId}/rsvp`).set(authHeader(carol.token)).send({ action: 'accept' });
+
+    const res = await request(app)
+      .post(`/plans/${planId}/leave`)
+      .set(authHeader(bob.token));
+    expect(res.status).toBe(200);
+    expect(res.body.autoCancelled).toBe(false);
+
+    // Verify Bob removed
+    const getRes = await request(app).get(`/plans/${planId}`).set(authHeader(alice.token));
+    expect(getRes.body.invites.find((i: any) => i.userId === bob.userId)).toBeUndefined();
+    expect(getRes.body.invites.find((i: any) => i.userId === carol.userId)).toBeDefined();
+  });
+
+  it('owner cannot leave', async () => {
+    const alice = await createTestUser({ name: 'Alice' });
+    const bob = await createTestUser({ name: 'Bob' });
+
+    const createRes = await request(app)
+      .post('/plans')
+      .set(authHeader(alice.token))
+      .send({ ...basePlan, inviteeIds: [bob.userId] });
+    const planId = createRes.body.id;
+
+    const res = await request(app)
+      .post(`/plans/${planId}/leave`)
+      .set(authHeader(alice.token));
+    expect(res.status).toBe(403);
+    expect(res.body.error).toMatch(/owner/i);
+  });
+
+  it('cannot leave completed plan', async () => {
+    const alice = await createTestUser({ name: 'Alice' });
+    const bob = await createTestUser({ name: 'Bob' });
+
+    const createRes = await request(app)
+      .post('/plans')
+      .set(authHeader(alice.token))
+      .send({ ...basePlan, inviteeIds: [bob.userId] });
+    const planId = createRes.body.id;
+
+    // Accept + confirm + complete
+    await request(app).post(`/plans/${planId}/rsvp`).set(authHeader(bob.token)).send({ action: 'accept' });
+    await request(app).put(`/plans/${planId}/status`).set(authHeader(alice.token)).send({ status: 'confirmed' });
+    await request(app).put(`/plans/${planId}/status`).set(authHeader(alice.token)).send({ status: 'completed' });
+
+    const res = await request(app)
+      .post(`/plans/${planId}/leave`)
+      .set(authHeader(bob.token));
+    expect(res.status).toBe(400);
+  });
+
+  it('pending invitee leaving does not auto-cancel', async () => {
+    const alice = await createTestUser({ name: 'Alice' });
+    const bob = await createTestUser({ name: 'Bob' });
+
+    const createRes = await request(app)
+      .post('/plans')
+      .set(authHeader(alice.token))
+      .send({ ...basePlan, inviteeIds: [bob.userId] });
+    const planId = createRes.body.id;
+
+    // Bob leaves while still pending
+    const res = await request(app)
+      .post(`/plans/${planId}/leave`)
+      .set(authHeader(bob.token));
+    expect(res.status).toBe(200);
+    expect(res.body.autoCancelled).toBe(false);
+  });
+});

@@ -12,8 +12,11 @@ import {
   Users,
   UserPlus,
   UserCheck,
+  UserMinus,
   MessageSquare,
   Trash2,
+  X,
+  Crown,
 } from 'lucide-react-native';
 import StaticColors from '../constants/colors';
 import { useColors } from '../context/ThemeContext';
@@ -38,6 +41,14 @@ function getIconForType(type: NotificationType, color: string) {
       return <UserCheck size={22} color={color} />;
     case 'rsvp_response':
       return <MessageSquare size={22} color={color} />;
+    case 'plan_cancelled':
+    case 'plan_auto_cancelled':
+      return <X size={22} color={color} />;
+    case 'organizer_delegated':
+    case 'organizer_changed':
+      return <Crown size={22} color={color} />;
+    case 'participant_left':
+      return <UserMinus size={22} color={color} />;
     default:
       return <CalendarDays size={22} color={color} />;
   }

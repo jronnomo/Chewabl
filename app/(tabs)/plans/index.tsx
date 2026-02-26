@@ -14,9 +14,10 @@ import { Plus, ArrowLeft } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import PlanCard from '../../../components/PlanCard';
+import PlanActionSheet from '../../../components/PlanActionSheet';
 import { useApp } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
-import { rsvpPlan, derivePlanPhase } from '../../../services/plans';
+import { rsvpPlan, cancelPlan, delegateOrganizer, leavePlan, derivePlanPhase } from '../../../services/plans';
 import { DiningPlan } from '../../../types';
 import StaticColors from '../../../constants/colors';
 import { useColors } from '../../../context/ThemeContext';
@@ -29,11 +30,12 @@ export default function PlansScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const Colors = useColors();
-  const { plans } = useApp();
+  const { plans, localAvatarUri } = useApp();
   const { user, isAuthenticated } = useAuth();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<TabFilter>('upcoming');
   const { planId, from } = useLocalSearchParams<{ planId?: string; from?: string }>();
+  const [actionSheetPlan, setActionSheetPlan] = useState<DiningPlan | null>(null);
 
   // Auto-switch tab when navigating with a planId deep link
   useEffect(() => {
@@ -56,6 +58,44 @@ export default function PlansScreen() {
     },
     onError: (err: Error) => {
       Alert.alert('RSVP Failed', err.message || 'Something went wrong. Please try again.');
+    },
+  });
+
+  const cancelMutation = useMutation({
+    mutationFn: (planId: string) => cancelPlan(planId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['plans'] });
+      Alert.alert('Plan Cancelled', 'The plan has been cancelled and participants have been notified.');
+    },
+    onError: (err: Error) => {
+      Alert.alert('Cancel Failed', err.message || 'Something went wrong.');
+    },
+  });
+
+  const delegateMutation = useMutation({
+    mutationFn: ({ planId, newOwnerId }: { planId: string; newOwnerId: string }) =>
+      delegateOrganizer(planId, newOwnerId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['plans'] });
+      Alert.alert('Organizer Changed', 'You have transferred organizer responsibilities and left the plan.');
+    },
+    onError: (err: Error) => {
+      Alert.alert('Delegate Failed', err.message || 'Something went wrong.');
+    },
+  });
+
+  const leaveMutation = useMutation({
+    mutationFn: (planId: string) => leavePlan(planId),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['plans'] });
+      if (data.autoCancelled) {
+        Alert.alert('Plan Cancelled', 'You were the last accepted participant — the plan has been auto-cancelled.');
+      } else {
+        Alert.alert('Left Plan', 'You have left the plan.');
+      }
+    },
+    onError: (err: Error) => {
+      Alert.alert('Leave Failed', err.message || 'Something went wrong.');
     },
   });
 
@@ -133,6 +173,81 @@ export default function PlansScreen() {
     router.push(`/plan-event?planId=${plan.id}` as never);
   }, [router]);
 
+  const handleMorePress = useCallback((plan: DiningPlan) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setActionSheetPlan(plan);
+  }, []);
+
+  const handleCancelPlan = useCallback(() => {
+    if (!actionSheetPlan) return;
+    Alert.alert(
+      'Cancel Plan?',
+      `Are you sure you want to cancel "${actionSheetPlan.title}"? All participants will be notified.`,
+      [
+        { text: 'No', style: 'cancel' },
+        { text: 'Yes, Cancel', style: 'destructive', onPress: () => cancelMutation.mutate(actionSheetPlan.id) },
+      ]
+    );
+  }, [actionSheetPlan, cancelMutation]);
+
+  const handleDelegatePlan = useCallback(() => {
+    if (!actionSheetPlan) return;
+    const accepted = actionSheetPlan.invites?.filter(i => i.status === 'accepted') ?? [];
+    if (accepted.length === 0) {
+      Alert.alert('No Eligible Members', 'There are no accepted invitees to delegate to.');
+      return;
+    }
+    if (accepted.length === 1) {
+      // Only one choice — confirm directly
+      Alert.alert(
+        'Delegate Organizer?',
+        `Make ${accepted[0].name} the new organizer? You will leave the plan.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Delegate', onPress: () => delegateMutation.mutate({ planId: actionSheetPlan.id, newOwnerId: accepted[0].userId }) },
+        ]
+      );
+    } else {
+      // Multiple choices — let user pick
+      const buttons = accepted.map(inv => ({
+        text: inv.name,
+        onPress: () => {
+          Alert.alert(
+            'Confirm Delegation',
+            `Make ${inv.name} the new organizer? You will leave the plan.`,
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Delegate', onPress: () => delegateMutation.mutate({ planId: actionSheetPlan.id, newOwnerId: inv.userId }) },
+            ]
+          );
+        },
+      }));
+      buttons.push({ text: 'Cancel', onPress: () => {} });
+      Alert.alert('Choose New Organizer', 'Select who should take over:', buttons);
+    }
+  }, [actionSheetPlan, delegateMutation]);
+
+  const handleLeavePlan = useCallback(() => {
+    if (!actionSheetPlan) return;
+    const accepted = actionSheetPlan.invites?.filter(i => i.status === 'accepted') ?? [];
+    // Check if after this user leaves, there are no other accepted participants
+    const otherAccepted = accepted.filter(i => i.userId !== user?.id);
+    const willAutoCancel = otherAccepted.length === 0 && accepted.some(i => i.userId === user?.id);
+
+    const message = willAutoCancel
+      ? `You are the only accepted participant. Leaving will cancel "${actionSheetPlan.title}" for everyone.`
+      : `Are you sure you want to leave "${actionSheetPlan.title}"?`;
+
+    Alert.alert(
+      'Leave Plan?',
+      message,
+      [
+        { text: 'Stay', style: 'cancel' },
+        { text: 'Leave', style: 'destructive', onPress: () => leaveMutation.mutate(actionSheetPlan.id) },
+      ]
+    );
+  }, [actionSheetPlan, leaveMutation, user?.id]);
+
   const filteredPlans = useMemo(() => {
     switch (activeTab) {
       case 'upcoming':
@@ -204,8 +319,9 @@ export default function PlansScreen() {
           <PlanCard
             plan={item}
             currentUserId={user?.id}
+            currentUserAvatarUri={localAvatarUri || user?.avatarUri}
             onPress={() => handlePlanPress(item)}
-            onEdit={item.type === 'group-swipe' ? undefined : () => handlePlanEdit(item)}
+            onMorePress={() => handleMorePress(item)}
             onRestaurantPress={item.restaurant ? () => router.push(`/restaurant/${item.restaurant!.id}` as never) : undefined}
           />
         )}
@@ -229,6 +345,23 @@ export default function PlansScreen() {
           ) : null
         }
       />
+
+      <PlanActionSheet
+        visible={!!actionSheetPlan}
+        plan={actionSheetPlan}
+        isOwner={actionSheetPlan?.ownerId === user?.id}
+        onClose={() => setActionSheetPlan(null)}
+        onEdit={() => actionSheetPlan && handlePlanEdit(actionSheetPlan)}
+        onDelegate={handleDelegatePlan}
+        onCancel={handleCancelPlan}
+        onLeave={handleLeavePlan}
+      />
+
+      {(cancelMutation.isPending || delegateMutation.isPending || leaveMutation.isPending) && (
+        <View style={[styles.mutationOverlay, { backgroundColor: Colors.overlay }]}>
+          <ActivityIndicator size="large" color="#FFF" />
+        </View>
+      )}
     </View>
   );
 }
@@ -316,5 +449,11 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700' as const,
     color: '#FFF',
+  },
+  mutationOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 100,
   },
 });

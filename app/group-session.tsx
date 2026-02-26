@@ -116,7 +116,7 @@ export default function GroupSessionScreen() {
         const ownerEntry: GroupMember = {
           id: plan.ownerId,
           name: plan.ownerName ?? 'Host',
-          avatar: undefined,
+          avatar: plan.ownerAvatarUri,
           completedSwiping: plan.swipesCompleted?.includes(plan.ownerId) ?? false,
         };
         return [meEntry, ownerEntry, ...others];
