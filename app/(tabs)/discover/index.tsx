@@ -129,6 +129,7 @@ export default function DiscoverScreen() {
               {['All', ...CUISINES].map(c => (
                 <Pressable
                   key={c}
+                  testID={`cuisine-chip-${c}`}
                   style={[
                     styles.chip,
                     { backgroundColor: Colors.card, borderColor: Colors.border },
@@ -152,9 +153,10 @@ export default function DiscoverScreen() {
         <View style={styles.filterSection}>
           <Text style={[styles.filterLabel, { color: Colors.textSecondary }]}>Budget</Text>
           <View style={styles.chipRow}>
-            {['All', ...BUDGET_OPTIONS].map(b => (
+            {['All', ...BUDGET_OPTIONS].map((b, i) => (
               <Pressable
                 key={b}
+                testID={`budget-chip-${i}`}
                 style={[
                   styles.chip,
                   { backgroundColor: Colors.card, borderColor: Colors.border },

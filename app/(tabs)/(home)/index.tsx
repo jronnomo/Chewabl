@@ -102,6 +102,7 @@ export default function HomeScreen() {
             <Pressable
               onPress={() => router.push('/notifications' as never)}
               style={styles.bellBtn}
+              testID="notifications-bell-btn"
               accessibilityLabel={`Notifications${unreadCount > 0 ? `, ${unreadCount} unread` : ''}`}
               accessibilityRole="button"
             >

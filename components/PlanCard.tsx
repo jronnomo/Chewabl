@@ -180,6 +180,7 @@ export default React.memo(function PlanCard({ plan, currentUserId, currentUserAv
                   style={[styles.editBtn, { backgroundColor: Colors.surfaceElevated }]}
                   onPress={e => { e.stopPropagation?.(); onMorePress(); }}
                   hitSlop={8}
+                  testID="plan-more-btn"
                   accessibilityLabel="Plan options"
                   accessibilityRole="button"
                 >
