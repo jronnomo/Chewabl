@@ -48,6 +48,7 @@ export interface DiningPlan {
   rsvpDeadline?: string;
   votingOpenedAt?: string;
   ownerId?: string;
+  ownerName?: string;
   options: Restaurant[];
   votes: Record<string, string[]>;
   restaurantOptions?: Restaurant[];

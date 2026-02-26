@@ -9,6 +9,7 @@ import {
   Alert,
   Modal,
   ActivityIndicator,
+  Dimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -28,6 +29,7 @@ import {
   UserPlus,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
+import ConfettiCannon from 'react-native-confetti-cannon';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import SwipeCard from '@/components/SwipeCard';
 import { useApp, useNearbyRestaurants } from '@/context/AppContext';
@@ -111,7 +113,7 @@ export default function GroupSessionScreen() {
       if (!isOwner && plan.ownerId) {
         const ownerEntry: GroupMember = {
           id: plan.ownerId,
-          name: 'Host',
+          name: plan.ownerName ?? 'Host',
           avatar: undefined,
           completedSwiping: plan.swipesCompleted?.includes(plan.ownerId) ?? false,
         };
@@ -149,6 +151,7 @@ export default function GroupSessionScreen() {
   const [results, setResults] = useState<SwipeResult[]>([]);
   const [isAnimating, setIsAnimating] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showConfetti, setShowConfetti] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(40)).current;
 
@@ -220,6 +223,10 @@ export default function GroupSessionScreen() {
         if (freshPlan.status === 'confirmed') {
           const res = buildResultsFromPlan(freshPlan);
           setResults(res);
+          if (members.length > 1) {
+            setShowConfetti(true);
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          }
           setPhase('results');
         }
       } catch {
@@ -319,6 +326,10 @@ export default function GroupSessionScreen() {
         if (updatedPlan.status === 'confirmed') {
           const res = buildResultsFromPlan(updatedPlan);
           setResults(res);
+          if (members.length > 1) {
+            setShowConfetti(true);
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          }
           setPhase('results');
         } else {
           // Plan still voting — go to waiting phase
@@ -454,8 +465,8 @@ export default function GroupSessionScreen() {
                 {members.length} {members.length === 1 ? 'member' : 'members'}
               </Text>
             </View>
-            {members.map(member => (
-              <View key={member.id} style={styles.memberRow}>
+            {members.map((member, index) => (
+              <View key={`index-${index}`} style={styles.memberRow}>
                 <Image source={member.avatar || DEFAULT_AVATAR_URI} style={styles.memberAvatar} contentFit="cover" />
                 <Text style={[styles.memberName, { color: Colors.text }]}>{member.name}</Text>
                 {member.id === myMemberId ? (
@@ -546,9 +557,17 @@ export default function GroupSessionScreen() {
 
         <View style={styles.swipeSubHeader}>
           <View style={styles.membersAvatarRow}>
-            {members.slice(0, 4).map(m => (
-              <Image key={m.id} source={m.avatar || DEFAULT_AVATAR_URI} style={[styles.miniAvatar, { borderColor: Colors.card }]} contentFit="cover" />
-            ))}
+            {members.slice(0, 4).map((m, index) => {
+              const isOrganizer = m.id === activePlan?.ownerId;
+              return (
+                <View key={`index-${index}`} style={[{ position: 'relative' }, isOrganizer && { marginTop: 5 }]}>
+                  {isOrganizer && (
+                    <Crown size={11} color={Colors.star} fill={Colors.star} style={{ position: 'absolute', top: -6, alignSelf: 'center', zIndex: 1 }} />
+                  )}
+                  <Image source={m.avatar || DEFAULT_AVATAR_URI} style={[styles.miniAvatar, { borderColor: Colors.card }]} contentFit="cover" />
+                </View>
+              );
+            })}
             {members.length > 4 && (
               <View style={[styles.miniAvatar, { borderColor: Colors.card, backgroundColor: Colors.primaryLight, alignItems: 'center', justifyContent: 'center' }]}>
                 <Text style={{ fontSize: 9, fontWeight: '700', color: Colors.primary }}>+{members.length - 4}</Text>
@@ -651,9 +670,16 @@ export default function GroupSessionScreen() {
                 {completedMembers.length}/{members.length} finished
               </Text>
             </View>
-            {members.map(member => (
-              <View key={member.id} style={styles.memberRow}>
-                <Image source={member.avatar || DEFAULT_AVATAR_URI} style={styles.memberAvatar} contentFit="cover" />
+            {members.map((member, index) => {
+              const isWaitOwner = member.id === activePlan?.ownerId;
+              return (
+              <View key={`index-${index}`} style={styles.memberRow}>
+                <View style={{ position: 'relative', marginTop: isWaitOwner ? 5 : 0 }}>
+                  {isWaitOwner && (
+                    <Crown size={16} color={Colors.star} fill={Colors.star} style={{ position: 'absolute', top: -10, alignSelf: 'center', zIndex: 1 }} />
+                  )}
+                  <Image source={member.avatar || DEFAULT_AVATAR_URI} style={styles.memberAvatar} contentFit="cover" />
+                </View>
                 <Text style={[styles.memberName, { color: Colors.text }]}>{member.name}</Text>
                 {member.completedSwiping ? (
                   <View style={[styles.hostBadge, { backgroundColor: Colors.success + '18' }]}>
@@ -666,7 +692,8 @@ export default function GroupSessionScreen() {
                   </View>
                 )}
               </View>
-            ))}
+              );
+            })}
           </View>
 
           {pendingMembers.length > 0 && (
@@ -834,14 +861,20 @@ export default function GroupSessionScreen() {
           {!isSoloResults && (
             <View style={[styles.memberVoteSummary, { backgroundColor: Colors.card }]}>
               <Text style={[styles.memberVoteTitle, { color: Colors.text }]}>Who voted what</Text>
-              {members.map(m => {
+              {members.map((m, index) => {
                 const planVotes = activePlan?.votes ?? {};
                 const memberVotes = planVotes[m.id] ?? (m.id === myMemberId ? Object.entries(mySwipes).filter(([, v]) => v === 'yes').map(([id]) => id) : []);
                 const yesCount = memberVotes.length;
                 const total = sessionRestaurants.length || 1;
+                const isVoteOwner = m.id === activePlan?.ownerId;
                 return (
-                  <View key={m.id} style={styles.memberVoteRow}>
-                    <Image source={m.avatar || DEFAULT_AVATAR_URI} style={styles.memberVoteAvatar} contentFit="cover" />
+                  <View key={`index-${index}`} style={styles.memberVoteRow}>
+                    <View style={{ position: 'relative', marginTop: isVoteOwner ? 5 : 0 }}>
+                      {isVoteOwner && (
+                        <Crown size={14} color={Colors.star} fill={Colors.star} style={{ position: 'absolute', top: -8, alignSelf: 'center', zIndex: 1 }} />
+                      )}
+                      <Image source={m.avatar || DEFAULT_AVATAR_URI} style={styles.memberVoteAvatar} contentFit="cover" />
+                    </View>
                     <View style={styles.memberVoteInfo}>
                       <Text style={[styles.memberVoteName, { color: Colors.text }]}>{m.name}</Text>
                       <Text style={[styles.memberVoteStat, { color: Colors.textTertiary }]}>
@@ -860,6 +893,16 @@ export default function GroupSessionScreen() {
           <View style={{ height: 40 }} />
         </ScrollView>
       </Animated.View>
+      {showConfetti && (
+        <ConfettiCannon
+          count={150}
+          origin={{ x: Dimensions.get('window').width / 2, y: 0 }}
+          autoStart
+          fadeOut
+          fallSpeed={3000}
+          explosionSpeed={350}
+        />
+      )}
     </View>
   );
 }
@@ -1063,7 +1106,7 @@ const styles = StyleSheet.create({
   },
   membersAvatarRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-end',
     marginTop: 4,
     gap: 2,
   },

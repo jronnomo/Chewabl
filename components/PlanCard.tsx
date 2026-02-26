@@ -1,7 +1,7 @@
 import React, { useRef, useCallback } from 'react';
 import { View, Text, StyleSheet, Pressable, Animated } from 'react-native';
 import { Image } from 'expo-image';
-import { CalendarDays, Users, Check, Vote, Clock, X, Pencil } from 'lucide-react-native';
+import { CalendarDays, Users, Check, Vote, Clock, X, Pencil, Crown } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { DiningPlan } from '../types';
 import { derivePlanPhase } from '../services/plans';
@@ -66,17 +66,20 @@ function PlanCardFooter({ plan }: { plan: DiningPlan }) {
         <View style={styles.footerParticipants}>
           <View style={styles.avatarsRow}>
             {allAvatars.slice(0, 5).map((av, i) => (
-              <View
-                key={av.key}
-                style={[
-                  styles.avatarContainer,
-                  { borderColor: Colors.card },
-                  i > 0 && { marginLeft: -8 },
-                  av.status === 'accepted' && styles.avatarAccepted,
-                  av.status === 'declined' && styles.avatarDeclined,
-                ]}
-              >
-                <Image source={av.uri || DEFAULT_AVATAR_URI} style={styles.avatar} contentFit="cover" />
+              <View key={`index-${i}`} style={[{ position: 'relative' }, i > 0 && { marginLeft: -8 }, i === 0 && { marginTop: 6 }]}>
+                {i === 0 && (
+                  <Crown size={14} color={Colors.star} fill={Colors.star} style={{ position: 'absolute', top: -8, alignSelf: 'center', zIndex: 1 }} />
+                )}
+                <View
+                  style={[
+                    styles.avatarContainer,
+                    { borderColor: Colors.card },
+                    av.status === 'accepted' && styles.avatarAccepted,
+                    av.status === 'declined' && styles.avatarDeclined,
+                  ]}
+                >
+                  <Image source={av.uri || DEFAULT_AVATAR_URI} style={styles.avatar} contentFit="cover" />
+                </View>
               </View>
             ))}
             {allAvatars.length > 5 && (
@@ -103,7 +106,7 @@ function PlanCardFooter({ plan }: { plan: DiningPlan }) {
     <View style={[styles.footer, { borderTopColor: Colors.borderLight }]}>
       <View style={styles.avatarsRow}>
         {legacyInvitees.slice(0, 4).map((invitee, i) => (
-          <View key={invitee.id} style={[styles.avatarContainer, { borderColor: Colors.card }, i > 0 && { marginLeft: -8 }]}>
+          <View key={`index-${i}`} style={[styles.avatarContainer, { borderColor: Colors.card }, i > 0 && { marginLeft: -8 }]}>
             <Image source={{ uri: invitee.avatar }} style={styles.avatar} contentFit="cover" />
           </View>
         ))}
@@ -355,6 +358,7 @@ const styles = StyleSheet.create({
   },
   avatarsRow: {
     flexDirection: 'row',
+    alignItems: 'flex-end',
   },
   avatarContainer: {
     width: 28,
