@@ -120,8 +120,10 @@ export default function ProfileScreen() {
         return;
       }
       registerForPushNotifications();
+    } else {
+      // Disabling — clear push token from backend so notifications stop
+      try { await api.delete('/users/push-token'); } catch { /* best-effort */ }
     }
-    // TODO: When turning off, clear pushToken from backend (needs DELETE /users/push-token endpoint)
     updatePreferences.mutate({
       ...preferences,
       notificationsEnabled: !preferences.notificationsEnabled,
