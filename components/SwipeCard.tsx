@@ -8,7 +8,7 @@ import {
   PanResponder,
 } from 'react-native';
 import { Image } from 'expo-image';
-import { Star, MapPin, DollarSign, Volume2, Flame } from 'lucide-react-native';
+import { Star, MapPin, DollarSign, Volume2, Flame, Dices } from 'lucide-react-native';
 import { Restaurant } from '@/types';
 import StaticColors from '@/constants/colors';
 import { useColors } from '@/context/ThemeContext';
@@ -25,6 +25,7 @@ interface SwipeCardProps {
   onSwipeRight: (restaurant: Restaurant) => void;
   onTap?: (restaurant: Restaurant) => void;
   isTop: boolean;
+  isCurveball?: boolean;
 }
 
 export default React.memo(function SwipeCard({
@@ -33,6 +34,7 @@ export default React.memo(function SwipeCard({
   onSwipeRight,
   onTap,
   isTop,
+  isCurveball,
 }: SwipeCardProps) {
   const Colors = useColors();
   const position = useRef(new Animated.ValueXY()).current;
@@ -158,6 +160,13 @@ export default React.memo(function SwipeCard({
           <View style={[styles.dealTag, { backgroundColor: Colors.primary }]}>
             <Flame size={12} color="#FFF" />
             <Text style={styles.dealTagText}>{restaurant.lastCallDeal}</Text>
+          </View>
+        )}
+
+        {isCurveball && (
+          <View style={[styles.curveballTag, !restaurant.lastCallDeal && styles.curveballTagTop]}>
+            <Dices size={12} color="#FFF" />
+            <Text style={styles.curveballTagText}>Curveball!</Text>
           </View>
         )}
 
@@ -295,6 +304,27 @@ const styles = StyleSheet.create({
     zIndex: 15,
   },
   dealTagText: {
+    fontSize: 12,
+    fontWeight: '700' as const,
+    color: '#FFF',
+  },
+  curveballTag: {
+    position: 'absolute',
+    top: 52,
+    alignSelf: 'center',
+    backgroundColor: '#8B5CF6',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 20,
+    gap: 5,
+    zIndex: 15,
+  },
+  curveballTagTop: {
+    top: 20,
+  },
+  curveballTagText: {
     fontSize: 12,
     fontWeight: '700' as const,
     color: '#FFF',
