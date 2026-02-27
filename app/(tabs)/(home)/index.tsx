@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, Redirect } from 'expo-router';
-import { Zap, CalendarPlus, Flame, TrendingUp, Sparkles, ChevronRight, Heart, Users, Clock, MapPin, Bell } from 'lucide-react-native';
+import { Zap, CalendarPlus, Flame, TrendingUp, Sparkles, ChevronRight, Heart, Users, MapPin, Bell } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { openSettings } from 'expo-linking';
 import { useApp, useNearbyRestaurants } from '../../../context/AppContext';
@@ -34,9 +34,11 @@ export default function HomeScreen() {
   const { data: unreadData } = useUnreadCount();
   const unreadCount = unreadData?.count ?? 0;
 
-  const tonightNearYou = allRestaurants.filter(r => r.isOpenNow).slice(0, 5);
   const lastCallDeals = allRestaurants.filter(r => r.lastCallDeal);
-  const closingSoon = allRestaurants.filter(r => r.closingSoon);
+  const lastCallIds = new Set(lastCallDeals.map(r => r.id));
+  const tonightNearYou = allRestaurants
+    .filter(r => r.isOpenNow && !lastCallIds.has(r.id))
+    .slice(0, 5);
   const trendingWithFriends = allRestaurants.filter(r => r.rating >= 4.5).slice(0, 5);
   const basedOnPastPicks = preferences.cuisines.length > 0
     ? allRestaurants.filter(r => preferences.cuisines.includes(r.cuisine)).slice(0, 5)
@@ -226,25 +228,6 @@ export default function HomeScreen() {
               <Text style={[styles.emptyText, { color: Colors.textSecondary }]}>No deals right now</Text>
             )}
           </View>
-
-          {closingSoon.length > 0 && (
-            <View style={styles.section}>
-              <View style={styles.sectionHeader}>
-                <View style={styles.sectionTitleRow}>
-                  <Clock size={18} color={Colors.textSecondary} />
-                  <Text style={[styles.sectionTitle, { color: Colors.text }]}>Closing Soon</Text>
-                </View>
-              </View>
-              <FlatList
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                data={closingSoon}
-                keyExtractor={item => item.id}
-                renderItem={({ item }) => <RestaurantCard restaurant={item} variant="horizontal" />}
-                contentContainerStyle={styles.horizontalList}
-              />
-            </View>
-          )}
 
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
