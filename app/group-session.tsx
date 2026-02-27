@@ -28,6 +28,7 @@ import {
   Utensils,
   UserPlus,
 } from 'lucide-react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import ConfettiCannon from 'react-native-confetti-cannon';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -43,6 +44,32 @@ import { DEFAULT_AVATAR_URI } from '@/constants/images';
 import { useColors } from '@/context/ThemeContext';
 
 const Colors = StaticColors;
+
+const SWIPE_PROGRESS_PREFIX = 'chewabl_swipe_progress_';
+
+interface SwipeProgress {
+  mySwipes: Record<string, 'yes' | 'no'>;
+  currentIndex: number;
+  fingerprint: string;
+}
+
+function swipeProgressKey(planId: string): string {
+  return `${SWIPE_PROGRESS_PREFIX}${planId}`;
+}
+
+function loadSwipeProgress(planId: string): Promise<SwipeProgress | null> {
+  return AsyncStorage.getItem(swipeProgressKey(planId))
+    .then(raw => (raw ? JSON.parse(raw) as SwipeProgress : null))
+    .catch(() => null);
+}
+
+function saveSwipeProgress(planId: string, progress: SwipeProgress): void {
+  AsyncStorage.setItem(swipeProgressKey(planId), JSON.stringify(progress)).catch(() => {});
+}
+
+function clearSwipeProgress(planId: string): void {
+  AsyncStorage.removeItem(swipeProgressKey(planId)).catch(() => {});
+}
 
 type Phase = 'lobby' | 'swiping' | 'waiting' | 'results';
 
@@ -86,6 +113,11 @@ export default function GroupSessionScreen() {
       return scoreB - scoreA;
     });
   }, [preferences.cuisines, activePlan, nearbyRestaurants]);
+
+  const restaurantFingerprint = useMemo(
+    () => sessionRestaurants.map(r => r.id).sort().join(','),
+    [sessionRestaurants]
+  );
 
   // Derive members from plan invites if available, otherwise start with just the host
   const initialMembers = useMemo((): GroupMember[] => {
@@ -169,6 +201,22 @@ export default function GroupSessionScreen() {
   useEffect(() => {
     animateIn();
   }, [phase, animateIn]);
+
+  // Restore swipe progress from AsyncStorage on mount
+  useEffect(() => {
+    if (!params.planId || !restaurantFingerprint) return;
+    loadSwipeProgress(params.planId).then(saved => {
+      if (!saved) return;
+      if (saved.fingerprint !== restaurantFingerprint) return;
+      if (saved.currentIndex >= sessionRestaurants.length) return;
+      // Don't override if already submitted
+      if (phase === 'waiting' || phase === 'results') return;
+      setMySwipes(saved.mySwipes);
+      setCurrentIndex(saved.currentIndex);
+      setPhase('swiping');
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.planId, restaurantFingerprint]);
 
   // Build results from plan votes data (used when plan is confirmed)
   const buildResultsFromPlan = useCallback((plan: DiningPlan): SwipeResult[] => {
@@ -325,6 +373,7 @@ export default function GroupSessionScreen() {
         const updatedPlan = await submitSwipes(activePlan.id, yesVotes);
         setActivePlan(updatedPlan);
         queryClient.invalidateQueries({ queryKey: ['plans'] });
+        if (params.planId) clearSwipeProgress(params.planId);
 
         if (updatedPlan.status === 'confirmed') {
           const res = buildResultsFromPlan(updatedPlan);
@@ -355,9 +404,10 @@ export default function GroupSessionScreen() {
       }));
       resultList.sort((a, b) => b.yesCount - a.yesCount || b.restaurant.rating - a.restaurant.rating);
       setResults(resultList);
+      if (params.planId) clearSwipeProgress(params.planId);
       setPhase('results');
     }
-  }, [myMemberId, isAuthenticated, activePlan, sessionRestaurants, buildResultsFromPlan, queryClient]);
+  }, [myMemberId, isAuthenticated, activePlan, sessionRestaurants, buildResultsFromPlan, queryClient, params.planId]);
 
   const handleSwipeRight = useCallback((restaurant: Restaurant) => {
     setIsAnimating(true);
@@ -367,11 +417,18 @@ export default function GroupSessionScreen() {
       if (Object.keys(updated).length >= sessionRestaurants.length) {
         setTimeout(() => finishSwiping(updated), 400);
       }
+      if (params.planId) {
+        saveSwipeProgress(params.planId, {
+          mySwipes: updated,
+          currentIndex: currentIndex + 1,
+          fingerprint: restaurantFingerprint,
+        });
+      }
       return updated;
     });
     setCurrentIndex(prev => prev + 1);
     setTimeout(() => setIsAnimating(false), 350);
-  }, [sessionRestaurants.length, finishSwiping]);
+  }, [sessionRestaurants.length, finishSwiping, params.planId, restaurantFingerprint, currentIndex]);
 
   const handleSwipeLeft = useCallback((restaurant: Restaurant) => {
     setIsAnimating(true);
@@ -381,11 +438,18 @@ export default function GroupSessionScreen() {
       if (Object.keys(updated).length >= sessionRestaurants.length) {
         setTimeout(() => finishSwiping(updated), 400);
       }
+      if (params.planId) {
+        saveSwipeProgress(params.planId, {
+          mySwipes: updated,
+          currentIndex: currentIndex + 1,
+          fingerprint: restaurantFingerprint,
+        });
+      }
       return updated;
     });
     setCurrentIndex(prev => prev + 1);
     setTimeout(() => setIsAnimating(false), 350);
-  }, [sessionRestaurants.length, finishSwiping]);
+  }, [sessionRestaurants.length, finishSwiping, params.planId, restaurantFingerprint, currentIndex]);
 
   const topMatch = results.length > 0 ? results[0] : null;
   const perfectMatches = results.filter(r => r.isMatch);
