@@ -32,7 +32,7 @@
  *   Sofia → Alice      (pending — Alice received)
  *   Alice → Noah       (pending — Alice sent)
  *
- * ─── Plans (15) ──────────────────────────────────────────────────
+ * ─── Plans (16) ──────────────────────────────────────────────────
  *   1. Taco Tuesday       │ voting    │ upcoming │ Alice owns │ Maya+Jerry partial, Liam partial, Alice not yet
  *   2. Weekend Brunch      │ voting    │ upcoming │ Alice owns │ Maya+Liam voted, Alice not yet
  *   3. Friday Night Out    │ voting    │ upcoming │ Alice owns │ Alice voted, Maya+Liam not yet
@@ -48,6 +48,7 @@
  *  13. Maya's Game Night   │ voting    │ upcoming │ Maya owns  │ Jerry+Liam accepted → test Leave (no auto-cancel)
  *  14. Liam's Coffee Run   │ voting    │ upcoming │ Liam owns  │ Jerry only accepted → test Leave (auto-cancel)
  *  15. Group Pick: Ramen Run│ group-swipe│ voting  │ Jerry owns │ 3 invitees → test Cancel + Delegate on group-swipe
+ *  16. Group Pick: Curveball Test│ group-swipe│ voting │ Liam owns │ Jerry+Maya, allowCurveball ON
  */
 
 import mongoose from 'mongoose';
@@ -596,11 +597,29 @@ async function seedReset() {
       restaurantOptions: RESTAURANT_OPTION_OBJECTS,
       votes: new Map(),
     },
+    // 16. Liam's Curveball Swipe — group-swipe, voting, Liam owns, allowCurveball ON
+    //     Tests: curveball injection + sparkle animation + vote submission with curveball filter
+    {
+      type: 'group-swipe',
+      title: 'Group Pick: Curveball Test',
+      ownerId: liam._id,
+      status: 'voting',
+      cuisine: 'Italian',
+      budget: '$$',
+      allowCurveball: true,
+      invites: [
+        { userId: jerry._id, name: jerry.name, status: 'accepted', respondedAt: daysAgo(1) },
+        { userId: maya._id, name: maya.name, status: 'accepted', respondedAt: daysAgo(1) },
+      ],
+      options: RESTAURANT_OPTIONS,
+      restaurantOptions: RESTAURANT_OPTION_OBJECTS,
+      votes: new Map(),
+    },
   ]);
 
-  const [planTaco, planBrunch, planFriday, planTeamLunch, planSushi, planBirthday, planCancelled, planThaiGroup, planBurgerGroup, _planLastCall, planPizzaNight, planQuickLunch, planGameNight, planCoffeeRun, planRamenGroup] = seededPlans;
+  const [planTaco, planBrunch, planFriday, planTeamLunch, planSushi, planBirthday, planCancelled, planThaiGroup, planBurgerGroup, _planLastCall, planPizzaNight, planQuickLunch, planGameNight, planCoffeeRun, planRamenGroup, planCurveballTest] = seededPlans;
 
-  console.log('Created 15 plans:');
+  console.log('Created 16 plans:');
   console.log('  UPCOMING (voting):');
   console.log('    1. Taco Tuesday       — Maya+Jerry partial, Liam partial, Alice not yet');
   console.log('    2. Weekend Brunch     — Maya+Liam voted, Alice not yet');
@@ -622,6 +641,8 @@ async function seedReset() {
   console.log('   13. Maya\'s Game Night    — Jerry is accepted invitee → test Leave (no auto-cancel)');
   console.log('   14. Liam\'s Coffee Run    — Jerry is ONLY accepted → test Leave (auto-cancel)');
   console.log('   15. Group Pick: Ramen Run — Jerry owns group-swipe → test Cancel + Delegate');
+  console.log('  CURVEBALL TEST (Liam-focused):');
+  console.log('   16. Group Pick: Curveball Test — Liam owns, Jerry+Maya, allowCurveball ON');
   console.log();
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -878,11 +899,32 @@ async function seedReset() {
       read: false,
       createdAt: hoursAgo(6),
     },
+
+    // ── Curveball Test plan notifications ──────────────────────────────
+    {
+      userId: jerry._id,
+      type: 'group_swipe_invite',
+      title: 'Group Swipe Started!',
+      body: 'Liam Rodriguez started a group swipe — tap to vote!',
+      data: { planId: planCurveballTest._id.toString() },
+      read: false,
+      createdAt: hoursAgo(1),
+    },
+    {
+      userId: maya._id,
+      type: 'group_swipe_invite',
+      title: 'Group Swipe Started!',
+      body: 'Liam Rodriguez started a group swipe — tap to vote!',
+      data: { planId: planCurveballTest._id.toString() },
+      read: false,
+      createdAt: hoursAgo(1),
+    },
   ]);
 
-  console.log('Created 25 notifications:');
+  console.log('Created 27 notifications:');
   console.log('  Alice: 14 (7 unread, 7 read)');
-  console.log('  Jerry: 11 (8 unread, 3 read)');
+  console.log('  Jerry: 12 (9 unread, 3 read)');
+  console.log('  Maya: 1 (1 unread)');
   console.log();
 
   // ── Summary ──────────────────────────────────────────────────────────────

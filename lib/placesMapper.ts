@@ -57,14 +57,6 @@ function getTodayHours(weekdayDescriptions?: string[]): string {
   return desc.replace(/^[^:]+:\s*/, '');
 }
 
-// Returns a deal string for inexpensive, well-rated, open restaurants
-function getLastCallDeal(place: Place): string | undefined {
-  const priceLevel = PRICE_LEVEL_MAP[place.priceLevel ?? ''] ?? 2;
-  if (priceLevel === 1 && (place.rating ?? 0) >= 4.0 && place.regularOpeningHours?.openNow) {
-    return 'Great value – top-rated for the price';
-  }
-  return undefined;
-}
 
 // Returns a closing-soon string if the restaurant closes within 2 hours
 function getClosingSoon(place: Place): string | undefined {
@@ -180,7 +172,7 @@ export function mapToRestaurant(place: Place, userLocation?: Coords): Restaurant
     noiseLevel: 'moderate',
     busyLevel: 'moderate',
     seating: ['indoor'],
-    lastCallDeal: getLastCallDeal(place),
+    lastCallDeal: undefined,
     closingSoon: getClosingSoon(place),
   };
 }
