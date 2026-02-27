@@ -60,6 +60,7 @@ export interface IPlan extends Document {
   votes: Record<string, string[]>;
   restaurantOptions: IPlanRestaurantOption[];
   restaurantCount?: number;
+  allowCurveball?: boolean;
   swipesCompleted: string[];
   createdAt: Date;
   updatedAt: Date;
@@ -132,6 +133,7 @@ const PlanSchema = new Schema<IPlan>(
     options: { type: [String], default: [] },
     votes: { type: Map, of: [String], default: {} },
     restaurantCount: { type: Number, default: 10 },
+    allowCurveball: { type: Boolean, default: false },
     restaurantOptions: { type: [PlanRestaurantOptionSchema], default: [] },
     swipesCompleted: { type: [String], default: [] },
   },

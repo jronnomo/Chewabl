@@ -97,7 +97,7 @@ router.get('/:id', requireAuth, async (req: AuthRequest, res: Response): Promise
 // Create plan
 router.post('/', requireAuth, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { title, date, time, cuisine, budget, inviteeIds, rsvpDeadline, options, type, status: reqStatus, restaurant, restaurantOptions, restaurantCount } = req.body as {
+    const { title, date, time, cuisine, budget, inviteeIds, rsvpDeadline, options, type, status: reqStatus, restaurant, restaurantOptions, restaurantCount, allowCurveball } = req.body as {
       title: string;
       date?: string;
       time?: string;
@@ -111,6 +111,7 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response): Promise<v
       restaurant?: { id: string; name: string; imageUrl: string; address: string; cuisine: string; priceLevel: number; rating: number };
       restaurantOptions?: Array<Record<string, unknown>>;
       restaurantCount?: number;
+      allowCurveball?: boolean;
     };
 
     // Input length validation
@@ -166,6 +167,7 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response): Promise<v
       budget: budget || '$$',
       ...(restaurant ? { restaurant } : {}),
       ...(restaurantCount !== undefined ? { restaurantCount } : {}),
+      ...(allowCurveball !== undefined ? { allowCurveball } : {}),
       invites,
       rsvpDeadline: rsvpDeadline ? new Date(rsvpDeadline) : undefined,
       options: options || [],
@@ -421,7 +423,7 @@ router.put('/:id', requireAuth, async (req: AuthRequest, res: Response): Promise
       return;
     }
 
-    const { title, date, time, cuisine, budget, options, rsvpDeadline, restaurant } = req.body;
+    const { title, date, time, cuisine, budget, options, rsvpDeadline, restaurant, allowCurveball } = req.body;
     if (title !== undefined && (typeof title !== 'string' || title.length > 100)) {
       res.status(400).json({ error: 'Title must be 100 characters or less' }); return;
     }
@@ -439,6 +441,7 @@ router.put('/:id', requireAuth, async (req: AuthRequest, res: Response): Promise
     if (options !== undefined) plan.options = options;
     if (rsvpDeadline !== undefined) plan.rsvpDeadline = rsvpDeadline ? new Date(rsvpDeadline) : undefined;
     if (restaurant !== undefined) plan.restaurant = restaurant || undefined;
+    if (allowCurveball !== undefined) plan.allowCurveball = allowCurveball;
 
     await plan.save();
     const putOwner = await User.findById(plan.ownerId, 'name avatarUri').lean();
