@@ -23,6 +23,17 @@ export class SessionExpiredError extends Error {
 // Dedup flag to prevent concurrent 401s from clearing token multiple times
 let _handling401 = false;
 
+// Callback for global session-expiry notification (set by AuthContext)
+let _onSessionExpired: (() => void) | null = null;
+
+export function registerSessionExpiredHandler(cb: () => void): void {
+  _onSessionExpired = cb;
+}
+
+export function unregisterSessionExpiredHandler(): void {
+  _onSessionExpired = null;
+}
+
 export async function getToken(): Promise<string | null> {
   return SecureStore.getItemAsync(TOKEN_KEY);
 }
@@ -69,8 +80,12 @@ async function request<T>(
     if (response.status === 401) {
       if (!_handling401) {
         _handling401 = true;
-        await clearToken();
-        _handling401 = false;
+        try {
+          await clearToken();
+          _onSessionExpired?.();
+        } finally {
+          _handling401 = false;
+        }
       }
       throw new SessionExpiredError();
     }

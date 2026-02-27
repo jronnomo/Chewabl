@@ -36,7 +36,7 @@ import {
   lookupByInviteCode,
 } from '../../../services/friends';
 import { useAuth } from '../../../context/AuthContext';
-import { SessionExpiredError, NetworkError } from '../../../services/api';
+import { NetworkError } from '../../../services/api';
 import { Friend, FriendRequest } from '../../../types';
 import StaticColors from '../../../constants/colors';
 import { DEFAULT_AVATAR_URI } from '../../../constants/images';
@@ -184,9 +184,7 @@ export default function FriendsTabScreen() {
       }
     } catch (err: unknown) {
       setCodeResult(null);
-      if (err instanceof SessionExpiredError) {
-        Alert.alert('Session Expired', 'Please sign in again.');
-      } else if (err instanceof NetworkError) {
+      if (err instanceof NetworkError) {
         Alert.alert('Connection Error', 'Could not reach the server. Please check your connection.');
       } else {
         Alert.alert('Error', err instanceof Error ? err.message : 'Something went wrong.');
