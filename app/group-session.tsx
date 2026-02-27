@@ -92,26 +92,79 @@ export default function GroupSessionScreen() {
     return null;
   });
 
-  const sessionRestaurants = useMemo(() => {
+  const { sessionRestaurants, curveballIds } = useMemo(() => {
+    // Determine the base deck
+    let base: Restaurant[];
+
     // Prioritize restaurantOptions from active plan (real group-swipe deck)
     if (activePlan?.restaurantOptions && activePlan.restaurantOptions.length > 0) {
-      return activePlan.restaurantOptions;
+      base = activePlan.restaurantOptions;
+    } else if (activePlan?.options && activePlan.options.length > 0) {
+      // Fall back to plan.options (legacy)
+      base = activePlan.options;
+    } else {
+      // Use live nearby restaurants from Google Places
+      base = [...nearbyRestaurants].sort((a, b) => {
+        let scoreA = 0, scoreB = 0;
+        if (preferences.cuisines.includes(a.cuisine)) scoreA += 2;
+        if (preferences.cuisines.includes(b.cuisine)) scoreB += 2;
+        if (a.isOpenNow) scoreA += 1;
+        if (b.isOpenNow) scoreB += 1;
+        return scoreB - scoreA;
+      });
     }
 
-    // Fall back to plan.options (legacy)
-    if (activePlan?.options && activePlan.options.length > 0) {
-      return activePlan.options;
+    const emptyCurveballIds = new Set<string>();
+
+    // Curveballs replace slots in the deck — total count stays the same
+    if (!activePlan?.allowCurveball || base.length <= 2) {
+      return { sessionRestaurants: base, curveballIds: emptyCurveballIds };
     }
 
-    // Use live nearby restaurants from Google Places
-    return [...nearbyRestaurants].sort((a, b) => {
-      let scoreA = 0, scoreB = 0;
-      if (preferences.cuisines.includes(a.cuisine)) scoreA += 2;
-      if (preferences.cuisines.includes(b.cuisine)) scoreB += 2;
-      if (a.isOpenNow) scoreA += 1;
-      if (b.isOpenNow) scoreB += 1;
-      return scoreB - scoreA;
+    const curveballCount = base.length <= 10 ? 1 : 2;
+    const planCuisine = activePlan.cuisine;
+
+    // Trim base to make room for curveballs (remove lowest-ranked from end)
+    const trimmed = base.slice(0, base.length - curveballCount);
+    const trimmedIds = new Set(trimmed.map(r => r.id));
+
+    // Find eligible curveball candidates from nearby restaurants not in the trimmed deck
+    const candidates = nearbyRestaurants.filter(r =>
+      !trimmedIds.has(r.id) &&
+      r.cuisine !== planCuisine &&
+      (r.lastCallDeal || r.rating >= 4.5)
+    );
+
+    // Sort: deals first, then by rating descending
+    candidates.sort((a, b) => {
+      if (a.lastCallDeal && !b.lastCallDeal) return -1;
+      if (!a.lastCallDeal && b.lastCallDeal) return 1;
+      return b.rating - a.rating;
     });
+
+    const picked = candidates.slice(0, curveballCount);
+
+    if (picked.length === 0) {
+      // No eligible curveballs found — return full base unchanged
+      return { sessionRestaurants: base, curveballIds: emptyCurveballIds };
+    }
+
+    // Build deck: trimmed base + curveballs inserted at random positions
+    // If we found fewer curveballs than slots, add back trimmed items to fill
+    const slotsUsed = picked.length;
+    const deck = slotsUsed < curveballCount
+      ? base.slice(0, base.length - slotsUsed)
+      : [...trimmed];
+
+    const newCurveballIds = new Set<string>();
+    for (const cb of picked) {
+      // Random index between 1 and deck.length - 1 (inclusive, not first or last)
+      const insertAt = 1 + Math.floor(Math.random() * (deck.length - 1));
+      deck.splice(insertAt, 0, cb);
+      newCurveballIds.add(cb.id);
+    }
+
+    return { sessionRestaurants: deck, curveballIds: newCurveballIds };
   }, [preferences.cuisines, activePlan, nearbyRestaurants]);
 
   const restaurantFingerprint = useMemo(
@@ -362,8 +415,9 @@ export default function GroupSessionScreen() {
 
   // Submit swipes to backend and handle result
   const finishSwiping = useCallback(async (allMySwipes: Record<string, 'yes' | 'no'>) => {
+    // Filter out curveball IDs — they exist only client-side and aren't in plan.restaurantOptions
     const yesVotes = Object.entries(allMySwipes)
-      .filter(([, v]) => v === 'yes')
+      .filter(([id, v]) => v === 'yes' && !curveballIds.has(id))
       .map(([id]) => id);
 
     setMembers(prev => prev.map(m =>
@@ -410,7 +464,7 @@ export default function GroupSessionScreen() {
       if (params.planId) clearSwipeProgress(params.planId);
       setPhase('results');
     }
-  }, [myMemberId, isAuthenticated, activePlan, sessionRestaurants, buildResultsFromPlan, queryClient, params.planId]);
+  }, [myMemberId, isAuthenticated, activePlan, sessionRestaurants, curveballIds, buildResultsFromPlan, queryClient, params.planId]);
 
   const handleSwipeRight = useCallback((restaurant: Restaurant) => {
     setIsAnimating(true);
@@ -676,6 +730,7 @@ export default function GroupSessionScreen() {
                 onSwipeRight={handleSwipeRight}
                 onTap={(r) => router.push(`/restaurant/${r.id}` as never)}
                 isTop={isTop}
+                isCurveball={curveballIds.has(restaurant.id)}
               />
             );
           })}
