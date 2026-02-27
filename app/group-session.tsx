@@ -222,7 +222,10 @@ export default function GroupSessionScreen() {
   const buildResultsFromPlan = useCallback((plan: DiningPlan): SwipeResult[] => {
     const restaurants = plan.restaurantOptions ?? [];
     const planVotes = plan.votes ?? {};
-    const totalMembers = 1 + (plan.invites?.filter(i => i.status === 'accepted').length ?? 0);
+    const voterCount = Object.keys(planVotes).length;
+    const totalMembers = voterCount > 0
+      ? voterCount
+      : 1 + (plan.invites?.filter(i => i.status !== 'declined').length ?? 0);
 
     const voteCounts: Record<string, number> = {};
     for (const userVotes of Object.values(planVotes)) {
