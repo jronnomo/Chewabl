@@ -48,11 +48,12 @@ export async function enforceRsvpDeadlines(asOf?: Date): Promise<void> {
   }
 
   // Step 2: Open voting for plans past their deadline where votingOpenedAt is not yet set
+  // Using $eq: null matches both missing fields and explicit null values
   const plansToOpenVoting = await Plan.find({
     type: 'planned',
     status: 'voting',
     rsvpDeadline: { $lte: now },
-    votingOpenedAt: { $exists: false },
+    votingOpenedAt: { $eq: null },
   });
 
   for (const plan of plansToOpenVoting) {
@@ -65,34 +66,6 @@ export async function enforceRsvpDeadlines(asOf?: Date): Promise<void> {
       .map(i => i.userId.toString());
 
     // Include the owner
-    const notifyIds = [plan.ownerId.toString(), ...acceptedIds];
-
-    if (notifyIds.length > 0) {
-      await createNotificationForMany(
-        notifyIds,
-        'voting_open',
-        'Voting is Open!',
-        `RSVP deadline passed for "${plan.title}". Time to vote on restaurants!`,
-        { planId: plan.id },
-      );
-    }
-  }
-
-  // Also handle plans where votingOpenedAt is null (not just missing)
-  const plansToOpenVotingNull = await Plan.find({
-    type: 'planned',
-    status: 'voting',
-    rsvpDeadline: { $lte: now },
-    votingOpenedAt: null,
-  });
-
-  for (const plan of plansToOpenVotingNull) {
-    plan.votingOpenedAt = now;
-    await plan.save();
-
-    const acceptedIds = plan.invites
-      .filter(i => i.status === 'accepted')
-      .map(i => i.userId.toString());
     const notifyIds = [plan.ownerId.toString(), ...acceptedIds];
 
     if (notifyIds.length > 0) {
