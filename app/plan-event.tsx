@@ -17,7 +17,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Image } from 'expo-image';
 import { X, CalendarDays, Clock, MapPin, UtensilsCrossed, DollarSign, Users, Sparkles, UserCheck, Timer } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useApp, useNearbyRestaurants } from '../context/AppContext';
 import RestaurantCountSlider from '../components/RestaurantCountSlider';
 import { useAuth } from '../context/AuthContext';
@@ -62,6 +62,7 @@ export default function PlanEventScreen() {
   const router = useRouter();
   const Colors = useColors();
   const { addPlan, plans } = useApp();
+  const queryClient = useQueryClient();
   const { isAuthenticated } = useAuth();
   const { data: nearbyRestaurants = [] } = useNearbyRestaurants();
   const { restaurantId, planId } = useLocalSearchParams<{ restaurantId?: string; planId?: string }>();
@@ -237,8 +238,9 @@ export default function PlanEventScreen() {
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-      // F-005-027: In edit mode, navigate back instead of to group-session
+      // F-005-027: In edit mode, invalidate cache and navigate back
       if (isEditMode) {
+        queryClient.invalidateQueries({ queryKey: ['plans'] });
         router.back();
       } else if (pinnedRestaurant) {
         // Restaurant already selected — skip lobby, go straight to swiping
