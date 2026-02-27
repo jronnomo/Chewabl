@@ -31,7 +31,8 @@ export default function HomeScreen() {
   const { preferences, isOnboarded, isGuest, isLoading, locationPermission, requestLocation } = useApp();
   const { user, isAuthenticated } = useAuth();
   const { data: allRestaurants = [] } = useNearbyRestaurants();
-  const { data: unreadData } = useUnreadCount();
+  const showFullUI = isAuthenticated && !isGuest;
+  const { data: unreadData } = useUnreadCount(showFullUI);
   const unreadCount = unreadData?.count ?? 0;
 
   const lastCallDeals = allRestaurants.filter(r => r.lastCallDeal);
@@ -86,8 +87,9 @@ export default function HomeScreen() {
     return <Redirect href={'/onboarding' as never} />;
   }
 
-  const displayName = user?.name || preferences.name;
-  const firstName = displayName.split(' ')[0] || 'there';
+  const firstName = showFullUI
+    ? (user?.name?.split(' ')[0] || preferences.name.split(' ')[0] || 'there')
+    : 'there';
 
   return (
     <View style={[styles.container, { paddingTop: insets.top, backgroundColor: Colors.background }]}>
@@ -101,20 +103,22 @@ export default function HomeScreen() {
               <Text style={[styles.greetingText, { color: Colors.text }]}>Hey {firstName} 👋</Text>
               <Text style={[styles.greetingSubtext, { color: Colors.textSecondary }]}>Where are we eating?</Text>
             </View>
-            <Pressable
-              onPress={() => router.push('/notifications' as never)}
-              style={styles.bellBtn}
-              testID="notifications-bell-btn"
-              accessibilityLabel={`Notifications${unreadCount > 0 ? `, ${unreadCount} unread` : ''}`}
-              accessibilityRole="button"
-            >
-              <Bell size={24} color={Colors.text} />
-              {unreadCount > 0 && (
-                <View style={styles.badge}>
-                  <Text style={styles.badgeText}>{unreadCount > 99 ? '99+' : unreadCount}</Text>
-                </View>
-              )}
-            </Pressable>
+            {showFullUI && (
+              <Pressable
+                onPress={() => router.push('/notifications' as never)}
+                style={styles.bellBtn}
+                testID="notifications-bell-btn"
+                accessibilityLabel={`Notifications${unreadCount > 0 ? `, ${unreadCount} unread` : ''}`}
+                accessibilityRole="button"
+              >
+                <Bell size={24} color={Colors.text} />
+                {unreadCount > 0 && (
+                  <View style={styles.badge}>
+                    <Text style={styles.badgeText}>{unreadCount > 99 ? '99+' : unreadCount}</Text>
+                  </View>
+                )}
+              </Pressable>
+            )}
           </View>
 
           {locationPermission === 'denied' && (
@@ -147,37 +151,41 @@ export default function HomeScreen() {
                 </View>
               </View>
             </Pressable>
-            <Pressable
-              style={[styles.planLaterBtn, { backgroundColor: Colors.card, borderColor: Colors.primaryLight }]}
-              onPress={handlePlanLater}
-              testID="plan-later-btn"
-            >
-              <View style={styles.planLaterInner}>
-                <CalendarPlus size={22} color={Colors.primary} />
-                <View>
-                  <Text style={[styles.planLaterTitle, { color: Colors.text }]}>Plan Event</Text>
-                  <Text style={[styles.planLaterSub, { color: Colors.textSecondary }]}>Schedule dining</Text>
+            {showFullUI && (
+              <Pressable
+                style={[styles.planLaterBtn, { backgroundColor: Colors.card, borderColor: Colors.primaryLight }]}
+                onPress={handlePlanLater}
+                testID="plan-later-btn"
+              >
+                <View style={styles.planLaterInner}>
+                  <CalendarPlus size={22} color={Colors.primary} />
+                  <View>
+                    <Text style={[styles.planLaterTitle, { color: Colors.text }]}>Plan Event</Text>
+                    <Text style={[styles.planLaterSub, { color: Colors.textSecondary }]}>Schedule dining</Text>
+                  </View>
                 </View>
-              </View>
-            </Pressable>
+              </Pressable>
+            )}
           </View>
 
-          <Pressable
-            style={[styles.groupSwipeBtn, { backgroundColor: Colors.card, borderColor: Colors.border }]}
-            onPress={handleGroupSwipe}
-            testID="group-swipe-btn"
-          >
-            <View style={styles.groupSwipeInner}>
-              <View style={[styles.groupSwipeIcon, { backgroundColor: Colors.text }]}>
-                <Users size={20} color={Colors.background} />
+          {showFullUI && (
+            <Pressable
+              style={[styles.groupSwipeBtn, { backgroundColor: Colors.card, borderColor: Colors.border }]}
+              onPress={handleGroupSwipe}
+              testID="group-swipe-btn"
+            >
+              <View style={styles.groupSwipeInner}>
+                <View style={[styles.groupSwipeIcon, { backgroundColor: Colors.text }]}>
+                  <Users size={20} color={Colors.background} />
+                </View>
+                <View style={styles.groupSwipeText}>
+                  <Text style={[styles.groupSwipeTitle, { color: Colors.text }]}>Group Swipe</Text>
+                  <Text style={[styles.groupSwipeSub, { color: Colors.textSecondary }]}>Swipe together, decide as a group</Text>
+                </View>
+                <ChevronRight size={18} color={Colors.textTertiary} />
               </View>
-              <View style={styles.groupSwipeText}>
-                <Text style={[styles.groupSwipeTitle, { color: Colors.text }]}>Group Swipe</Text>
-                <Text style={[styles.groupSwipeSub, { color: Colors.textSecondary }]}>Swipe together, decide as a group</Text>
-              </View>
-              <ChevronRight size={18} color={Colors.textTertiary} />
-            </View>
-          </Pressable>
+            </Pressable>
+          )}
 
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
@@ -245,21 +253,23 @@ export default function HomeScreen() {
             )}
           </View>
 
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <View style={styles.sectionTitleRow}>
-                <Sparkles size={18} color={Colors.secondary} />
-                <Text style={[styles.sectionTitle, { color: Colors.text }]}>Based on Your Picks</Text>
+          {showFullUI && (
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <View style={styles.sectionTitleRow}>
+                  <Sparkles size={18} color={Colors.secondary} />
+                  <Text style={[styles.sectionTitle, { color: Colors.text }]}>Based on Your Picks</Text>
+                </View>
               </View>
+              {basedOnPastPicks.length > 0 ? (
+                basedOnPastPicks.map(r => (
+                  <RestaurantCard key={r.id} restaurant={r} variant="compact" />
+                ))
+              ) : (
+                <Text style={[styles.emptyText, { color: Colors.textSecondary }]}>No recommendations yet</Text>
+              )}
             </View>
-            {basedOnPastPicks.length > 0 ? (
-              basedOnPastPicks.map(r => (
-                <RestaurantCard key={r.id} restaurant={r} variant="compact" />
-              ))
-            ) : (
-              <Text style={[styles.emptyText, { color: Colors.textSecondary }]}>No recommendations yet</Text>
-            )}
-          </View>
+          )}
 
           <View style={{ height: 20 }} />
         </ScrollView>

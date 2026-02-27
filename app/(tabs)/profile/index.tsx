@@ -132,7 +132,6 @@ export default function ProfileScreen() {
 
   const handleLogout = useCallback(async () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-    await AsyncStorage.removeItem('chewabl_avatar_uri');
     await setGuestMode(false);
     await signOut();
     router.replace('/auth' as never);
