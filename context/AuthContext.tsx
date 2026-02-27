@@ -4,7 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import createContextHook from '@nkzw/create-context-hook';
 import { BackendUser } from '../types';
 import * as authService from '../services/auth';
-import { getToken, clearToken, NetworkError, api } from '../services/api';
+import { getToken, clearToken, NetworkError, api, registerSessionExpiredHandler, unregisterSessionExpiredHandler } from '../services/api';
 import { registerForPushNotifications } from '../services/notifications';
 
 const CACHED_USER_KEY = 'chewabl_cached_user';
@@ -53,6 +53,17 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
       }
     })();
   }, []);
+
+  // Global session-expired handler: when api.ts detects a 401, sign out immediately
+  useEffect(() => {
+    registerSessionExpiredHandler(() => {
+      setUser(null);
+      setIsAuthenticated(false);
+      AsyncStorage.removeItem(CACHED_USER_KEY).catch(() => {});
+      queryClient.clear();
+    });
+    return () => unregisterSessionExpiredHandler();
+  }, [queryClient]);
 
   const signIn = useCallback(async (email: string, password: string): Promise<BackendUser> => {
     const res = await authService.login(email, password);
