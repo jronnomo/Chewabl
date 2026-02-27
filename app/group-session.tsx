@@ -340,7 +340,7 @@ export default function GroupSessionScreen() {
         }
       } catch {
         Alert.alert('Error', 'Failed to submit votes. Please try again.');
-        setPhase('lobby');
+        setPhase('swiping');
       } finally {
         setIsSubmitting(false);
       }
