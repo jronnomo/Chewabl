@@ -55,6 +55,7 @@ export interface DiningPlan {
   votes: Record<string, string[]>;
   restaurantOptions?: Restaurant[];
   restaurantCount?: number;
+  allowCurveball?: boolean;
   swipesCompleted?: string[];
   createdAt: string;
 }

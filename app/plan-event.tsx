@@ -198,6 +198,7 @@ export default function PlanEventScreen() {
           options: suggestedOptions.map(r => r.id),
           restaurantOptions: suggestedOptions,
           restaurantCount,
+          allowCurveball,
         };
         let plan: DiningPlan;
         if (isEditMode && existingPlan) {
