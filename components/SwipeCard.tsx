@@ -155,7 +155,7 @@ export default React.memo(function SwipeCard({
         </Animated.View>
 
         {restaurant.lastCallDeal && (
-          <View style={styles.dealTag}>
+          <View style={[styles.dealTag, { backgroundColor: Colors.primary }]}>
             <Flame size={12} color="#FFF" />
             <Text style={styles.dealTagText}>{restaurant.lastCallDeal}</Text>
           </View>

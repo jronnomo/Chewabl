@@ -83,7 +83,7 @@ export default React.memo(function RestaurantCard({ restaurant, variant = 'verti
         <Animated.View style={[styles.horizontalCard, { backgroundColor: Colors.card, transform: [{ scale: scaleAnim }] }]}>
           <Image source={{ uri: restaurant.imageUrl }} style={styles.horizontalImage} contentFit="cover" />
           {restaurant.lastCallDeal && (
-            <View style={styles.dealBadge}>
+            <View style={[styles.dealBadge, { backgroundColor: Colors.primary }]}>
               <Flame size={10} color="#FFF" />
               <Text style={styles.dealText} numberOfLines={1}>{restaurant.lastCallDeal}</Text>
             </View>
@@ -100,7 +100,7 @@ export default React.memo(function RestaurantCard({ restaurant, variant = 'verti
             </View>
             {restaurant.isOpenNow && (
               <View style={styles.openBadge}>
-                <View style={styles.openDot} />
+                <View style={[styles.openDot, { backgroundColor: Colors.success }]} />
                 <Text style={[styles.openText, { color: Colors.success }]}>Open Now</Text>
               </View>
             )}
@@ -120,7 +120,7 @@ export default React.memo(function RestaurantCard({ restaurant, variant = 'verti
       <Animated.View style={[styles.verticalCard, { backgroundColor: Colors.card, transform: [{ scale: scaleAnim }] }]}>
         <Image source={{ uri: restaurant.imageUrl }} style={styles.verticalImage} contentFit="cover" />
         {restaurant.lastCallDeal && (
-          <View style={styles.dealBadgeVertical}>
+          <View style={[styles.dealBadgeVertical, { backgroundColor: Colors.primary }]}>
             <Flame size={11} color="#FFF" />
             <Text style={styles.dealTextVertical}>{restaurant.lastCallDeal}</Text>
           </View>
@@ -144,7 +144,7 @@ export default React.memo(function RestaurantCard({ restaurant, variant = 'verti
           {restaurant.isOpenNow && (
             <View style={styles.bottomRow}>
               <View style={styles.openBadge}>
-                <View style={styles.openDot} />
+                <View style={[styles.openDot, { backgroundColor: Colors.success }]} />
                 <Text style={[styles.openText, { color: Colors.success }]}>Open</Text>
               </View>
               <View style={styles.busyBadge}>

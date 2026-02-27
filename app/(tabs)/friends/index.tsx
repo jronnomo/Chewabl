@@ -226,7 +226,7 @@ export default function FriendsTabScreen() {
         <Image source={person?.avatarUri || DEFAULT_AVATAR_URI} style={styles.avatar} contentFit="cover" />
         <Text style={[styles.personName, { flex: 1, color: Colors.text }]}>{person?.name}</Text>
         <Pressable
-          style={[styles.respondBtn, styles.respondBtnAccept]}
+          style={[styles.respondBtn, styles.respondBtnAccept, { backgroundColor: Colors.success }]}
           onPress={() => respondMutation.mutate({ id: item.id, action: 'accept' })}
           disabled={respondMutation.isPending}
           accessibilityLabel="Accept friend request"
