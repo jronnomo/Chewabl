@@ -58,49 +58,100 @@ function getTodayHours(weekdayDescriptions?: string[]): string {
 }
 
 
-// Returns a closing-soon string if the restaurant closes within 2 hours
-function getClosingSoon(place: Place): string | undefined {
+interface ClosingInfo {
+  minutesUntilClose: number;
+  closeHour24: number;
+  closeMinute: number;
+  isOpen24Hours: boolean;
+}
+
+function parseClosingInfo(place: Place): ClosingInfo | undefined {
   const descs = place.regularOpeningHours?.weekdayDescriptions;
   if (!descs) return undefined;
   const jsDay = new Date().getDay();
   const idx = jsDay === 0 ? 6 : jsDay - 1;
   const desc = descs[idx] || '';
-  // Match "HH:MM AM/PM – HH:MM AM/PM" (open – close)
+
+  if (/open 24 hours/i.test(desc)) {
+    return { minutesUntilClose: Infinity, closeHour24: 0, closeMinute: 0, isOpen24Hours: true };
+  }
+
+  if (/closed/i.test(desc) && !/\d/.test(desc)) return undefined;
+
   const rangeMatch = desc.match(
     /(\d{1,2}):(\d{2})\s*(AM|PM)\s*[–\-]\s*(\d{1,2}):(\d{2})\s*(AM|PM)/i
   );
-  if (rangeMatch) {
-    const openH = parseInt(rangeMatch[1]);
-    const openAMPM = rangeMatch[3].toUpperCase();
-    let open24 = openH;
-    if (openAMPM === 'PM' && openH !== 12) open24 = openH + 12;
-    else if (openAMPM === 'AM' && openH === 12) open24 = 0;
+  if (!rangeMatch) return undefined;
 
-    const closeH = parseInt(rangeMatch[4]);
-    const closeM = parseInt(rangeMatch[5]);
-    const closeAMPM = rangeMatch[6].toUpperCase();
-    let close24 = closeH;
-    if (closeAMPM === 'PM' && closeH !== 12) close24 = closeH + 12;
-    else if (closeAMPM === 'AM' && closeH === 12) close24 = 0;
+  const openH = parseInt(rangeMatch[1]);
+  const openAMPM = rangeMatch[3].toUpperCase();
+  let open24 = openH;
+  if (openAMPM === 'PM' && openH !== 12) open24 = openH + 12;
+  else if (openAMPM === 'AM' && openH === 12) open24 = 0;
 
-    let closeMins = close24 * 60 + closeM;
-    const openMins = open24 * 60;
-    // Handle midnight crossing (e.g., 11:00 AM – 1:00 AM)
-    if (closeMins <= openMins) closeMins += 24 * 60;
+  const closeH = parseInt(rangeMatch[4]);
+  const closeM = parseInt(rangeMatch[5]);
+  const closeAMPM = rangeMatch[6].toUpperCase();
+  let close24 = closeH;
+  if (closeAMPM === 'PM' && closeH !== 12) close24 = closeH + 12;
+  else if (closeAMPM === 'AM' && closeH === 12) close24 = 0;
 
-    const now = new Date();
-    let nowMins = now.getHours() * 60 + now.getMinutes();
-    // If we're past midnight but within the overnight window
-    if (nowMins < openMins && closeMins > 24 * 60) nowMins += 24 * 60;
+  let closeMins = close24 * 60 + closeM;
+  const openMins = open24 * 60;
+  if (closeMins <= openMins) closeMins += 24 * 60;
 
-    const diffMins = closeMins - nowMins;
-    if (diffMins > 0 && diffMins <= 120) {
-      const hrs = Math.floor(diffMins / 60);
-      const mins = diffMins % 60;
-      const timeStr = hrs > 0 ? `${hrs}h${mins > 0 ? ` ${mins}m` : ''}` : `${mins}m`;
-      return `Closes in ${timeStr}`;
-    }
+  const now = new Date();
+  let nowMins = now.getHours() * 60 + now.getMinutes();
+  if (nowMins < openMins && closeMins > 24 * 60) nowMins += 24 * 60;
+
+  return {
+    minutesUntilClose: closeMins - nowMins,
+    closeHour24: close24,
+    closeMinute: closeM,
+    isOpen24Hours: false,
+  };
+}
+
+function getClosingSoon(place: Place): string | undefined {
+  const info = parseClosingInfo(place);
+  if (!info || info.isOpen24Hours) return undefined;
+  const diff = info.minutesUntilClose;
+  if (diff > 0 && diff <= 120) {
+    const hrs = Math.floor(diff / 60);
+    const mins = diff % 60;
+    const timeStr = hrs > 0 ? `${hrs}h${mins > 0 ? ` ${mins}m` : ''}` : `${mins}m`;
+    return `Closes in ${timeStr}`;
   }
+  return undefined;
+}
+
+function formatCloseTime(hour24: number, minute: number): string {
+  const h12 = hour24 === 0 ? 12 : hour24 > 12 ? hour24 - 12 : hour24;
+  const ampm = hour24 < 12 ? 'AM' : 'PM';
+  return minute > 0 ? `${h12}:${minute.toString().padStart(2, '0')} ${ampm}` : `${h12} ${ampm}`;
+}
+
+function getLastCallDeal(place: Place): string | undefined {
+  const info = parseClosingInfo(place);
+  if (!info || info.isOpen24Hours) return undefined;
+  const diff = info.minutesUntilClose;
+
+  if (diff > 0 && diff <= 30) {
+    return `Last call – ${diff}m left!`;
+  }
+
+  if (diff > 30 && diff <= 90) {
+    const hrs = Math.floor(diff / 60);
+    const mins = diff % 60;
+    const timeStr = hrs > 0 ? `${hrs}h${mins > 0 ? ` ${mins}m` : ''}` : `${mins}m`;
+    return `Closing soon – ${timeStr} left`;
+  }
+
+  const nowHour = new Date().getHours();
+  if (nowHour >= 21 && info.closeHour24 < 6 && diff > 0) {
+    return `Open late – until ${formatCloseTime(info.closeHour24, info.closeMinute)}`;
+  }
+
   return undefined;
 }
 
@@ -172,7 +223,7 @@ export function mapToRestaurant(place: Place, userLocation?: Coords): Restaurant
     noiseLevel: 'moderate',
     busyLevel: 'moderate',
     seating: ['indoor'],
-    lastCallDeal: undefined,
+    lastCallDeal: getLastCallDeal(place),
     closingSoon: getClosingSoon(place),
   };
 }
