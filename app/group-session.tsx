@@ -415,8 +415,9 @@ export default function GroupSessionScreen() {
 
   // Submit swipes to backend and handle result
   const finishSwiping = useCallback(async (allMySwipes: Record<string, 'yes' | 'no'>) => {
+    // Filter out curveball IDs — they exist only client-side and aren't in plan.restaurantOptions
     const yesVotes = Object.entries(allMySwipes)
-      .filter(([, v]) => v === 'yes')
+      .filter(([id, v]) => v === 'yes' && !curveballIds.has(id))
       .map(([id]) => id);
 
     setMembers(prev => prev.map(m =>
@@ -463,7 +464,7 @@ export default function GroupSessionScreen() {
       if (params.planId) clearSwipeProgress(params.planId);
       setPhase('results');
     }
-  }, [myMemberId, isAuthenticated, activePlan, sessionRestaurants, buildResultsFromPlan, queryClient, params.planId]);
+  }, [myMemberId, isAuthenticated, activePlan, sessionRestaurants, curveballIds, buildResultsFromPlan, queryClient, params.planId]);
 
   const handleSwipeRight = useCallback((restaurant: Restaurant) => {
     setIsAnimating(true);

@@ -1,13 +1,15 @@
-import React, { useRef, useCallback } from 'react';
+import React, { useRef, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   Dimensions,
   Animated,
+  Easing,
   PanResponder,
 } from 'react-native';
 import { Image } from 'expo-image';
+import Svg, { Circle, Path } from 'react-native-svg';
 import { Star, MapPin, DollarSign, Volume2, Flame, Dices } from 'lucide-react-native';
 import { Restaurant } from '@/types';
 import StaticColors from '@/constants/colors';
@@ -18,6 +20,37 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const SWIPE_THRESHOLD = SCREEN_WIDTH * 0.25;
 const CARD_WIDTH = SCREEN_WIDTH - 40;
 const CARD_HEIGHT = SCREEN_HEIGHT * 0.58;
+
+// 4-point star SVG path centered at (cx, cy) with given radius
+function starPath(cx: number, cy: number, r: number): string {
+  const inner = r * 0.28;
+  return `M ${cx} ${cy - r} L ${cx + inner} ${cy - inner} L ${cx + r} ${cy} L ${cx + inner} ${cy + inner} L ${cx} ${cy + r} L ${cx - inner} ${cy + inner} L ${cx - r} ${cy} L ${cx - inner} ${cy - inner} Z`;
+}
+
+// Deterministic sparkle positions — x/y as fraction of card dimensions
+const SPARKLES: { x: number; y: number; size: number; type: 'star' | 'dot' }[] = [
+  { x: 0.08, y: 0.30, size: 5, type: 'dot' },
+  { x: 0.14, y: 0.52, size: 9, type: 'star' },
+  { x: 0.11, y: 0.18, size: 3, type: 'dot' },
+  { x: 0.22, y: 0.38, size: 7, type: 'star' },
+  { x: 0.19, y: 0.62, size: 4, type: 'dot' },
+  { x: 0.30, y: 0.25, size: 11, type: 'star' },
+  { x: 0.35, y: 0.55, size: 5, type: 'dot' },
+  { x: 0.40, y: 0.42, size: 13, type: 'star' },
+  { x: 0.38, y: 0.15, size: 4, type: 'dot' },
+  { x: 0.48, y: 0.60, size: 8, type: 'star' },
+  { x: 0.52, y: 0.32, size: 15, type: 'star' },
+  { x: 0.56, y: 0.50, size: 5, type: 'dot' },
+  { x: 0.62, y: 0.22, size: 10, type: 'star' },
+  { x: 0.60, y: 0.68, size: 4, type: 'dot' },
+  { x: 0.70, y: 0.45, size: 12, type: 'star' },
+  { x: 0.72, y: 0.28, size: 6, type: 'dot' },
+  { x: 0.78, y: 0.58, size: 8, type: 'star' },
+  { x: 0.82, y: 0.35, size: 4, type: 'dot' },
+  { x: 0.88, y: 0.48, size: 10, type: 'star' },
+  { x: 0.92, y: 0.20, size: 5, type: 'dot' },
+  { x: 0.94, y: 0.55, size: 7, type: 'star' },
+];
 
 interface SwipeCardProps {
   restaurant: Restaurant;
@@ -45,6 +78,22 @@ export default React.memo(function SwipeCard({
   const onTapRef = useRef(onTap);
   onTapRef.current = onTap;
   const gestureStartTime = useRef(0);
+  const gleamAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (isTop && isCurveball) {
+      gleamAnim.setValue(0);
+      const timeout = setTimeout(() => {
+        Animated.timing(gleamAnim, {
+          toValue: 1,
+          duration: 1200,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }).start();
+      }, 300);
+      return () => clearTimeout(timeout);
+    }
+  }, [isTop, isCurveball]);
 
   const resetPosition = useCallback(() => {
     Animated.spring(position, {
@@ -147,6 +196,63 @@ export default React.memo(function SwipeCard({
         />
 
         <View style={styles.gradientOverlay} />
+
+        {isCurveball && SPARKLES.map((sp, i) => {
+          const start = sp.x * 0.45;
+          const fadeIn = start + 0.12;
+          const holdEnd = start + 0.35;
+          const fadeOut = Math.min(start + 0.55, 1);
+          const spOpacity = gleamAnim.interpolate({
+            inputRange: [start, fadeIn, holdEnd, fadeOut],
+            outputRange: [0, 1, 0.8, 0],
+            extrapolate: 'clamp',
+          });
+          const spScale = gleamAnim.interpolate({
+            inputRange: [start, fadeIn, holdEnd, fadeOut],
+            outputRange: [0, 1.3, 1, 0],
+            extrapolate: 'clamp',
+          });
+          const dim = sp.size * 4;
+          return (
+            <Animated.View
+              key={i}
+              pointerEvents="none"
+              style={{
+                position: 'absolute',
+                left: sp.x * CARD_WIDTH - dim / 2,
+                top: sp.y * CARD_HEIGHT - dim / 2,
+                width: dim,
+                height: dim,
+                zIndex: 12,
+                opacity: spOpacity,
+                transform: [{ scale: spScale }],
+              }}
+            >
+              <Svg width={dim} height={dim}>
+                {/* Soft glow halo */}
+                <Circle
+                  cx={dim / 2}
+                  cy={dim / 2}
+                  r={sp.size * 1.6}
+                  fill="rgba(255,215,80,0.12)"
+                />
+                {sp.type === 'star' ? (
+                  <Path
+                    d={starPath(dim / 2, dim / 2, sp.size)}
+                    fill="rgba(255,225,120,0.9)"
+                  />
+                ) : (
+                  <Circle
+                    cx={dim / 2}
+                    cy={dim / 2}
+                    r={sp.size * 0.5}
+                    fill="rgba(255,235,160,0.85)"
+                  />
+                )}
+              </Svg>
+            </Animated.View>
+          );
+        })}
 
         <Animated.View style={[styles.stampYes, { opacity: opacityYes }]}>
           <Text style={styles.stampYesText}>YUM!</Text>
