@@ -420,7 +420,7 @@ export default function GroupSessionScreen() {
       if (params.planId) {
         saveSwipeProgress(params.planId, {
           mySwipes: updated,
-          currentIndex: currentIndex + 1,
+          currentIndex: Object.keys(updated).length,
           fingerprint: restaurantFingerprint,
         });
       }
@@ -428,7 +428,7 @@ export default function GroupSessionScreen() {
     });
     setCurrentIndex(prev => prev + 1);
     setTimeout(() => setIsAnimating(false), 350);
-  }, [sessionRestaurants.length, finishSwiping, params.planId, restaurantFingerprint, currentIndex]);
+  }, [sessionRestaurants.length, finishSwiping, params.planId, restaurantFingerprint]);
 
   const handleSwipeLeft = useCallback((restaurant: Restaurant) => {
     setIsAnimating(true);
@@ -441,7 +441,7 @@ export default function GroupSessionScreen() {
       if (params.planId) {
         saveSwipeProgress(params.planId, {
           mySwipes: updated,
-          currentIndex: currentIndex + 1,
+          currentIndex: Object.keys(updated).length,
           fingerprint: restaurantFingerprint,
         });
       }
@@ -449,7 +449,7 @@ export default function GroupSessionScreen() {
     });
     setCurrentIndex(prev => prev + 1);
     setTimeout(() => setIsAnimating(false), 350);
-  }, [sessionRestaurants.length, finishSwiping, params.planId, restaurantFingerprint, currentIndex]);
+  }, [sessionRestaurants.length, finishSwiping, params.planId, restaurantFingerprint]);
 
   const topMatch = results.length > 0 ? results[0] : null;
   const perfectMatches = results.filter(r => r.isMatch);
