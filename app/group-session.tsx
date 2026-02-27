@@ -584,7 +584,7 @@ export default function GroupSessionScreen() {
               </Text>
             </View>
           ) : (
-            <Pressable style={styles.startBtn} onPress={handleStartSwiping} disabled={isSubmitting} testID="start-swiping-btn">
+            <Pressable style={[styles.startBtn, { backgroundColor: Colors.primary, shadowColor: Colors.primary }]} onPress={handleStartSwiping} disabled={isSubmitting} testID="start-swiping-btn">
               {isSubmitting ? (
                 <ActivityIndicator color="#FFF" />
               ) : (
@@ -680,7 +680,7 @@ export default function GroupSessionScreen() {
 
         <View style={[styles.actionBar, { paddingBottom: insets.bottom + 16 }]}>
           <Pressable
-            style={[styles.actionBtn, styles.actionBtnNo]}
+            style={[styles.actionBtn, styles.actionBtnNo, { backgroundColor: Colors.card, borderColor: Colors.error }]}
             onPress={() => {
               if (isAnimating) return;
               if (currentIndex < sessionRestaurants.length) {
@@ -693,7 +693,7 @@ export default function GroupSessionScreen() {
             <XIcon size={28} color={Colors.error} />
           </Pressable>
           <Pressable
-            style={[styles.actionBtn, styles.actionBtnYes]}
+            style={[styles.actionBtn, styles.actionBtnYes, { backgroundColor: Colors.primary }]}
             onPress={() => {
               if (isAnimating) return;
               if (currentIndex < sessionRestaurants.length) {
@@ -840,7 +840,9 @@ export default function GroupSessionScreen() {
                           key={i}
                           style={[
                             styles.voteDot,
-                            i < topMatch.yesCount ? styles.voteDotYes : styles.voteDotNo,
+                            i < topMatch.yesCount
+                              ? [styles.voteDotYes, { backgroundColor: Colors.success }]
+                              : [styles.voteDotNo, { backgroundColor: Colors.border }],
                           ]}
                         />
                       ))}
@@ -852,7 +854,7 @@ export default function GroupSessionScreen() {
                 )}
               </View>
               <Pressable
-                style={styles.winnerBtn}
+                style={[styles.winnerBtn, { backgroundColor: Colors.primary }]}
                 onPress={() => {
                   Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
                   router.push(`/restaurant/${topMatch.restaurant.id}` as never);
@@ -877,7 +879,7 @@ export default function GroupSessionScreen() {
                     <Text style={[styles.matchName, { color: Colors.text }]}>{m.restaurant.name}</Text>
                     <Text style={[styles.matchCuisine, { color: Colors.textSecondary }]}>{m.restaurant.cuisine}</Text>
                   </View>
-                  <View style={styles.matchBadge}>
+                  <View style={[styles.matchBadge, { backgroundColor: Colors.primary }]}>
                     <Heart size={12} color="#FFF" fill="#FFF" />
                     <Text style={styles.matchBadgeText}>{m.yesCount}</Text>
                   </View>
@@ -920,8 +922,8 @@ export default function GroupSessionScreen() {
                   </View>
                 </View>
                 <View style={styles.rankVotesWrap}>
-                  <View style={styles.rankVoteBar}>
-                    <View style={[styles.rankVoteFill, { width: `${(r.yesCount / r.totalMembers) * 100}%` }]} />
+                  <View style={[styles.rankVoteBar, { backgroundColor: Colors.borderLight }]}>
+                    <View style={[styles.rankVoteFill, { width: `${(r.yesCount / r.totalMembers) * 100}%`, backgroundColor: Colors.success }]} />
                   </View>
                   <Text style={[styles.rankVoteLabel, { color: Colors.textSecondary }]}>{r.yesCount}/{r.totalMembers}</Text>
                 </View>
@@ -952,8 +954,8 @@ export default function GroupSessionScreen() {
                         Liked {yesCount} of {sessionRestaurants.length}
                       </Text>
                     </View>
-                    <View style={styles.memberVoteBarWrap}>
-                      <View style={[styles.memberVoteBar, { width: `${(yesCount / total) * 100}%` }]} />
+                    <View style={[styles.memberVoteBarWrap, { backgroundColor: Colors.borderLight }]}>
+                      <View style={[styles.memberVoteBar, { width: `${(yesCount / total) * 100}%`, backgroundColor: Colors.primary }]} />
                     </View>
                   </View>
                 );

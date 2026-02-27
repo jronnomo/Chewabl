@@ -133,7 +133,7 @@ export default function RestaurantDetailScreen() {
           </View>
 
           {restaurant.lastCallDeal && (
-            <View style={styles.heroDeal}>
+            <View style={[styles.heroDeal, { backgroundColor: Colors.primary }]}>
               <Flame size={14} color="#FFF" />
               <Text style={styles.heroDealText}>{restaurant.lastCallDeal}</Text>
             </View>
@@ -226,12 +226,12 @@ export default function RestaurantDetailScreen() {
       <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 12, backgroundColor: Colors.card, borderTopColor: Colors.borderLight }]}>
         {restaurant.isOpenNow && (
           <View style={styles.openIndicator}>
-            <View style={styles.openDot} />
-            <Text style={styles.openLabel}>Open Now</Text>
+            <View style={[styles.openDot, { backgroundColor: Colors.success }]} />
+            <Text style={[styles.openLabel, { color: Colors.success }]}>Open Now</Text>
           </View>
         )}
         <Pressable
-          style={styles.reserveBtn}
+          style={[styles.reserveBtn, { backgroundColor: Colors.primary, shadowColor: Colors.primary }]}
           onPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
             Alert.alert('Coming Soon', 'Reservations will be available in a future update.');
