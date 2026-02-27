@@ -19,12 +19,13 @@ export function useNotifications() {
   });
 }
 
-export function useUnreadCount() {
+export function useUnreadCount(enabled: boolean = true) {
   return useQuery({
     queryKey: ['notifications', 'unread-count'],
     queryFn: notificationService.getUnreadCount,
-    refetchInterval: 30000, // Poll every 30 seconds
+    refetchInterval: enabled ? 30000 : false,
     staleTime: 10000,
+    enabled,
   });
 }
 

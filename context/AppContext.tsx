@@ -124,15 +124,22 @@ export const [AppProvider, useApp] = createContextHook(() => {
     }
   }, [isAuthenticated, isGuest]);
 
-  // Clear stale favorites from AsyncStorage on sign-out to prevent data leaking to the next user
+  // Clear ALL user-specific state on sign-out to prevent data leaking to the next user/guest
   const prevAuthRef = useRef(isAuthenticated);
   useEffect(() => {
     if (prevAuthRef.current && !isAuthenticated) {
-      // User just signed out — clear local favorites
       setFavorites([]);
       setFavoritedRestaurants([]);
-      AsyncStorage.removeItem(FAVORITES_KEY).catch(() => {});
-      AsyncStorage.removeItem(FAVORITE_RESTAURANTS_KEY).catch(() => {});
+      setPreferences({ name: '', cuisines: [], budget: '$$', dietary: [], atmosphere: 'Moderate', groupSize: '2', distance: '5' });
+      setLocalAvatarUri(null);
+      setIsOnboarded(false);
+      AsyncStorage.multiRemove([
+        FAVORITES_KEY,
+        FAVORITE_RESTAURANTS_KEY,
+        PREFS_KEY,
+        ONBOARDED_KEY,
+        AVATAR_KEY,
+      ]).catch(() => {});
     }
     prevAuthRef.current = isAuthenticated;
   }, [isAuthenticated]);
