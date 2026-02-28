@@ -37,7 +37,7 @@ import RestaurantCountSlider from '@/components/RestaurantCountSlider';
 import { useApp, useNearbyRestaurants } from '@/context/AppContext';
 import { useAuth } from '@/context/AuthContext';
 import { getFriends } from '@/services/friends';
-import { createPlan, submitSwipes, getPlan, derivePlanPhase } from '@/services/plans';
+import { createPlan, updatePlan, submitSwipes, getPlan, derivePlanPhase } from '@/services/plans';
 import { Restaurant, GroupMember, SwipeResult, Friend, DiningPlan } from '@/types';
 import StaticColors from '@/constants/colors';
 import { DEFAULT_AVATAR_URI } from '@/constants/images';
@@ -426,6 +426,20 @@ export default function GroupSessionScreen() {
         queryClient.invalidateQueries({ queryKey: ['plans'] });
       } catch {
         Alert.alert('Error', 'Failed to start group swipe. Please try again.');
+        setIsSubmitting(false);
+        return;
+      } finally {
+        setIsSubmitting(false);
+      }
+    } else if (isAuthenticated && activePlan && (!activePlan.restaurantOptions || activePlan.restaurantOptions.length === 0) && sessionRestaurants.length > 0) {
+      // Plan was created with empty restaurantOptions (restaurants deferred to swipe time).
+      // Populate them now so the backend can validate votes.
+      try {
+        setIsSubmitting(true);
+        const updated = await updatePlan(activePlan.id, { restaurantOptions: sessionRestaurants });
+        setActivePlan(updated);
+      } catch {
+        Alert.alert('Error', 'Failed to load restaurant deck. Please try again.');
         setIsSubmitting(false);
         return;
       } finally {

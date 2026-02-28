@@ -423,7 +423,7 @@ router.put('/:id', requireAuth, async (req: AuthRequest, res: Response): Promise
       return;
     }
 
-    const { title, date, time, cuisine, budget, options, rsvpDeadline, restaurant, allowCurveball } = req.body;
+    const { title, date, time, cuisine, budget, options, rsvpDeadline, restaurant, allowCurveball, restaurantOptions } = req.body;
     if (title !== undefined && (typeof title !== 'string' || title.length > 100)) {
       res.status(400).json({ error: 'Title must be 100 characters or less' }); return;
     }
@@ -442,6 +442,7 @@ router.put('/:id', requireAuth, async (req: AuthRequest, res: Response): Promise
     if (rsvpDeadline !== undefined) plan.rsvpDeadline = rsvpDeadline ? new Date(rsvpDeadline) : undefined;
     if (restaurant !== undefined) plan.restaurant = restaurant || undefined;
     if (allowCurveball !== undefined) plan.allowCurveball = allowCurveball;
+    if (restaurantOptions !== undefined) plan.restaurantOptions = restaurantOptions;
 
     await plan.save();
     const putOwner = await User.findById(plan.ownerId, 'name avatarUri').lean();
