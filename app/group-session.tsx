@@ -489,8 +489,9 @@ export default function GroupSessionScreen() {
           // Plan still voting — go to waiting phase
           setPhase('waiting');
         }
-      } catch {
-        Alert.alert('Error', 'Failed to submit votes. Please try again.');
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Something went wrong';
+        Alert.alert('Error', `Failed to submit votes: ${msg}`);
         setPhase('swiping');
       } finally {
         setIsSubmitting(false);
