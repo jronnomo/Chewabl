@@ -464,6 +464,14 @@ export default function GroupSessionScreen() {
     if (isAuthenticated && activePlan) {
       try {
         setIsSubmitting(true);
+
+        // Safety net: if autoStart bypassed handleStartSwiping, restaurantOptions
+        // may still be empty on the backend. Populate them before submitting votes.
+        if ((!activePlan.restaurantOptions || activePlan.restaurantOptions.length === 0) && sessionRestaurants.length > 0) {
+          const populated = await updatePlan(activePlan.id, { restaurantOptions: sessionRestaurants });
+          setActivePlan(populated);
+        }
+
         const updatedPlan = await submitSwipes(activePlan.id, yesVotes);
         setActivePlan(updatedPlan);
         queryClient.invalidateQueries({ queryKey: ['plans'] });
