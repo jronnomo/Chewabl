@@ -52,6 +52,8 @@ export const [AppProvider, useApp] = createContextHook(() => {
   const [localAvatarUri, setLocalAvatarUri] = useState<string | null>(null);
   const [userLocation, setUserLocation] = useState<Coords | null>(null);
   const [isGuest, setIsGuestState] = useState<boolean>(false);
+  const [newlyAddedFavoriteIds, setNewlyAddedFavoriteIds] = useState<Set<string>>(new Set());
+  const newFavTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const [locationPermission, setLocationPermission] = useState<
     'undetermined' | 'granted' | 'denied'
   >('undetermined');
@@ -274,10 +276,40 @@ export const [AppProvider, useApp] = createContextHook(() => {
     },
   });
 
+  const clearNewlyAddedFavorite = useCallback((id: string) => {
+    setNewlyAddedFavoriteIds(prev => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+    const timer = newFavTimersRef.current.get(id);
+    if (timer) {
+      clearTimeout(timer);
+      newFavTimersRef.current.delete(id);
+    }
+  }, []);
+
   const toggleFavorite = useCallback((restaurant: Restaurant) => {
     const restaurantId = restaurant.id;
+    const isRemoving = favorites.includes(restaurantId);
+
+    // Track newly added favorite BEFORE state update (DC-5)
+    if (!isRemoving) {
+      setNewlyAddedFavoriteIds(prev => new Set(prev).add(restaurantId));
+      // Auto-clear after 30 seconds per ID (DC-3)
+      const existingTimer = newFavTimersRef.current.get(restaurantId);
+      if (existingTimer) clearTimeout(existingTimer);
+      newFavTimersRef.current.set(restaurantId, setTimeout(() => {
+        setNewlyAddedFavoriteIds(prev => {
+          const next = new Set(prev);
+          next.delete(restaurantId);
+          return next;
+        });
+        newFavTimersRef.current.delete(restaurantId);
+      }, 30_000));
+    }
+
     setFavorites(prev => {
-      const isRemoving = prev.includes(restaurantId);
       const updated = isRemoving
         ? prev.filter(id => id !== restaurantId)
         : [...prev, restaurantId];
@@ -309,7 +341,7 @@ export const [AppProvider, useApp] = createContextHook(() => {
       })();
       return updated;
     });
-  }, [isAuthenticated]);
+  }, [isAuthenticated, favorites]);
 
   const addPlan = useCallback((plan: DiningPlan) => {
     if (isAuthenticated) {
@@ -354,6 +386,8 @@ export const [AppProvider, useApp] = createContextHook(() => {
     saveOnboarding,
     updatePreferences,
     toggleFavorite,
+    newlyAddedFavoriteIds,
+    clearNewlyAddedFavorite,
     addPlan,
     requestLocation,
   };

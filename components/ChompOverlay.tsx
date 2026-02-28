@@ -10,6 +10,7 @@ import {
 import Svg, { Defs, Mask, Rect, Circle } from 'react-native-svg';
 import * as Haptics from 'expo-haptics';
 import { useThemeTransition } from '../context/ThemeTransitionContext';
+import { ScallopCircle, generateScallops } from '../lib/scallopUtils';
 
 // ─── ANIMATION TIMING ───────────────────────────────────────────────────────
 // 4 discrete *chomp* bites with pauses between them
@@ -20,27 +21,6 @@ const COMMIT_DELAY = 150;     // ms before isDarkMode flips
 
 // [DA-FIX-5] Haptic thresholds: fire at the start of each bite
 const HAPTIC_THRESHOLDS = [0.01, 1.01, 2.01, 3.01, 4.01] as const;
-
-// ─── DETERMINISTIC PSEUDO-RANDOM ────────────────────────────────────────────
-// Mulberry32 — consistent across renders, good distribution
-function seededRandom(seed: number): number {
-  let t = (seed + 0x6d2b79f5) | 0;
-  t = Math.imul(t ^ (t >>> 15), t | 1);
-  t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-}
-
-function seededRange(seed: number, min: number, max: number): number {
-  return min + seededRandom(seed) * (max - min);
-}
-
-// ─── TYPES ──────────────────────────────────────────────────────────────────
-interface ScallopCircle {
-  /** Angular position on the bite arc (radians from bite center) */
-  angle: number;
-  /** Radius of this individual scallop circle */
-  radius: number;
-}
 
 interface BiteSpec {
   /** Bite center X (positioned off one screen edge) */
@@ -61,84 +41,41 @@ export default function ChompOverlay() {
   const biteSpecs = useMemo((): BiteSpec[] => {
     const scallopBaseR = screenWidth * 0.1; // base scallop circle radius
 
-    // Generate scallop circles arranged along an arc of a bite
-    function generateScallops(
-      biteIdx: number,
-      targetR: number,
-      arcStart: number,  // start angle (radians)
-      arcEnd: number,    // end angle (radians)
-    ): ScallopCircle[] {
-      // Spacing: 0.7 * diameter = 30% overlap for continuous scalloping
-      const linearSpacing = scallopBaseR * 2 * 0.7;
-      const angularSpacing = linearSpacing / targetR;
-
-      const arcRange = arcEnd - arcStart;
-      const count = Math.ceil(Math.abs(arcRange) / angularSpacing) + 1;
-      const scallops: ScallopCircle[] = [];
-
-      // Main scallop circles along the arc
-      for (let j = 0; j < count; j++) {
-        const frac = count > 1 ? j / (count - 1) : 0.5;
-        const baseAngle = arcStart + frac * arcRange;
-        const seed = biteIdx * 1000 + j;
-        const radiusMult = seededRange(seed * 7 + 1, 0.85, 1.25);
-        const jitter = seededRange(seed * 7 + 2, -0.5, 0.5) * angularSpacing * 0.12;
-
-        scallops.push({
-          angle: baseAngle + jitter,
-          radius: scallopBaseR * radiusMult,
-        });
-      }
-
-      // Micro-bites between every 3rd pair for cookie crumb texture
-      const mainCount = scallops.length;
-      for (let j = 0; j < mainCount - 1; j += 3) {
-        const seed = biteIdx * 2000 + j;
-        const midAngle = (scallops[j].angle + scallops[j + 1].angle) / 2;
-        scallops.push({
-          angle: midAngle + seededRange(seed, -0.03, 0.03),
-          radius: scallopBaseR * seededRange(seed + 1, 0.35, 0.55),
-        });
-      }
-
-      return scallops;
-    }
-
     return [
       // 1. Top-left bite (small — first tentative nibble)
       {
         cx: -screenWidth * 0.15,
         cy: screenHeight * 0.18,
         targetRadius: screenHeight * 0.30,
-        scallops: generateScallops(0, screenHeight * 0.30, -1.0, 2.0),
+        scallops: generateScallops(0, screenHeight * 0.30, -1.0, 2.0, scallopBaseR),
       },
       // 2. Right bite (small-medium)
       {
         cx: screenWidth * 1.15,
         cy: screenHeight * 0.38,
         targetRadius: screenHeight * 0.34,
-        scallops: generateScallops(1, screenHeight * 0.34, 1.5, 4.7),
+        scallops: generateScallops(1, screenHeight * 0.34, 1.5, 4.7, scallopBaseR),
       },
       // 3. Left bite (medium)
       {
         cx: -screenWidth * 0.1,
         cy: screenHeight * 0.65,
         targetRadius: screenHeight * 0.38,
-        scallops: generateScallops(2, screenHeight * 0.38, -1.2, 1.8),
+        scallops: generateScallops(2, screenHeight * 0.38, -1.2, 1.8, scallopBaseR),
       },
       // 4. Bottom-right bite (clears the corner)
       {
         cx: screenWidth * 1.1,
         cy: screenHeight * 0.88,
         targetRadius: screenHeight * 0.45,
-        scallops: generateScallops(3, screenHeight * 0.45, 1.5, 4.5),
+        scallops: generateScallops(3, screenHeight * 0.45, 1.5, 4.5, scallopBaseR),
       },
       // 5. Center bite (MASSIVE — grand finale, devours all remaining content)
       {
         cx: screenWidth * 0.45,
         cy: screenHeight * 0.45,
         targetRadius: screenHeight * 0.85,
-        scallops: generateScallops(4, screenHeight * 0.85, -0.5, 6.8),
+        scallops: generateScallops(4, screenHeight * 0.85, -0.5, 6.8, scallopBaseR),
       },
     ];
   }, [screenWidth, screenHeight]);
