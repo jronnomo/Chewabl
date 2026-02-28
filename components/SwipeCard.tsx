@@ -14,43 +14,13 @@ import { Star, MapPin, DollarSign, Volume2, Flame, Dices } from 'lucide-react-na
 import { Restaurant } from '@/types';
 import StaticColors from '@/constants/colors';
 import { useColors } from '@/context/ThemeContext';
+import { starPath, SPARKLES } from '@/lib/sparkleUtils';
 
 const Colors = StaticColors;
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const SWIPE_THRESHOLD = SCREEN_WIDTH * 0.25;
 const CARD_WIDTH = SCREEN_WIDTH - 40;
 const CARD_HEIGHT = SCREEN_HEIGHT * 0.58;
-
-// 4-point star SVG path centered at (cx, cy) with given radius
-function starPath(cx: number, cy: number, r: number): string {
-  const inner = r * 0.28;
-  return `M ${cx} ${cy - r} L ${cx + inner} ${cy - inner} L ${cx + r} ${cy} L ${cx + inner} ${cy + inner} L ${cx} ${cy + r} L ${cx - inner} ${cy + inner} L ${cx - r} ${cy} L ${cx - inner} ${cy - inner} Z`;
-}
-
-// Deterministic sparkle positions — x/y as fraction of card dimensions
-const SPARKLES: { x: number; y: number; size: number; type: 'star' | 'dot' }[] = [
-  { x: 0.08, y: 0.30, size: 5, type: 'dot' },
-  { x: 0.14, y: 0.52, size: 9, type: 'star' },
-  { x: 0.11, y: 0.18, size: 3, type: 'dot' },
-  { x: 0.22, y: 0.38, size: 7, type: 'star' },
-  { x: 0.19, y: 0.62, size: 4, type: 'dot' },
-  { x: 0.30, y: 0.25, size: 11, type: 'star' },
-  { x: 0.35, y: 0.55, size: 5, type: 'dot' },
-  { x: 0.40, y: 0.42, size: 13, type: 'star' },
-  { x: 0.38, y: 0.15, size: 4, type: 'dot' },
-  { x: 0.48, y: 0.60, size: 8, type: 'star' },
-  { x: 0.52, y: 0.32, size: 15, type: 'star' },
-  { x: 0.56, y: 0.50, size: 5, type: 'dot' },
-  { x: 0.62, y: 0.22, size: 10, type: 'star' },
-  { x: 0.60, y: 0.68, size: 4, type: 'dot' },
-  { x: 0.70, y: 0.45, size: 12, type: 'star' },
-  { x: 0.72, y: 0.28, size: 6, type: 'dot' },
-  { x: 0.78, y: 0.58, size: 8, type: 'star' },
-  { x: 0.82, y: 0.35, size: 4, type: 'dot' },
-  { x: 0.88, y: 0.48, size: 10, type: 'star' },
-  { x: 0.92, y: 0.20, size: 5, type: 'dot' },
-  { x: 0.94, y: 0.55, size: 7, type: 'star' },
-];
 
 interface SwipeCardProps {
   restaurant: Restaurant;
@@ -59,6 +29,7 @@ interface SwipeCardProps {
   onTap?: (restaurant: Restaurant) => void;
   isTop: boolean;
   isCurveball?: boolean;
+  isOutsideRadius?: boolean;
 }
 
 export default React.memo(function SwipeCard({
@@ -68,6 +39,7 @@ export default React.memo(function SwipeCard({
   onTap,
   isTop,
   isCurveball,
+  isOutsideRadius,
 }: SwipeCardProps) {
   const Colors = useColors();
   const position = useRef(new Animated.ValueXY()).current;
@@ -276,6 +248,13 @@ export default React.memo(function SwipeCard({
           </View>
         )}
 
+        {isOutsideRadius && (
+          <View style={styles.outsideRadiusTag}>
+            <MapPin size={12} color="#FFF" />
+            <Text style={styles.outsideRadiusTagText}>Farther out</Text>
+          </View>
+        )}
+
         <View style={styles.cardContent}>
           <View style={styles.cardHeader}>
             <View style={styles.cardTitleArea}>
@@ -432,6 +411,24 @@ const styles = StyleSheet.create({
   },
   curveballTagText: {
     fontSize: 12,
+    fontWeight: '700' as const,
+    color: '#FFF',
+  },
+  outsideRadiusTag: {
+    position: 'absolute',
+    top: 20,
+    right: 16,
+    backgroundColor: 'rgba(234,118,0,0.9)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 16,
+    gap: 4,
+    zIndex: 15,
+  },
+  outsideRadiusTagText: {
+    fontSize: 11,
     fontWeight: '700' as const,
     color: '#FFF',
   },

@@ -21,6 +21,7 @@ export interface Restaurant {
   lastCallDeal?: string;
   closingSoon?: string;
   photos: string[];
+  isOutsidePreferredRadius?: boolean;
 }
 
 export interface PlanInvite {

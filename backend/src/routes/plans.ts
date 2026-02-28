@@ -413,17 +413,30 @@ router.post('/:id/swipe', requireAuth, async (req: AuthRequest, res: Response): 
   }
 });
 
-// Update plan (owner only)
+// Update plan (owner only, except participants can populate empty restaurantOptions)
 router.put('/:id', requireAuth, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const plan = await Plan.findById(req.params.id);
     if (!plan) { res.status(404).json({ error: 'Plan not found' }); return; }
-    if (plan.ownerId.toString() !== req.userId) {
+
+    const userId = req.userId!;
+    const isOwner = plan.ownerId.toString() === userId;
+    const isParticipant = isOwner || plan.invites.some(i => i.userId.toString() === userId && i.status !== 'declined');
+
+    const { title, date, time, cuisine, budget, options, rsvpDeadline, restaurant, allowCurveball, restaurantOptions } = req.body;
+
+    // Allow any participant to populate restaurantOptions when currently empty
+    const isOnlyPopulatingOptions = restaurantOptions !== undefined
+      && Array.isArray(restaurantOptions)
+      && plan.restaurantOptions.length === 0
+      && title === undefined && date === undefined && time === undefined
+      && cuisine === undefined && budget === undefined && options === undefined
+      && rsvpDeadline === undefined && restaurant === undefined && allowCurveball === undefined;
+
+    if (!isOwner && !(isParticipant && isOnlyPopulatingOptions)) {
       res.status(403).json({ error: 'Only the plan owner can update this plan' });
       return;
     }
-
-    const { title, date, time, cuisine, budget, options, rsvpDeadline, restaurant, allowCurveball, restaurantOptions } = req.body;
     if (title !== undefined && (typeof title !== 'string' || title.length > 100)) {
       res.status(400).json({ error: 'Title must be 100 characters or less' }); return;
     }
