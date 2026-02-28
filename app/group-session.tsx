@@ -768,6 +768,7 @@ export default function GroupSessionScreen() {
                 onTap={(r) => router.push(`/restaurant/${r.id}` as never)}
                 isTop={isTop}
                 isCurveball={curveballIds.has(restaurant.id)}
+                isOutsideRadius={restaurant.isOutsidePreferredRadius}
               />
             );
           })}

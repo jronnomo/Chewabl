@@ -40,6 +40,7 @@ export interface IPlanRestaurantOption {
   noiseLevel: string;
   seating: string[];
   busyLevel: string;
+  isOutsidePreferredRadius?: boolean;
 }
 
 export interface IPlan extends Document {
@@ -111,6 +112,7 @@ const PlanRestaurantOptionSchema = new Schema(
     noiseLevel: { type: String, default: 'moderate' },
     seating: { type: [String], default: [] },
     busyLevel: { type: String, default: 'moderate' },
+    isOutsidePreferredRadius: { type: Boolean, default: false },
   },
   { _id: false }
 );
