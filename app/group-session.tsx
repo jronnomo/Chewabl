@@ -99,6 +99,10 @@ export default function GroupSessionScreen() {
     }
   }, [activePlan, params.planId, plans]);
 
+  // Wait for activePlan to load before fetching restaurants when navigating from a plan.
+  // This prevents fetching with user preferences on the first render before plan data arrives.
+  const planReady = !params.planId || !!activePlan;
+
   // Pass plan cuisine/budget to restaurant fetch so the deck matches plan filters
   const { data: nearbyRestaurants = [] } = useNearbyRestaurants(
     restaurantCount,
@@ -107,6 +111,11 @@ export default function GroupSessionScreen() {
   );
 
   const { sessionRestaurants, curveballIds } = useMemo(() => {
+    // Don't build the deck until the plan is loaded (avoids stale user-pref restaurants)
+    if (!planReady) {
+      return { sessionRestaurants: [] as Restaurant[], curveballIds: new Set<string>() };
+    }
+
     // Determine the base deck
     let base: Restaurant[];
 
@@ -117,7 +126,7 @@ export default function GroupSessionScreen() {
       // Fall back to plan.options (legacy)
       base = activePlan.options;
     } else {
-      // Use live nearby restaurants from Google Places
+      // Use live nearby restaurants from Google Places (filtered by plan cuisine/budget)
       base = [...nearbyRestaurants].sort((a, b) => {
         let scoreA = 0, scoreB = 0;
         if (preferences.cuisines.includes(a.cuisine)) scoreA += 2;
@@ -179,7 +188,7 @@ export default function GroupSessionScreen() {
     }
 
     return { sessionRestaurants: deck, curveballIds: newCurveballIds };
-  }, [preferences.cuisines, activePlan, nearbyRestaurants]);
+  }, [preferences.cuisines, activePlan, nearbyRestaurants, planReady]);
 
   const restaurantFingerprint = useMemo(
     () => sessionRestaurants.map(r => r.id).sort().join(','),

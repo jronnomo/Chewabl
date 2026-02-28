@@ -18,7 +18,7 @@ import { Image } from 'expo-image';
 import { X, CalendarDays, Clock, MapPin, UtensilsCrossed, DollarSign, Users, Sparkles, UserCheck, Timer } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useApp, useNearbyRestaurants } from '../context/AppContext';
+import { useApp } from '../context/AppContext';
 import RestaurantCountSlider from '../components/RestaurantCountSlider';
 import { useAuth } from '../context/AuthContext';
 import { CUISINES, BUDGET_OPTIONS, restaurants } from '../mocks/restaurants';
@@ -92,14 +92,6 @@ export default function PlanEventScreen() {
   const [loading, setLoading] = useState(false);
   const isEditMode = !!existingPlan;
 
-  // Fetch restaurants using the plan's selected cuisine/budget, not user preferences
-  const planCuisineStr = selectedCuisines.length > 0 ? selectedCuisines.join(', ') : undefined;
-  const { data: nearbyRestaurants = [] } = useNearbyRestaurants(
-    restaurantCount,
-    planCuisineStr,
-    selectedBudget,
-  );
-
   const { data: friends = [] } = useQuery({
     queryKey: ['friends'],
     queryFn: getFriends,
@@ -163,17 +155,13 @@ export default function PlanEventScreen() {
         : selectedCuisines.length > 0 ? selectedCuisines.join(', ') : 'Any';
       const effectiveBudget = pinnedRestaurant ? '$'.repeat(pinnedRestaurant.priceLevel) : selectedBudget;
 
-      // Use Google Places results if available, otherwise fall back to mock data
-      const restaurantPool = nearbyRestaurants.length > 0 ? nearbyRestaurants : restaurants;
+      // For pinned restaurant, use it directly. Otherwise, let the group session
+      // fetch restaurants at swipe time using the plan's cuisine/budget filters.
+      // This avoids a race condition where the plan is created before the
+      // filtered restaurant fetch has completed.
       const suggestedOptions = pinnedRestaurant
         ? [pinnedRestaurant]
-        : restaurantPool
-            .filter(r => {
-              const matchesCuisine = selectedCuisines.length === 0 || selectedCuisines.includes(r.cuisine);
-              const matchesBudget = '$'.repeat(r.priceLevel) === selectedBudget;
-              return matchesCuisine && matchesBudget;
-            })
-            .slice(0, restaurantCount);
+        : [];
 
       let rsvpDeadline: string | undefined;
       if (rsvpHours) {
