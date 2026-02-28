@@ -52,8 +52,8 @@ export const [AppProvider, useApp] = createContextHook(() => {
   const [localAvatarUri, setLocalAvatarUri] = useState<string | null>(null);
   const [userLocation, setUserLocation] = useState<Coords | null>(null);
   const [isGuest, setIsGuestState] = useState<boolean>(false);
-  const [newlyAddedFavoriteId, setNewlyAddedFavoriteId] = useState<string | null>(null);
-  const newFavTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [newlyAddedFavoriteIds, setNewlyAddedFavoriteIds] = useState<Set<string>>(new Set());
+  const newFavTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const [locationPermission, setLocationPermission] = useState<
     'undetermined' | 'granted' | 'denied'
   >('undetermined');
@@ -276,11 +276,16 @@ export const [AppProvider, useApp] = createContextHook(() => {
     },
   });
 
-  const clearNewlyAddedFavorite = useCallback(() => {
-    setNewlyAddedFavoriteId(null);
-    if (newFavTimerRef.current) {
-      clearTimeout(newFavTimerRef.current);
-      newFavTimerRef.current = null;
+  const clearNewlyAddedFavorite = useCallback((id: string) => {
+    setNewlyAddedFavoriteIds(prev => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+    const timer = newFavTimersRef.current.get(id);
+    if (timer) {
+      clearTimeout(timer);
+      newFavTimersRef.current.delete(id);
     }
   }, []);
 
@@ -290,13 +295,18 @@ export const [AppProvider, useApp] = createContextHook(() => {
 
     // Track newly added favorite BEFORE state update (DC-5)
     if (!isRemoving) {
-      setNewlyAddedFavoriteId(restaurantId);
-      // Auto-clear after 30 seconds (DC-3)
-      if (newFavTimerRef.current) clearTimeout(newFavTimerRef.current);
-      newFavTimerRef.current = setTimeout(() => {
-        setNewlyAddedFavoriteId(null);
-        newFavTimerRef.current = null;
-      }, 30_000);
+      setNewlyAddedFavoriteIds(prev => new Set(prev).add(restaurantId));
+      // Auto-clear after 30 seconds per ID (DC-3)
+      const existingTimer = newFavTimersRef.current.get(restaurantId);
+      if (existingTimer) clearTimeout(existingTimer);
+      newFavTimersRef.current.set(restaurantId, setTimeout(() => {
+        setNewlyAddedFavoriteIds(prev => {
+          const next = new Set(prev);
+          next.delete(restaurantId);
+          return next;
+        });
+        newFavTimersRef.current.delete(restaurantId);
+      }, 30_000));
     }
 
     setFavorites(prev => {
@@ -376,7 +386,7 @@ export const [AppProvider, useApp] = createContextHook(() => {
     saveOnboarding,
     updatePreferences,
     toggleFavorite,
-    newlyAddedFavoriteId,
+    newlyAddedFavoriteIds,
     clearNewlyAddedFavorite,
     addPlan,
     requestLocation,

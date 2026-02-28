@@ -18,6 +18,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { useIsFocused } from '@react-navigation/core';
 import { Image } from 'expo-image';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Svg, { Defs, Mask, Rect, Circle, Path } from 'react-native-svg';
@@ -91,7 +92,7 @@ interface BiteCardProps {
   isNew: boolean;
   isGoldenBite: boolean;
   onRemove: (restaurant: Restaurant) => void;
-  onClearNew: () => void;
+  onClearNew: (id: string) => void;
 }
 
 // ─── Module-Level Sub-Components ────────────────────────────────
@@ -266,7 +267,8 @@ const BiteMarkSvg = React.memo(function BiteMarkSvg({ restaurantId }: BiteMarkSv
 });
 
 function BiteSparkle({ isGolden, gleamAnim, cardWidth, cardHeight }: BiteSparkleProps) {
-  const sparkleSet = isGolden ? SPARKLES.slice(0, 8) : SPARKLES.slice(0, 5);
+  // Full sparkle set across the card — matches curveball swipe density
+  const sparkleSet = isGolden ? SPARKLES : SPARKLES.slice(0, 14);
 
   return (
     <>
@@ -368,10 +370,12 @@ const BiteCard = React.memo(function BiteCard({
 }: BiteCardProps) {
   const Colors = useColors();
 
+  const cardRef = useRef<View>(null);
+  const isFocused = useIsFocused();
+
   // Animation values
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const opacityAnim = useRef(new Animated.Value(1)).current;
-  // [v2 FIX: SUG-2] Initialize to 0 — reset to SCREEN_WIDTH in useEffect before animating
   const slideAnim = useRef(new Animated.Value(0)).current;
   const glowAnim = useRef(new Animated.Value(0)).current;
   const gleamAnim = useRef(new Animated.Value(0)).current;
@@ -382,18 +386,43 @@ const BiteCard = React.memo(function BiteCard({
   // Local state
   const [isRemoving, setIsRemoving] = useState(false);
 
+  // Celebration plays once when card is visible on the focused tab
+  const [animReady, setAnimReady] = useState(false);
+
   // Card dimensions for sparkle positioning
   const CARD_HEIGHT = 96;
 
-  // --- New Bite Entrance Animation (REQ-009) ---
+  // --- Visibility gate: wait for tab focus + card in viewport ---
   useEffect(() => {
-    if (!isNew) return;
+    if (!isNew || animReady || !isFocused) return;
 
-    // [v2 FIX: SUG-2] Reset slide starting position at effect time
-    slideAnim.setValue(SCREEN_WIDTH);
+    const check = () => {
+      cardRef.current?.measureInWindow((_x: number, y: number, _w: number, h: number) => {
+        if (h === 0) return; // Not laid out yet
+        const screenH = Dimensions.get('window').height;
+        if (y + h > 0 && y < screenH) {
+          setAnimReady(true);
+        }
+      });
+    };
 
+    // Small delay for initial layout, then poll
+    const timeout = setTimeout(check, 150);
+    const interval = setInterval(check, 200);
+
+    return () => {
+      clearTimeout(timeout);
+      clearInterval(interval);
+    };
+  }, [isNew, animReady, isFocused]);
+
+  // --- Celebration Animation (REQ-009) ---
+  // Card is always visible — glow, sparkles, and scale pop play in-place
+  useEffect(() => {
+    if (!animReady) return;
+
+    // 1. Scale pop
     const scaleSequence = Animated.sequence([
-      Animated.delay(150),
       Animated.spring(scaleAnim, {
         toValue: isGoldenBite ? 1.08 : 1.05,
         friction: 4,
@@ -408,28 +437,18 @@ const BiteCard = React.memo(function BiteCard({
 
     // [v2 FIX: CRIT-1] Store composite ref for cancellation in handleRemovePress
     animRef.current = scaleSequence;
-
-    // 1. Slide in from right
-    Animated.timing(slideAnim, {
-      toValue: 0,
-      duration: 300,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: true,
-    }).start();
-
-    // 2. Scale pop (tracked via animRef)
     scaleSequence.start();
 
-    // 3. Gold glow pulse
+    // 2. Gold glow pulse
     Animated.sequence([
       Animated.timing(glowAnim, { toValue: 1, duration: 200, useNativeDriver: false }),
       Animated.delay(2800),
       Animated.timing(glowAnim, { toValue: 0, duration: 500, useNativeDriver: false }),
     ]).start(({ finished }) => {
-      if (finished) onClearNew(); // [v2 FIX: DC-2] only clear if animation completed naturally
+      if (finished) onClearNew(restaurant.id); // [v2 FIX: DC-2] only clear if animation completed naturally
     });
 
-    // 4. Sparkles
+    // 3. Sparkles
     gleamAnim.setValue(0);
     Animated.timing(gleamAnim, {
       toValue: 1,
@@ -438,11 +457,11 @@ const BiteCard = React.memo(function BiteCard({
       useNativeDriver: true,
     }).start();
 
-    // 5. Golden Bite haptic
+    // 4. Golden Bite haptic
     if (isGoldenBite) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     }
-  }, [isNew]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [animReady]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // --- Press Animation (REQ-005) ---
   const handlePressIn = useCallback(() => {
@@ -589,6 +608,7 @@ const BiteCard = React.memo(function BiteCard({
 
   return (
     <Animated.View
+      ref={cardRef}
       style={[
         styles.biteCard,
         {
@@ -597,23 +617,6 @@ const BiteCard = React.memo(function BiteCard({
         },
       ]}
     >
-      {/* NEW badge — outside biteCardInner to avoid overflow:hidden clipping */}
-      {isNew && (
-        <View style={[styles.biteNewBadge, { backgroundColor: Colors.primary }]}>
-          <Text style={styles.biteNewBadgeText}>NEW ✨</Text>
-        </View>
-      )}
-
-      {/* Sparkle overlay — only when isNew */}
-      {isNew && (
-        <BiteSparkle
-          isGolden={isGoldenBite}
-          gleamAnim={gleamAnim}
-          cardWidth={SCREEN_WIDTH - 40}
-          cardHeight={CARD_HEIGHT}
-        />
-      )}
-
       {/* [v2 FIX: DC-1] Use Animated.View only when isNew */}
       {isNew ? (
         <Animated.View
@@ -633,6 +636,23 @@ const BiteCard = React.memo(function BiteCard({
         >
           {innerContent}
         </View>
+      )}
+
+      {/* NEW badge — rendered AFTER biteCardInner so it stacks on top */}
+      {isNew && (
+        <View style={[styles.biteNewBadge, { backgroundColor: Colors.primary }]}>
+          <Text style={styles.biteNewBadgeText}>NEW ✨</Text>
+        </View>
+      )}
+
+      {/* Sparkle overlay — rendered AFTER card so sparkles appear on top */}
+      {isNew && (
+        <BiteSparkle
+          isGolden={isGoldenBite}
+          gleamAnim={gleamAnim}
+          cardWidth={SCREEN_WIDTH - 40}
+          cardHeight={CARD_HEIGHT}
+        />
       )}
     </Animated.View>
   );
@@ -671,7 +691,7 @@ export default function ProfileScreen() {
     plans,
     setGuestMode,
     toggleFavorite,
-    newlyAddedFavoriteId,
+    newlyAddedFavoriteIds,
     clearNewlyAddedFavorite,
   } = useApp();
   const { user, signOut, isAuthenticated, updateUser } = useAuth();
@@ -698,24 +718,27 @@ export default function ProfileScreen() {
     ? sortedFavorites
     : sortedFavorites.slice(0, BITES_PAGE_SIZE);
 
-  // Determine if newly added bite is highest-rated (golden bite condition)
-  const isGoldenBite = useMemo(() => {
-    if (!newlyAddedFavoriteId || sortedFavorites.length === 0) return false;
-    return sortedFavorites[0].id === newlyAddedFavoriteId;
-  }, [newlyAddedFavoriteId, sortedFavorites]);
+  // Determine if a newly added bite is the highest-rated (golden bite condition)
+  const goldenBiteId = useMemo(() => {
+    if (newlyAddedFavoriteIds.size === 0 || sortedFavorites.length === 0) return null;
+    const topId = sortedFavorites[0].id;
+    return newlyAddedFavoriteIds.has(topId) ? topId : null;
+  }, [newlyAddedFavoriteIds, sortedFavorites]);
 
-  // Re-trigger DNA bar animation and ensure new bite is visible (REQ-004/REQ-009)
+  // Re-trigger DNA bar animation and ensure new bites are visible (REQ-004/REQ-009)
   useEffect(() => {
-    if (newlyAddedFavoriteId) {
-      // Expand list if new bite is beyond current page
-      const newBiteIndex = sortedFavorites.findIndex(r => r.id === newlyAddedFavoriteId);
-      if (newBiteIndex >= BITES_PAGE_SIZE && !showAllBites) {
+    if (newlyAddedFavoriteIds.size === 0) return;
+    // Expand list if any new bite is beyond current page
+    for (const id of newlyAddedFavoriteIds) {
+      const idx = sortedFavorites.findIndex(r => r.id === id);
+      if (idx >= BITES_PAGE_SIZE && !showAllBites) {
         setShowAllBites(true);
+        break;
       }
-      // Re-trigger DNA bars
-      setDnaAnimTrigger(t => t + 1);
     }
-  }, [newlyAddedFavoriteId]); // eslint-disable-line react-hooks/exhaustive-deps
+    // Re-trigger DNA bars
+    setDnaAnimTrigger(t => t + 1);
+  }, [newlyAddedFavoriteIds]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleRemoveFavorite = useCallback((restaurant: Restaurant) => {
     toggleFavorite(restaurant);
@@ -900,8 +923,8 @@ export default function ProfileScreen() {
                   key={restaurant.id}
                   restaurant={restaurant}
                   rank={index + 1}
-                  isNew={restaurant.id === newlyAddedFavoriteId}
-                  isGoldenBite={isGoldenBite && restaurant.id === newlyAddedFavoriteId}
+                  isNew={newlyAddedFavoriteIds.has(restaurant.id)}
+                  isGoldenBite={restaurant.id === goldenBiteId}
                   onRemove={handleRemoveFavorite}
                   onClearNew={clearNewlyAddedFavorite}
                 />
@@ -1284,6 +1307,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 10,
+    zIndex: 30,
   },
   biteNewBadgeText: {
     fontSize: 11,
