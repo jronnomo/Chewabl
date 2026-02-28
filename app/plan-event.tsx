@@ -64,7 +64,6 @@ export default function PlanEventScreen() {
   const { addPlan, plans } = useApp();
   const queryClient = useQueryClient();
   const { isAuthenticated } = useAuth();
-  const { data: nearbyRestaurants = [] } = useNearbyRestaurants();
   const { restaurantId, planId } = useLocalSearchParams<{ restaurantId?: string; planId?: string }>();
 
   const existingPlan = planId ? plans.find(p => p.id === planId) : undefined;
@@ -92,6 +91,14 @@ export default function PlanEventScreen() {
   const [restaurantCount, setRestaurantCount] = useState<number>(10);
   const [loading, setLoading] = useState(false);
   const isEditMode = !!existingPlan;
+
+  // Fetch restaurants using the plan's selected cuisine/budget, not user preferences
+  const planCuisineStr = selectedCuisines.length > 0 ? selectedCuisines.join(', ') : undefined;
+  const { data: nearbyRestaurants = [] } = useNearbyRestaurants(
+    restaurantCount,
+    planCuisineStr,
+    selectedBudget,
+  );
 
   const { data: friends = [] } = useQuery({
     queryKey: ['friends'],
@@ -164,7 +171,7 @@ export default function PlanEventScreen() {
             .filter(r => {
               const matchesCuisine = selectedCuisines.length === 0 || selectedCuisines.includes(r.cuisine);
               const matchesBudget = '$'.repeat(r.priceLevel) === selectedBudget;
-              return matchesCuisine || matchesBudget;
+              return matchesCuisine && matchesBudget;
             })
             .slice(0, restaurantCount);
 
