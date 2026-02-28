@@ -24,6 +24,15 @@ import { useColors } from '../../../context/ThemeContext';
 
 const Colors = StaticColors;
 
+/** Returns true if the plan's date is strictly before today (ignoring time). */
+function isPastPlan(plan: DiningPlan): boolean {
+  if (!plan.date) return false; // no date (e.g. group-swipe) → not past
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const planDate = new Date(plan.date + 'T00:00:00'); // local midnight
+  return planDate < today;
+}
+
 type TabFilter = 'upcoming' | 'past' | 'all';
 
 export default function PlansScreen() {
@@ -42,7 +51,7 @@ export default function PlansScreen() {
     if (!planId || plans.length === 0) return;
     const target = plans.find(p => p.id === planId);
     if (!target) return;
-    if (target.status === 'completed' || target.status === 'cancelled') {
+    if (target.status === 'completed' || target.status === 'cancelled' || isPastPlan(target)) {
       setActiveTab('past');
     } else {
       setActiveTab('upcoming');
@@ -251,9 +260,13 @@ export default function PlansScreen() {
   const filteredPlans = useMemo(() => {
     switch (activeTab) {
       case 'upcoming':
-        return plans.filter(p => p.status === 'voting' || p.status === 'confirmed');
+        return plans.filter(p =>
+          (p.status === 'voting' || p.status === 'confirmed') && !isPastPlan(p)
+        );
       case 'past':
-        return plans.filter(p => p.status === 'completed' || p.status === 'cancelled');
+        return plans.filter(p =>
+          p.status === 'completed' || p.status === 'cancelled' || isPastPlan(p)
+        );
       default:
         return plans;
     }
