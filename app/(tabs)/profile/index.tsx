@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -9,11 +9,18 @@ import {
   Switch,
   ActivityIndicator,
   Linking,
+  Animated,
+  Easing,
+  LayoutAnimation,
+  Platform,
+  UIManager,
+  Dimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Image } from 'expo-image';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Svg, { Defs, Mask, Rect, Circle, Path } from 'react-native-svg';
 import {
   Heart,
   UtensilsCrossed,
@@ -29,6 +36,9 @@ import {
   Edit3,
   UserPlus,
   Camera,
+  Star,
+  X,
+  Flame,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
@@ -40,20 +50,681 @@ import StaticColors from '../../../constants/colors';
 import { DEFAULT_AVATAR_URI } from '../../../constants/images';
 import { useColors } from '../../../context/ThemeContext';
 import { useThemeTransition } from '../../../context/ThemeTransitionContext';
+import { starPath, SPARKLES } from '../../../lib/sparkleUtils';
+import { generateScallops } from '../../../lib/scallopUtils';
+import { Restaurant } from '../../../types';
+
+// Android requires explicit opt-in for LayoutAnimation
+if (Platform.OS === 'android') {
+  UIManager.setLayoutAnimationEnabledExperimental?.(true);
+}
 
 const Colors = StaticColors;
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const BITES_PAGE_SIZE = 5;
+// Bite-mark SVG dimensions (corner cutout on photo thumbnail)
+const BITE_SVG_SIZE = 32; // px — the corner overlay square
+const BITE_SCALLOP_BASE_R = 7; // px — scallop circle radius for card-size bites
+
+// ─── Props Types ────────────────────────────────────────────────
+
+interface TasteDNAProps {
+  restaurants: Restaurant[];
+  triggerReanimation: number;
+}
+
+interface BiteMarkSvgProps {
+  restaurantId: string;
+}
+
+interface BiteSparkleProps {
+  isGolden: boolean;
+  gleamAnim: Animated.Value;
+  cardWidth: number;
+  cardHeight: number;
+}
+
+interface BiteCardProps {
+  restaurant: Restaurant;
+  rank: number;
+  isNew: boolean;
+  isGoldenBite: boolean;
+  onRemove: (restaurant: Restaurant) => void;
+  onClearNew: () => void;
+}
+
+// ─── Module-Level Sub-Components ────────────────────────────────
+
+function TasteDNA({ restaurants, triggerReanimation }: TasteDNAProps) {
+  const Colors = useColors();
+  const [insightIndex, setInsightIndex] = useState(0);
+
+  // Cuisine distribution
+  const cuisineData = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const r of restaurants) {
+      map[r.cuisine] = (map[r.cuisine] ?? 0) + 1;
+    }
+    return Object.entries(map)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 4)
+      .map(([cuisine, count]) => ({ cuisine, count }));
+  }, [restaurants]);
+
+  const maxCount = cuisineData[0]?.count ?? 1;
+
+  // Rotating insights
+  const insights = useMemo(() => {
+    if (restaurants.length === 0) return [];
+
+    const cuisineMap: Record<string, number> = {};
+    for (const r of restaurants) {
+      cuisineMap[r.cuisine] = (cuisineMap[r.cuisine] ?? 0) + 1;
+    }
+    const topCuisine = Object.entries(cuisineMap).sort((a, b) => b[1] - a[1])[0];
+
+    // [v2 FIX: SUG-1] Handle 1-favorite edge case
+    const cuisineInsight = restaurants.length === 1
+      ? `Your first Bite — ${topCuisine[0]}!`
+      : `You love ${topCuisine[0]}! ${topCuisine[1]} of ${restaurants.length} bites`;
+
+    const avgRating = (
+      restaurants.reduce((s, r) => s + r.rating, 0) / restaurants.length
+    ).toFixed(1);
+    const ratingInsight = `Your picks average ${avgRating} ⭐`;
+
+    const budgetMap: Record<number, number> = {};
+    for (const r of restaurants) {
+      budgetMap[r.priceLevel] = (budgetMap[r.priceLevel] ?? 0) + 1;
+    }
+    const topBudget = Object.entries(budgetMap).sort((a, b) => b[1] - a[1])[0];
+    const priceStr = '$'.repeat(Number(topBudget[0]));
+    const budgetInsight = `Budget sweet spot: ${priceStr}`;
+
+    return [cuisineInsight, ratingInsight, budgetInsight];
+  }, [restaurants]);
+
+  // Bar animations — one Animated.Value per bar
+  const barAnims = useMemo(
+    () => cuisineData.map(() => new Animated.Value(0)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [cuisineData.length, triggerReanimation],
+  );
+
+  // [v2 FIX: CRIT-3] Dep is [barAnims] — correct and exhaustive
+  useEffect(() => {
+    barAnims.forEach(a => a.setValue(0));
+    const animations = barAnims.map((anim, i) =>
+      Animated.timing(anim, {
+        toValue: 1,
+        duration: 500,
+        delay: i * 60,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: false,
+      })
+    );
+    Animated.stagger(60, animations).start();
+  }, [barAnims]);
+
+  // Rotate insights every 5 seconds
+  useEffect(() => {
+    if (insights.length <= 1) return;
+    const id = setInterval(() => {
+      setInsightIndex(i => (i + 1) % insights.length);
+    }, 5000);
+    return () => clearInterval(id);
+  }, [insights.length]);
+
+  if (cuisineData.length === 0) return null;
+
+  return (
+    <View style={[styles.dnaContainer, { backgroundColor: Colors.card }]}>
+      {cuisineData.map((item, i) => (
+        <View key={item.cuisine} style={styles.dnaBarRow}>
+          <Text style={[styles.dnaCuisineLabel, { color: Colors.textSecondary }]}>
+            {item.cuisine}
+          </Text>
+          <View style={[styles.dnaBarTrack, { backgroundColor: Colors.border }]}>
+            <Animated.View
+              style={[
+                styles.dnaBarFill,
+                {
+                  backgroundColor: Colors.primary,
+                  width: barAnims[i].interpolate({
+                    inputRange: [0, 1],
+                    outputRange: ['0%', `${(item.count / maxCount) * 100}%`],
+                  }),
+                },
+              ]}
+            />
+          </View>
+          <Text style={[styles.dnaCountLabel, { color: Colors.textTertiary }]}>
+            {item.count}
+          </Text>
+        </View>
+      ))}
+      {insights.length > 0 && (
+        <Text style={[styles.dnaInsight, { color: Colors.textSecondary }]}>
+          {insights[insightIndex]}
+        </Text>
+      )}
+    </View>
+  );
+}
+
+const BiteMarkSvg = React.memo(function BiteMarkSvg({ restaurantId }: BiteMarkSvgProps) {
+  const Colors = useColors();
+
+  const scallops = useMemo(
+    () => generateScallops(
+      restaurantId.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0) % 1000,
+      BITE_SVG_SIZE * 0.9,
+      -0.4,
+      1.8,
+      BITE_SCALLOP_BASE_R,
+    ),
+    [restaurantId],
+  );
+
+  const maskId = `biteMask_${restaurantId}`;
+  const cx = BITE_SVG_SIZE;
+  const cy = 0;
+
+  return (
+    <Svg
+      width={BITE_SVG_SIZE}
+      height={BITE_SVG_SIZE}
+      style={{ position: 'absolute', top: 0, right: 0 }}
+      pointerEvents="none"
+    >
+      <Defs>
+        <Mask id={maskId}>
+          <Rect x={0} y={0} width={BITE_SVG_SIZE} height={BITE_SVG_SIZE} fill="white" />
+          <Circle cx={cx} cy={cy} r={BITE_SVG_SIZE * 0.82} fill="black" />
+          {scallops.map((sc, j) => (
+            <Circle
+              key={j}
+              cx={cx + BITE_SVG_SIZE * 0.82 * Math.cos(sc.angle)}
+              cy={cy + BITE_SVG_SIZE * 0.82 * Math.sin(sc.angle)}
+              r={sc.radius}
+              fill="black"
+            />
+          ))}
+        </Mask>
+      </Defs>
+      <Rect
+        x={0}
+        y={0}
+        width={BITE_SVG_SIZE}
+        height={BITE_SVG_SIZE}
+        fill={Colors.background}
+        mask={`url(#${maskId})`}
+      />
+    </Svg>
+  );
+});
+
+function BiteSparkle({ isGolden, gleamAnim, cardWidth, cardHeight }: BiteSparkleProps) {
+  const sparkleSet = isGolden ? SPARKLES.slice(0, 8) : SPARKLES.slice(0, 5);
+
+  return (
+    <>
+      {sparkleSet.map((sp, i) => {
+        const start = sp.x * 0.45;
+        const fadeIn = start + 0.12;
+        const holdEnd = start + 0.35;
+        const fadeOut = Math.min(start + 0.55, 1);
+
+        const spOpacity = gleamAnim.interpolate({
+          inputRange: [start, fadeIn, holdEnd, fadeOut],
+          outputRange: [0, 1, 0.8, 0],
+          extrapolate: 'clamp',
+        });
+        const spScale = gleamAnim.interpolate({
+          inputRange: [start, fadeIn, holdEnd, fadeOut],
+          outputRange: [0, 1.3, 1, 0],
+          extrapolate: 'clamp',
+        });
+
+        const dim = sp.size * 4;
+        return (
+          <Animated.View
+            key={i}
+            pointerEvents="none"
+            style={{
+              position: 'absolute',
+              left: sp.x * cardWidth - dim / 2,
+              top: sp.y * cardHeight - dim / 2,
+              width: dim,
+              height: dim,
+              zIndex: 20,
+              opacity: spOpacity,
+              transform: [{ scale: spScale }],
+            }}
+          >
+            <Svg width={dim} height={dim}>
+              <Circle
+                cx={dim / 2}
+                cy={dim / 2}
+                r={sp.size * 1.6}
+                fill="rgba(255,215,80,0.12)"
+              />
+              {sp.type === 'star' ? (
+                <Path
+                  d={starPath(dim / 2, dim / 2, sp.size)}
+                  fill="rgba(255,225,120,0.9)"
+                />
+              ) : (
+                <Circle
+                  cx={dim / 2}
+                  cy={dim / 2}
+                  r={sp.size * 0.5}
+                  fill="rgba(255,235,160,0.85)"
+                />
+              )}
+            </Svg>
+          </Animated.View>
+        );
+      })}
+    </>
+  );
+}
+
+function EmptyBites() {
+  const Colors = useColors();
+  const router = useRouter();
+
+  const handleStartSwiping = useCallback(() => {
+    router.push('/(tabs)' as never);
+  }, [router]);
+
+  return (
+    <View style={[styles.emptyBitesWrap, { backgroundColor: Colors.card }]}>
+      <Text style={[styles.emptyBitesText, { color: Colors.textSecondary }]}>
+        No bites yet — swipe right on restaurants you love and they&apos;ll show up here!
+      </Text>
+      <Pressable
+        style={[styles.emptyBitesCta, { backgroundColor: Colors.primary }]}
+        onPress={handleStartSwiping}
+        accessibilityRole="button"
+        accessibilityLabel="Start swiping to discover restaurants"
+      >
+        <Text style={[styles.emptyBitesCtaText, { color: Colors.textInverse }]}>
+          Start Swiping
+        </Text>
+      </Pressable>
+    </View>
+  );
+}
+
+const BiteCard = React.memo(function BiteCard({
+  restaurant,
+  rank,
+  isNew,
+  isGoldenBite,
+  onRemove,
+  onClearNew,
+}: BiteCardProps) {
+  const Colors = useColors();
+
+  // Animation values
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const opacityAnim = useRef(new Animated.Value(1)).current;
+  // [v2 FIX: SUG-2] Initialize to 0 — reset to SCREEN_WIDTH in useEffect before animating
+  const slideAnim = useRef(new Animated.Value(0)).current;
+  const glowAnim = useRef(new Animated.Value(0)).current;
+  const gleamAnim = useRef(new Animated.Value(0)).current;
+
+  // [v2 FIX: CRIT-1] Track running entrance animation for cancellation on removal
+  const animRef = useRef<Animated.CompositeAnimation | null>(null);
+
+  // Local state
+  const [isRemoving, setIsRemoving] = useState(false);
+
+  // Card dimensions for sparkle positioning
+  const CARD_HEIGHT = 96;
+
+  // --- New Bite Entrance Animation (REQ-009) ---
+  useEffect(() => {
+    if (!isNew) return;
+
+    // [v2 FIX: SUG-2] Reset slide starting position at effect time
+    slideAnim.setValue(SCREEN_WIDTH);
+
+    const scaleSequence = Animated.sequence([
+      Animated.delay(150),
+      Animated.spring(scaleAnim, {
+        toValue: isGoldenBite ? 1.08 : 1.05,
+        friction: 4,
+        useNativeDriver: true,
+      }),
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        friction: 3,
+        useNativeDriver: true,
+      }),
+    ]);
+
+    // [v2 FIX: CRIT-1] Store composite ref for cancellation in handleRemovePress
+    animRef.current = scaleSequence;
+
+    // 1. Slide in from right
+    Animated.timing(slideAnim, {
+      toValue: 0,
+      duration: 300,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+
+    // 2. Scale pop (tracked via animRef)
+    scaleSequence.start();
+
+    // 3. Gold glow pulse
+    Animated.sequence([
+      Animated.timing(glowAnim, { toValue: 1, duration: 200, useNativeDriver: false }),
+      Animated.delay(2800),
+      Animated.timing(glowAnim, { toValue: 0, duration: 500, useNativeDriver: false }),
+    ]).start(({ finished }) => {
+      if (finished) onClearNew(); // [v2 FIX: DC-2] only clear if animation completed naturally
+    });
+
+    // 4. Sparkles
+    gleamAnim.setValue(0);
+    Animated.timing(gleamAnim, {
+      toValue: 1,
+      duration: isGoldenBite ? 1400 : 1000,
+      easing: Easing.out(Easing.ease),
+      useNativeDriver: true,
+    }).start();
+
+    // 5. Golden Bite haptic
+    if (isGoldenBite) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }
+  }, [isNew]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // --- Press Animation (REQ-005) ---
+  const handlePressIn = useCallback(() => {
+    if (isRemoving) return;
+    Animated.spring(scaleAnim, { toValue: 0.97, useNativeDriver: true }).start();
+  }, [scaleAnim, isRemoving]);
+
+  const handlePressOut = useCallback(() => {
+    if (isRemoving) return;
+    Animated.spring(scaleAnim, { toValue: 1, friction: 3, useNativeDriver: true }).start();
+  }, [scaleAnim, isRemoving]);
+
+  // --- Removal Animation (REQ-006) ---
+  const handleRemovePress = useCallback(() => {
+    Alert.alert(
+      'Remove from Your Bites?',
+      `Remove ${restaurant.name} from your bites?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: () => {
+            // [v2 FIX: CRIT-2] Configure layout animation SYNCHRONOUSLY first
+            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+
+            // [v2 FIX: CRIT-1] Stop entrance animation before starting removal
+            animRef.current?.stop();
+            glowAnim.stopAnimation();
+
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            setIsRemoving(true);
+
+            Animated.parallel([
+              Animated.timing(scaleAnim, {
+                toValue: 0,
+                duration: 350,
+                easing: Easing.in(Easing.cubic),
+                useNativeDriver: true,
+              }),
+              Animated.timing(opacityAnim, {
+                toValue: 0,
+                duration: 300,
+                easing: Easing.in(Easing.ease),
+                useNativeDriver: true,
+              }),
+            ]).start(() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              onRemove(restaurant);
+            });
+          },
+        },
+      ]
+    );
+  }, [restaurant, onRemove, scaleAnim, opacityAnim, glowAnim]);
+
+  // Derived display values
+  const priceString = '$'.repeat(restaurant.priceLevel);
+
+  // [v2 FIX: DC-1] Glow border: only interpolate when isNew is true
+  const glowBorderColor = isNew
+    ? glowAnim.interpolate({
+        inputRange: [0, 1],
+        outputRange: [Colors.border, '#FFB800'],
+      })
+    : undefined;
+
+  // Card inner content — shared between isNew and non-isNew branches
+  const innerContent = (
+    <>
+      {/* Pressable row — photo + text */}
+      <Pressable
+        style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 12 }}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+      >
+        {/* Photo thumbnail with bite-mark overlay */}
+        {/* [v2 FIX: DC-4] BiteMarkSvg is INSIDE biteThumbWrap */}
+        <View style={styles.biteThumbWrap}>
+          <Image
+            source={{ uri: restaurant.imageUrl }}
+            style={styles.biteThumbImage}
+            contentFit="cover"
+          />
+          <BiteMarkSvg restaurantId={restaurant.id} />
+        </View>
+
+        {/* Text content */}
+        <View style={styles.biteCardBody}>
+          <View style={styles.biteNameRow}>
+            <Text
+              style={[styles.biteName, { color: Colors.text }]}
+              numberOfLines={1}
+            >
+              {restaurant.name}
+            </Text>
+            {rank === 1 && <Text style={styles.biteCrown}>👑</Text>}
+          </View>
+
+          <Text style={[styles.biteSubLine, { color: Colors.textSecondary }]}>
+            {restaurant.cuisine} · {priceString} · {restaurant.distance}
+          </Text>
+
+          <View style={styles.biteMetaRow}>
+            <View style={styles.biteRatingPill}>
+              <Star size={11} color={Colors.star} fill={Colors.star} />
+              <Text style={[styles.biteRatingText, { color: Colors.text }]}>
+                {restaurant.rating.toFixed(1)}
+              </Text>
+            </View>
+
+            {restaurant.isOpenNow && (
+              <>
+                <View style={styles.biteOpenDot} />
+                <Text style={styles.biteOpenText}>Open</Text>
+              </>
+            )}
+
+            {restaurant.lastCallDeal && (
+              <View style={styles.biteDealRow}>
+                <Flame size={11} color={Colors.warning} />
+                <Text style={[styles.biteDealText, { color: Colors.warning }]}>
+                  Deal
+                </Text>
+              </View>
+            )}
+          </View>
+        </View>
+      </Pressable>
+
+      {/* Remove button */}
+      {/* [v2 FIX: SUG-6] accessibilityLabel and accessibilityRole added */}
+      <Pressable
+        style={[styles.biteRemoveBtn]}
+        onPress={handleRemovePress}
+        hitSlop={8}
+        accessibilityRole="button"
+        accessibilityLabel={`Remove ${restaurant.name} from your bites`}
+      >
+        <X size={16} color={Colors.textTertiary} />
+      </Pressable>
+    </>
+  );
+
+  return (
+    <Animated.View
+      style={[
+        styles.biteCard,
+        {
+          transform: [{ scale: scaleAnim }, { translateX: slideAnim }],
+          opacity: opacityAnim,
+        },
+      ]}
+    >
+      {/* NEW badge — outside biteCardInner to avoid overflow:hidden clipping */}
+      {isNew && (
+        <View style={[styles.biteNewBadge, { backgroundColor: Colors.primary }]}>
+          <Text style={styles.biteNewBadgeText}>NEW ✨</Text>
+        </View>
+      )}
+
+      {/* Sparkle overlay — only when isNew */}
+      {isNew && (
+        <BiteSparkle
+          isGolden={isGoldenBite}
+          gleamAnim={gleamAnim}
+          cardWidth={SCREEN_WIDTH - 40}
+          cardHeight={CARD_HEIGHT}
+        />
+      )}
+
+      {/* [v2 FIX: DC-1] Use Animated.View only when isNew */}
+      {isNew ? (
+        <Animated.View
+          style={[
+            styles.biteCardInner,
+            { backgroundColor: Colors.card, borderColor: glowBorderColor },
+          ]}
+        >
+          {innerContent}
+        </Animated.View>
+      ) : (
+        <View
+          style={[
+            styles.biteCardInner,
+            { backgroundColor: Colors.card, borderColor: Colors.border },
+          ]}
+        >
+          {innerContent}
+        </View>
+      )}
+    </Animated.View>
+  );
+});
+
+// ─── Existing Helper Component ──────────────────────────────────
+
+function PrefRow({ icon: Icon, label, value }: { icon: React.ElementType; label: string; value: string }) {
+  const Colors = useColors();
+  return (
+    <View style={styles.prefRow}>
+      <View style={[styles.prefIconCircle, { backgroundColor: Colors.primaryLight }]}>
+        <Icon size={16} color={Colors.primary} />
+      </View>
+      <View style={styles.prefContent}>
+        <Text style={[styles.prefLabel, { color: Colors.text }]}>{label}</Text>
+        <Text style={[styles.prefValue, { color: Colors.textSecondary }]} numberOfLines={1}>{value}</Text>
+      </View>
+    </View>
+  );
+}
+
+// ─── Main Screen Component ──────────────────────────────────────
 
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const Colors = useColors();
-  const { preferences, updatePreferences, favorites, favoritedRestaurants, setLocalAvatar, localAvatarUri, plans, setGuestMode } = useApp();
+  const {
+    preferences,
+    updatePreferences,
+    favorites,
+    favoritedRestaurants,
+    setLocalAvatar,
+    localAvatarUri,
+    plans,
+    setGuestMode,
+    toggleFavorite,
+    newlyAddedFavoriteId,
+    clearNewlyAddedFavorite,
+  } = useApp();
   const { user, signOut, isAuthenticated, updateUser } = useAuth();
   const { requestThemeToggle, isAnimating } = useThemeTransition();
 
   const [avatarLoading, setAvatarLoading] = useState(false);
 
+  // Pagination state (REQ-007)
+  const [showAllBites, setShowAllBites] = useState(false);
+
+  // Taste DNA animation trigger (REQ-004/009)
+  const [dnaAnimTrigger, setDnaAnimTrigger] = useState(0);
+
   const favoriteRestaurants = favoritedRestaurants;
+
+  // Sort favorites by rating descending — determines crown (#1) placement
+  const sortedFavorites = useMemo(
+    () => [...favoritedRestaurants].sort((a, b) => b.rating - a.rating),
+    [favoritedRestaurants],
+  );
+
+  // Paginated slice
+  const displayedBites = showAllBites
+    ? sortedFavorites
+    : sortedFavorites.slice(0, BITES_PAGE_SIZE);
+
+  // Determine if newly added bite is highest-rated (golden bite condition)
+  const isGoldenBite = useMemo(() => {
+    if (!newlyAddedFavoriteId || sortedFavorites.length === 0) return false;
+    return sortedFavorites[0].id === newlyAddedFavoriteId;
+  }, [newlyAddedFavoriteId, sortedFavorites]);
+
+  // Re-trigger DNA bar animation and ensure new bite is visible (REQ-004/REQ-009)
+  useEffect(() => {
+    if (newlyAddedFavoriteId) {
+      // Expand list if new bite is beyond current page
+      const newBiteIndex = sortedFavorites.findIndex(r => r.id === newlyAddedFavoriteId);
+      if (newBiteIndex >= BITES_PAGE_SIZE && !showAllBites) {
+        setShowAllBites(true);
+      }
+      // Re-trigger DNA bars
+      setDnaAnimTrigger(t => t + 1);
+    }
+  }, [newlyAddedFavoriteId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleRemoveFavorite = useCallback((restaurant: Restaurant) => {
+    toggleFavorite(restaurant);
+  }, [toggleFavorite]);
+
+  const handleToggleShowAll = useCallback(() => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setShowAllBites(prev => !prev);
+  }, []);
 
   const handlePickAvatar = useCallback(async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -173,7 +844,7 @@ export default function ProfileScreen() {
           <View style={styles.statsRow}>
             <View style={styles.stat}>
               <Text style={[styles.statValue, { color: Colors.text }]}>{favoriteRestaurants.length}</Text>
-              <Text style={[styles.statLabel, { color: Colors.textSecondary }]}>Favorites</Text>
+              <Text style={[styles.statLabel, { color: Colors.textSecondary }]}>Bites</Text>
             </View>
             <View style={[styles.statDivider, { backgroundColor: Colors.border }]} />
             <View style={styles.stat}>
@@ -209,18 +880,50 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        {favoriteRestaurants.length > 0 && (
-          <View style={styles.section}>
-            <Text style={[styles.sectionTitle, { color: Colors.text }]}>Favorites</Text>
-            {favoriteRestaurants.map(r => (
-              <View key={r.id} style={[styles.favoriteItem, { backgroundColor: Colors.card }]}>
-                <Heart size={14} color={Colors.primary} fill={Colors.primary} />
-                <Text style={[styles.favoriteName, { color: Colors.text }]}>{r.name}</Text>
-                <Text style={[styles.favoriteCuisine, { color: Colors.textSecondary }]}>{r.cuisine}</Text>
-              </View>
-            ))}
+        {/* Your Bites Section — REQ-004 through REQ-010 */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <View style={styles.sectionTitleRow}>
+              <Heart size={16} color={Colors.primary} fill={Colors.primary} />
+              <Text style={[styles.sectionTitle, { color: Colors.text }]}>Your Bites</Text>
+            </View>
           </View>
-        )}
+
+          {sortedFavorites.length === 0 ? (
+            <EmptyBites />
+          ) : (
+            <>
+              <TasteDNA restaurants={sortedFavorites} triggerReanimation={dnaAnimTrigger} />
+
+              {displayedBites.map((restaurant, index) => (
+                <BiteCard
+                  key={restaurant.id}
+                  restaurant={restaurant}
+                  rank={index + 1}
+                  isNew={restaurant.id === newlyAddedFavoriteId}
+                  isGoldenBite={isGoldenBite && restaurant.id === newlyAddedFavoriteId}
+                  onRemove={handleRemoveFavorite}
+                  onClearNew={clearNewlyAddedFavorite}
+                />
+              ))}
+
+              {sortedFavorites.length > BITES_PAGE_SIZE && (
+                <Pressable
+                  style={[styles.showAllBtn, { backgroundColor: Colors.primaryLight }]}
+                  onPress={handleToggleShowAll}
+                  accessibilityRole="button"
+                  accessibilityLabel={showAllBites ? 'Show fewer bites' : `Show all ${sortedFavorites.length} bites`}
+                >
+                  <Text style={[styles.showAllBtnText, { color: Colors.primary }]}>
+                    {showAllBites
+                      ? 'Show Less'
+                      : `Show All (${sortedFavorites.length})`}
+                  </Text>
+                </Pressable>
+              )}
+            </>
+          )}
+        </View>
 
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: Colors.text }]}>Settings</Text>
@@ -270,20 +973,7 @@ export default function ProfileScreen() {
   );
 }
 
-function PrefRow({ icon: Icon, label, value }: { icon: React.ElementType; label: string; value: string }) {
-  const Colors = useColors();
-  return (
-    <View style={styles.prefRow}>
-      <View style={[styles.prefIconCircle, { backgroundColor: Colors.primaryLight }]}>
-        <Icon size={16} color={Colors.primary} />
-      </View>
-      <View style={styles.prefContent}>
-        <Text style={[styles.prefLabel, { color: Colors.text }]}>{label}</Text>
-        <Text style={[styles.prefValue, { color: Colors.textSecondary }]} numberOfLines={1}>{value}</Text>
-      </View>
-    </View>
-  );
-}
+// ─── Styles ─────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   container: {
@@ -453,23 +1143,190 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.borderLight,
     marginLeft: 58,
   },
-  favoriteItem: {
+
+  // Your Bites section
+  sectionTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.card,
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 8,
-    gap: 10,
+    gap: 6,
   },
-  favoriteName: {
-    fontSize: 14,
+
+  // TasteDNA
+  dnaContainer: {
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 12,
+  },
+  dnaBarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    gap: 8,
+  },
+  dnaCuisineLabel: {
+    fontSize: 11,
     fontWeight: '600' as const,
-    color: Colors.text,
+    width: 72,
+  },
+  dnaBarTrack: {
+    flex: 1,
+    height: 8,
+    borderRadius: 4,
+    overflow: 'hidden' as const,
+  },
+  dnaBarFill: {
+    height: 8,
+    borderRadius: 4,
+  },
+  dnaCountLabel: {
+    fontSize: 11,
+    fontWeight: '600' as const,
+    width: 20,
+    textAlign: 'right' as const,
+  },
+  dnaInsight: {
+    fontSize: 12,
+    marginTop: 6,
+    textAlign: 'center' as const,
+  },
+
+  // BiteCard
+  biteCard: {
+    borderRadius: 16,
+    marginBottom: 10,
+    overflow: 'visible' as const,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  biteCardInner: {
+    borderRadius: 16,
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    overflow: 'hidden' as const,
+    borderWidth: 1.5,
+  },
+  biteThumbWrap: {
+    width: 72,
+    height: 72,
+    borderRadius: 12,
+    overflow: 'hidden' as const,
+    flexShrink: 0,
+  },
+  biteThumbImage: {
+    width: 72,
+    height: 72,
+  },
+  biteCardBody: {
     flex: 1,
   },
-  favoriteCuisine: {
+  biteNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  biteName: {
+    fontSize: 14,
+    fontWeight: '700' as const,
+    flex: 1,
+  },
+  biteCrown: {
+    fontSize: 14,
+  },
+  biteSubLine: {
     fontSize: 12,
-    color: Colors.textSecondary,
+    marginTop: 2,
+  },
+  biteMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 6,
+    gap: 8,
+    flexWrap: 'wrap' as const,
+  },
+  biteRatingPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  biteRatingText: {
+    fontSize: 12,
+    fontWeight: '600' as const,
+  },
+  biteOpenDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#34C759',
+  },
+  biteOpenText: {
+    fontSize: 11,
+    fontWeight: '600' as const,
+    color: '#34C759',
+  },
+  biteDealRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  biteDealText: {
+    fontSize: 11,
+    fontWeight: '600' as const,
+  },
+  biteNewBadge: {
+    position: 'absolute',
+    top: -8,
+    left: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+  },
+  biteNewBadgeText: {
+    fontSize: 11,
+    fontWeight: '800' as const,
+    color: '#FFFFFF',
+  },
+  biteRemoveBtn: {
+    padding: 6,
+    borderRadius: 12,
+  },
+
+  // Pagination
+  showAllBtn: {
+    alignSelf: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
+    marginTop: 4,
+  },
+  showAllBtnText: {
+    fontSize: 13,
+    fontWeight: '700' as const,
+  },
+
+  // Empty state
+  emptyBitesWrap: {
+    borderRadius: 16,
+    padding: 28,
+    alignItems: 'center',
+  },
+  emptyBitesText: {
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 16,
+  },
+  emptyBitesCta: {
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 20,
+  },
+  emptyBitesCtaText: {
+    fontSize: 14,
+    fontWeight: '700' as const,
   },
 });

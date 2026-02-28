@@ -52,6 +52,8 @@ export const [AppProvider, useApp] = createContextHook(() => {
   const [localAvatarUri, setLocalAvatarUri] = useState<string | null>(null);
   const [userLocation, setUserLocation] = useState<Coords | null>(null);
   const [isGuest, setIsGuestState] = useState<boolean>(false);
+  const [newlyAddedFavoriteId, setNewlyAddedFavoriteId] = useState<string | null>(null);
+  const newFavTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [locationPermission, setLocationPermission] = useState<
     'undetermined' | 'granted' | 'denied'
   >('undetermined');
@@ -274,10 +276,30 @@ export const [AppProvider, useApp] = createContextHook(() => {
     },
   });
 
+  const clearNewlyAddedFavorite = useCallback(() => {
+    setNewlyAddedFavoriteId(null);
+    if (newFavTimerRef.current) {
+      clearTimeout(newFavTimerRef.current);
+      newFavTimerRef.current = null;
+    }
+  }, []);
+
   const toggleFavorite = useCallback((restaurant: Restaurant) => {
     const restaurantId = restaurant.id;
+    const isRemoving = favorites.includes(restaurantId);
+
+    // Track newly added favorite BEFORE state update (DC-5)
+    if (!isRemoving) {
+      setNewlyAddedFavoriteId(restaurantId);
+      // Auto-clear after 30 seconds (DC-3)
+      if (newFavTimerRef.current) clearTimeout(newFavTimerRef.current);
+      newFavTimerRef.current = setTimeout(() => {
+        setNewlyAddedFavoriteId(null);
+        newFavTimerRef.current = null;
+      }, 30_000);
+    }
+
     setFavorites(prev => {
-      const isRemoving = prev.includes(restaurantId);
       const updated = isRemoving
         ? prev.filter(id => id !== restaurantId)
         : [...prev, restaurantId];
@@ -309,7 +331,7 @@ export const [AppProvider, useApp] = createContextHook(() => {
       })();
       return updated;
     });
-  }, [isAuthenticated]);
+  }, [isAuthenticated, favorites]);
 
   const addPlan = useCallback((plan: DiningPlan) => {
     if (isAuthenticated) {
@@ -354,6 +376,8 @@ export const [AppProvider, useApp] = createContextHook(() => {
     saveOnboarding,
     updatePreferences,
     toggleFavorite,
+    newlyAddedFavoriteId,
+    clearNewlyAddedFavorite,
     addPlan,
     requestLocation,
   };
