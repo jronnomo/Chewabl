@@ -363,14 +363,24 @@ export const [AppProvider, useApp] = createContextHook(() => {
 // Standalone React Query hooks – call these inside AppProvider children
 // ---------------------------------------------------------------------------
 
-export function useNearbyRestaurants(maxResultCount: number = 10) {
+export function useNearbyRestaurants(
+  maxResultCount: number = 10,
+  planCuisine?: string,
+  planBudget?: string,
+) {
   const { preferences, userLocation } = useApp();
+
+  // When plan filters are provided, override user preferences for the query
+  const effectiveCuisines = planCuisine && planCuisine !== 'Any'
+    ? planCuisine.split(', ').map(c => c.trim())
+    : preferences.cuisines;
+  const effectiveBudget = planBudget ?? preferences.budget;
 
   return useQuery<Restaurant[]>({
     queryKey: [
       'nearbyRestaurants',
-      preferences.cuisines,
-      preferences.budget,
+      effectiveCuisines,
+      effectiveBudget,
       preferences.atmosphere,
       preferences.distance,
       userLocation?.latitude,
@@ -381,7 +391,12 @@ export function useNearbyRestaurants(maxResultCount: number = 10) {
       if (!userLocation) {
         return [];
       }
-      const params = buildSearchNearbyParams(preferences, userLocation, maxResultCount);
+      const overriddenPrefs = {
+        ...preferences,
+        cuisines: effectiveCuisines,
+        budget: effectiveBudget,
+      };
+      const params = buildSearchNearbyParams(overriddenPrefs, userLocation, maxResultCount);
       // Always include at least 'restaurant' so the query is meaningful
       if (!params.includedTypes || params.includedTypes.length === 0) {
         params.includedTypes = ['restaurant'];

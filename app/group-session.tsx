@@ -82,7 +82,6 @@ export default function GroupSessionScreen() {
   const { user, isAuthenticated } = useAuth();
   const queryClient = useQueryClient();
   const [restaurantCount, setRestaurantCount] = useState<number>(10);
-  const { data: nearbyRestaurants = [] } = useNearbyRestaurants(restaurantCount);
 
   // Active plan state — set when creating or fetching an existing plan
   const [activePlan, setActivePlan] = useState<DiningPlan | null>(() => {
@@ -91,6 +90,13 @@ export default function GroupSessionScreen() {
     }
     return null;
   });
+
+  // Pass plan cuisine/budget to restaurant fetch so the deck matches plan filters
+  const { data: nearbyRestaurants = [] } = useNearbyRestaurants(
+    restaurantCount,
+    activePlan?.cuisine,
+    activePlan?.budget,
+  );
 
   const { sessionRestaurants, curveballIds } = useMemo(() => {
     // Determine the base deck
