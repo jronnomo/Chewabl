@@ -81,7 +81,7 @@ export default function AuthScreen() {
           'The server is not reachable right now. You can continue as a guest to explore the app — your preferences will be saved locally.',
           [
             { text: 'Try Again', style: 'cancel' },
-            { text: 'Continue as Guest', onPress: async () => { await setGuestMode(true); router.replace(isOnboarded ? '/(tabs)' as never : '/onboarding' as never); } },
+            { text: 'Continue as Guest', onPress: async () => { await setGuestMode(true); await AsyncStorage.setItem('chewabl_onboarded', 'true'); router.replace('/(tabs)' as never); } },
           ]
         );
       } else {
@@ -224,7 +224,7 @@ export default function AuthScreen() {
 
           <Pressable
             style={styles.skipBtn}
-            onPress={async () => { await setGuestMode(true); router.replace(isOnboarded ? '/(tabs)' as never : '/onboarding' as never); }}
+            onPress={async () => { await setGuestMode(true); await AsyncStorage.setItem('chewabl_onboarded', 'true'); router.replace('/(tabs)' as never); }}
           >
             <Text style={[styles.skipBtnText, { color: Colors.textSecondary }]}>
               Continue without an account

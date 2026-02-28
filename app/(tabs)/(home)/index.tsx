@@ -28,7 +28,7 @@ export default function HomeScreen() {
   const Colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { preferences, isOnboarded, isGuest, isLoading, locationPermission, requestLocation } = useApp();
+  const { preferences, isOnboarded, isGuest, setGuestMode, isLoading, locationPermission, requestLocation } = useApp();
   const { user, isAuthenticated } = useAuth();
   const { data: allRestaurants = [] } = useNearbyRestaurants();
   const showFullUI = isAuthenticated && !isGuest;
@@ -103,7 +103,7 @@ export default function HomeScreen() {
               <Text style={[styles.greetingText, { color: Colors.text }]}>Hey {firstName} 👋</Text>
               <Text style={[styles.greetingSubtext, { color: Colors.textSecondary }]}>Where are we eating?</Text>
             </View>
-            {showFullUI && (
+            {showFullUI ? (
               <Pressable
                 onPress={() => router.push('/notifications' as never)}
                 style={styles.bellBtn}
@@ -117,6 +117,15 @@ export default function HomeScreen() {
                     <Text style={styles.badgeText}>{unreadCount > 99 ? '99+' : unreadCount}</Text>
                   </View>
                 )}
+              </Pressable>
+            ) : (
+              <Pressable
+                onPress={async () => { await setGuestMode(false); router.replace('/auth' as never); }}
+                style={styles.bellBtn}
+                accessibilityLabel="Sign In"
+                accessibilityRole="button"
+              >
+                <Text style={{ color: Colors.primary, fontSize: 15, fontWeight: '600' }}>Sign In</Text>
               </Pressable>
             )}
           </View>
