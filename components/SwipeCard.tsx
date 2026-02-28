@@ -59,6 +59,7 @@ interface SwipeCardProps {
   onTap?: (restaurant: Restaurant) => void;
   isTop: boolean;
   isCurveball?: boolean;
+  isOutsideRadius?: boolean;
 }
 
 export default React.memo(function SwipeCard({
@@ -68,6 +69,7 @@ export default React.memo(function SwipeCard({
   onTap,
   isTop,
   isCurveball,
+  isOutsideRadius,
 }: SwipeCardProps) {
   const Colors = useColors();
   const position = useRef(new Animated.ValueXY()).current;
@@ -276,6 +278,13 @@ export default React.memo(function SwipeCard({
           </View>
         )}
 
+        {isOutsideRadius && (
+          <View style={styles.outsideRadiusTag}>
+            <MapPin size={12} color="#FFF" />
+            <Text style={styles.outsideRadiusTagText}>Farther out</Text>
+          </View>
+        )}
+
         <View style={styles.cardContent}>
           <View style={styles.cardHeader}>
             <View style={styles.cardTitleArea}>
@@ -432,6 +441,24 @@ const styles = StyleSheet.create({
   },
   curveballTagText: {
     fontSize: 12,
+    fontWeight: '700' as const,
+    color: '#FFF',
+  },
+  outsideRadiusTag: {
+    position: 'absolute',
+    top: 20,
+    right: 16,
+    backgroundColor: 'rgba(100,116,139,0.85)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 16,
+    gap: 4,
+    zIndex: 15,
+  },
+  outsideRadiusTagText: {
+    fontSize: 11,
     fontWeight: '700' as const,
     color: '#FFF',
   },

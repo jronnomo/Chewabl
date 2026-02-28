@@ -376,6 +376,9 @@ export function useNearbyRestaurants(
     : preferences.cuisines;
   const effectiveBudget = planBudget ?? preferences.budget;
 
+  const hasCuisineFilter = !!(planCuisine && planCuisine !== 'Any');
+  const preferredRadiusMiles = parseFloat(preferences.distance) || 5;
+
   return useQuery<Restaurant[]>({
     queryKey: [
       'nearbyRestaurants',
@@ -386,6 +389,7 @@ export function useNearbyRestaurants(
       userLocation?.latitude,
       userLocation?.longitude,
       maxResultCount,
+      planCuisine ?? null,
     ],
     queryFn: async () => {
       if (!userLocation) {
@@ -396,16 +400,47 @@ export function useNearbyRestaurants(
         cuisines: effectiveCuisines,
         budget: effectiveBudget,
       };
-      const params = buildSearchNearbyParams(overriddenPrefs, userLocation, maxResultCount);
+      const baseParams = buildSearchNearbyParams(overriddenPrefs, userLocation, maxResultCount);
       // Always include at least 'restaurant' so the query is meaningful
-      if (!params.includedTypes || params.includedTypes.length === 0) {
-        params.includedTypes = ['restaurant'];
+      if (!baseParams.includedTypes || baseParams.includedTypes.length === 0) {
+        baseParams.includedTypes = ['restaurant'];
       }
-      const places = await searchNearby(params);
-      if (places.length === 0) return [];
-      const mapped = places.map(p => mapToRestaurant(p, userLocation));
-      registerRestaurants(mapped);
-      return mapped;
+
+      const baseRadiusMeters = baseParams.radiusMeters;
+      const maxRadiusMeters = 40234; // ~25 miles
+      const multipliers = [1, 2, 3];
+      const seenIds = new Set<string>();
+      const collected: Restaurant[] = [];
+
+      for (const mult of multipliers) {
+        const radius = Math.min(baseRadiusMeters * mult, maxRadiusMeters);
+        baseParams.radiusMeters = radius;
+        const places = await searchNearby(baseParams);
+        const mapped = places.map(p => mapToRestaurant(p, userLocation));
+
+        // Strict cuisine filter when plan cuisine is specified
+        const filtered = hasCuisineFilter
+          ? mapped.filter(r => effectiveCuisines.includes(r.cuisine))
+          : mapped;
+
+        for (const r of filtered) {
+          if (!seenIds.has(r.id)) {
+            seenIds.add(r.id);
+            const distMiles = parseFloat(r.distance) || 0;
+            collected.push({
+              ...r,
+              isOutsidePreferredRadius: distMiles > preferredRadiusMiles,
+            });
+          }
+        }
+
+        if (collected.length >= maxResultCount) break;
+        if (radius >= maxRadiusMeters) break;
+      }
+
+      const result = collected.slice(0, maxResultCount);
+      registerRestaurants(result);
+      return result;
     },
     staleTime: 5 * 60 * 1000,
   });
