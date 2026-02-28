@@ -91,6 +91,14 @@ export default function GroupSessionScreen() {
     return null;
   });
 
+  // Sync activePlan when plans array loads asynchronously
+  useEffect(() => {
+    if (!activePlan && params.planId && plans.length > 0) {
+      const found = plans.find(p => p.id === params.planId);
+      if (found) setActivePlan(found);
+    }
+  }, [activePlan, params.planId, plans]);
+
   // Pass plan cuisine/budget to restaurant fetch so the deck matches plan filters
   const { data: nearbyRestaurants = [] } = useNearbyRestaurants(
     restaurantCount,
