@@ -110,6 +110,14 @@ export default function GroupSessionScreen() {
     activePlan?.budget,
   );
 
+  // Unfiltered fetch for curveball candidates (different cuisine than the plan)
+  const needsCurveballPool = !!activePlan?.allowCurveball && activePlan?.cuisine !== 'Any';
+  const { data: curveballPool = [] } = useNearbyRestaurants(
+    restaurantCount,
+    needsCurveballPool ? 'Any' : undefined,
+    activePlan?.budget,
+  );
+
   const { sessionRestaurants, curveballIds } = useMemo(() => {
     // Don't build the deck until the plan is loaded (avoids stale user-pref restaurants)
     if (!planReady) {
@@ -151,12 +159,24 @@ export default function GroupSessionScreen() {
     const trimmed = base.slice(0, base.length - curveballCount);
     const trimmedIds = new Set(trimmed.map(r => r.id));
 
-    // Find eligible curveball candidates from nearby restaurants not in the trimmed deck
-    const candidates = nearbyRestaurants.filter(r =>
+    // Find eligible curveball candidates from unfiltered pool (different cuisine than plan)
+    const pool = curveballPool.length > 0 ? curveballPool : nearbyRestaurants;
+    // First try: different cuisine + high quality; fallback: just different cuisine
+    let candidates = pool.filter(r =>
       !trimmedIds.has(r.id) &&
       r.cuisine !== planCuisine &&
       (r.lastCallDeal || r.rating >= 4.5)
     );
+    if (candidates.length === 0) {
+      candidates = pool.filter(r =>
+        !trimmedIds.has(r.id) &&
+        r.cuisine !== planCuisine
+      );
+    }
+    // Last resort: any restaurant not already in the deck (even same cuisine)
+    if (candidates.length === 0) {
+      candidates = pool.filter(r => !trimmedIds.has(r.id));
+    }
 
     // Sort: deals first, then by rating descending
     candidates.sort((a, b) => {
@@ -188,7 +208,7 @@ export default function GroupSessionScreen() {
     }
 
     return { sessionRestaurants: deck, curveballIds: newCurveballIds };
-  }, [preferences.cuisines, activePlan, nearbyRestaurants, planReady]);
+  }, [preferences.cuisines, activePlan, nearbyRestaurants, curveballPool, planReady]);
 
   const restaurantFingerprint = useMemo(
     () => sessionRestaurants.map(r => r.id).sort().join(','),
@@ -464,6 +484,14 @@ export default function GroupSessionScreen() {
     if (isAuthenticated && activePlan) {
       try {
         setIsSubmitting(true);
+
+        // If restaurantOptions were never populated (autoStart skips lobby/handleStartSwiping),
+        // populate them now so the backend can validate votes.
+        if ((!activePlan.restaurantOptions || activePlan.restaurantOptions.length === 0) && sessionRestaurants.length > 0) {
+          const populated = await updatePlan(activePlan.id, { restaurantOptions: sessionRestaurants });
+          setActivePlan(populated);
+        }
+
         const updatedPlan = await submitSwipes(activePlan.id, yesVotes);
         setActivePlan(updatedPlan);
         queryClient.invalidateQueries({ queryKey: ['plans'] });
