@@ -56,6 +56,12 @@ docs/
 # Session handoffs and test reports (generated, not committed)
 session-handoffs/
 test-reports/
+
+# Stray screenshots in project root (safety net — should go in test-reports/<run>/<flow>/screenshots/)
+/*.png
+
+# Test run state file (used by test-app/test-feature skills to persist RUN_DIR across tool calls)
+.current-test-run
 core
 node_modules
 .expo

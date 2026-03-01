@@ -165,7 +165,7 @@ export default React.memo(function PlanCard({ plan, currentUserId, currentUserAv
     : '';
 
   return (
-    <Pressable onPress={handlePress} onPressIn={handlePressIn} onPressOut={handlePressOut} testID={`plan-card-${plan.id}`}>
+    <Pressable onPress={handlePress} onPressIn={handlePressIn} onPressOut={handlePressOut} testID={`plan-card-${plan.id}`} accessibilityLabel={plan.title}>
       <Animated.View style={[styles.card, { transform: [{ scale: scaleAnim }], backgroundColor: Colors.card }]}>
         <View style={styles.header}>
           <View style={styles.titleRow}>

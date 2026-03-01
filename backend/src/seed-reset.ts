@@ -32,7 +32,7 @@
  *   Sofia → Alice      (pending — Alice received)
  *   Alice → Noah       (pending — Alice sent)
  *
- * ─── Plans (19) ──────────────────────────────────────────────────
+ * ─── Plans (21) ──────────────────────────────────────────────────
  *   1. Taco Tuesday       │ voting    │ upcoming │ Alice owns │ Maya+Jerry partial, Liam partial, Alice not yet
  *   2. Weekend Brunch      │ voting    │ upcoming │ Alice owns │ Maya+Liam voted, Alice not yet
  *   3. Friday Night Out    │ voting    │ upcoming │ Alice owns │ Alice voted, Maya+Liam not yet
@@ -52,6 +52,8 @@
  *  17. Vibe Test: Quiet    │ group-swipe │ voting │ Liam owns  │ atmosphere=Quiet, Japanese $$, live API deck
  *  18. Vibe Test: Moderate │ group-swipe │ voting │ Alice owns │ atmosphere=Moderate, Japanese $$, live API deck
  *  19. Vibe Test: Lively   │ group-swipe │ voting │ Jerry owns │ atmosphere=Lively, Japanese $$, live API deck
+ *  20. Overdue Potluck     │ voting      │ PAST   │ Alice owns │ #69 regression — voting + past date → Past tab
+ *  21. Vote Test: Brunch   │ voting      │ upcoming│ Alice owns │ #94 regression — Maya+Liam voted, Alice hasn't → autoStart
  */
 
 import mongoose from 'mongoose';
@@ -301,6 +303,13 @@ async function seedReset() {
   const plan2Votes = new Map<string, string[]>();
   plan2Votes.set(mayaId, ['rest_sushi_heaven', 'rest_thai_garden', 'rest_pizza_palace']);
   plan2Votes.set(liamId, ['rest_tacos_supreme', 'rest_thai_garden', 'rest_burger_barn']);
+
+  // ── Plan 21: Vote Test: Brunch — duplicate of plan 2 but inserted last ────
+  // Inserted last → appears first in Upcoming tab (createdAt DESC sort)
+  // Needed because plan 2 is too deep in the list for Maestro scrollUntilVisible
+  const plan21Votes = new Map<string, string[]>();
+  plan21Votes.set(mayaId, ['rest_sushi_heaven', 'rest_thai_garden', 'rest_pizza_palace']);
+  plan21Votes.set(liamId, ['rest_tacos_supreme', 'rest_thai_garden', 'rest_burger_barn']);
 
   // ── Plan 3: Friday Night Out ──────────────────────────────────────────────
   // Status: voting │ Upcoming │ Alice owns
@@ -683,11 +692,57 @@ async function seedReset() {
       restaurantOptions: [],
       votes: new Map(),
     },
+
+    // ── Plan 20: Overdue Potluck — #69 regression test ──────────────────
+    // voting status + PAST date → must appear in Past tab, not Upcoming
+    // This is the exact edge case that #69 fixes.
+    {
+      title: 'Overdue Potluck',
+      date: fmt(daysAgo(3)),
+      time: '6:00 PM',
+      ownerId: alice._id,
+      status: 'voting',
+      cuisine: 'American',
+      budget: '$',
+      invites: [
+        { userId: maya._id, name: maya.name, status: 'accepted', respondedAt: daysAgo(7) },
+        { userId: liam._id, name: liam.name, status: 'accepted', respondedAt: daysAgo(6) },
+      ],
+      rsvpDeadline: daysAgo(5),
+      votingOpenedAt: daysAgo(5),
+      options: RESTAURANT_OPTIONS,
+      restaurantOptions: RESTAURANT_OPTION_OBJECTS,
+      votes: new Map(),
+    },
+
+    // ── Plan 21: Vote Test: Brunch — #94 regression test ────────────────
+    // Duplicate of Weekend Brunch (plan 2) properties but inserted last
+    // → appears FIRST in Upcoming tab (createdAt DESC).
+    // Alice owns, Maya+Liam voted, Alice hasn't → autoStart=true → swiping.
+    {
+      title: 'Vote Test: Brunch',
+      date: fmt(daysFromNow(10)),
+      time: '11:00 AM',
+      ownerId: alice._id,
+      status: 'voting',
+      cuisine: 'American',
+      budget: '$$$',
+      invites: [
+        { userId: maya._id, name: maya.name, status: 'accepted', respondedAt: daysAgo(3) },
+        { userId: liam._id, name: liam.name, status: 'accepted', respondedAt: daysAgo(2) },
+      ],
+      rsvpDeadline: daysAgo(1),
+      votingOpenedAt: daysAgo(1),
+      swipesCompleted: [mayaId, liamId],
+      options: RESTAURANT_OPTIONS,
+      restaurantOptions: RESTAURANT_OPTION_OBJECTS,
+      votes: plan21Votes,
+    },
   ]);
 
   const [planTaco, planBrunch, planFriday, planTeamLunch, planSushi, planBirthday, planCancelled, planThaiGroup, planBurgerGroup, _planLastCall, planPizzaNight, planQuickLunch, planGameNight, planCoffeeRun, planRamenGroup, planCurveballTest] = seededPlans;
 
-  console.log('Created 19 plans:');
+  console.log('Created 21 plans:');
   console.log('  UPCOMING (voting):');
   console.log('    1. Taco Tuesday       — Maya+Jerry partial, Liam partial, Alice not yet');
   console.log('    2. Weekend Brunch     — Maya+Liam voted, Alice not yet');
@@ -715,6 +770,10 @@ async function seedReset() {
   console.log('   17. Vibe Test: Quiet    — Liam owns (Quiet),   Japanese $$, live API deck');
   console.log('   18. Vibe Test: Moderate — Alice owns (Moderate), Japanese $$, live API deck');
   console.log('   19. Vibe Test: Lively   — Jerry owns (Lively),  Japanese $$, live API deck');
+  console.log('  REGRESSION (#69 — past-dated voting plan):');
+  console.log('   20. Overdue Potluck    — Alice owns, voting + past date → must appear in Past tab');
+  console.log('  REGRESSION (#94 — vote submission with autoStart):');
+  console.log('   21. Vote Test: Brunch  — Alice owns, Maya+Liam voted, Alice hasn\'t → autoStart');
   console.log();
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1021,7 +1080,7 @@ async function seedReset() {
   console.log('              Group Pick: Thai Garden (group-swipe),');
   console.log('              Group Pick: Burger Barn (group-swipe, Liam owns),');
   console.log('              Last Call Sushi (group-swipe, Jerry last to swipe)');
-  console.log('    Past:     Birthday Dinner (completed), Cancelled Meetup');
+  console.log('    Past:     Birthday Dinner (completed), Cancelled Meetup, Overdue Potluck (voting+past)');
   console.log();
   console.log('  Plans tab (Jerry) — Plan Management test plans:');
   console.log('    11. Jerry\'s Pizza Night  — OWNER, 3 accepted → Cancel + Delegate');
