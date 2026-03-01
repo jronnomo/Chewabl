@@ -32,7 +32,7 @@
  *   Sofia → Alice      (pending — Alice received)
  *   Alice → Noah       (pending — Alice sent)
  *
- * ─── Plans (16) ──────────────────────────────────────────────────
+ * ─── Plans (19) ──────────────────────────────────────────────────
  *   1. Taco Tuesday       │ voting    │ upcoming │ Alice owns │ Maya+Jerry partial, Liam partial, Alice not yet
  *   2. Weekend Brunch      │ voting    │ upcoming │ Alice owns │ Maya+Liam voted, Alice not yet
  *   3. Friday Night Out    │ voting    │ upcoming │ Alice owns │ Alice voted, Maya+Liam not yet
@@ -49,6 +49,9 @@
  *  14. Liam's Coffee Run   │ voting    │ upcoming │ Liam owns  │ Jerry only accepted → test Leave (auto-cancel)
  *  15. Group Pick: Ramen Run│ group-swipe│ voting  │ Jerry owns │ 3 invitees → test Cancel + Delegate on group-swipe
  *  16. Group Pick: Curveball Test│ group-swipe│ voting │ Liam owns │ Jerry+Maya, allowCurveball ON
+ *  17. Vibe Test: Quiet    │ group-swipe │ voting │ Liam owns  │ atmosphere=Quiet, Japanese $$, live API deck
+ *  18. Vibe Test: Moderate │ group-swipe │ voting │ Alice owns │ atmosphere=Moderate, Japanese $$, live API deck
+ *  19. Vibe Test: Lively   │ group-swipe │ voting │ Jerry owns │ atmosphere=Lively, Japanese $$, live API deck
  */
 
 import mongoose from 'mongoose';
@@ -140,7 +143,7 @@ async function seedReset() {
         cuisines: ['Japanese', 'Mexican', 'Italian'],
         budget: '$$$',
         dietary: [],
-        atmosphere: 'Casual',
+        atmosphere: 'Moderate',
         groupSize: '2-4',
         distance: '10',
         isDarkMode: true,
@@ -181,6 +184,17 @@ async function seedReset() {
       passwordHash,
       inviteCode: nanoid(8).toUpperCase(),
       favorites: [],
+      preferences: {
+        name: 'Liam',
+        cuisines: ['Japanese', 'Mexican', 'Italian'],
+        budget: '$$$',
+        dietary: [],
+        atmosphere: 'Quiet',
+        groupSize: '2-4',
+        distance: '10',
+        isDarkMode: false,
+        notificationsEnabled: true,
+      },
     },
     {
       // Pending incoming request to Alice
@@ -615,11 +629,65 @@ async function seedReset() {
       restaurantOptions: RESTAURANT_OPTION_OBJECTS,
       votes: new Map(),
     },
+
+    // ── Plans 17-19: Vibe Filter test plans ─────────────────────────────
+    // All identical (Japanese, $$, group-swipe, no restaurantOptions)
+    // except each owner has a different atmosphere preference.
+    // Sign in as each user → start swiping → compare deck order.
+
+    // 17. Vibe Test: Quiet — Liam owns (atmosphere: Quiet)
+    {
+      type: 'group-swipe',
+      title: 'Vibe Test: Quiet',
+      ownerId: liam._id,
+      status: 'voting',
+      cuisine: 'Japanese',
+      budget: '$$',
+      invites: [
+        { userId: alice._id, name: alice.name, status: 'accepted', respondedAt: daysAgo(1) },
+        { userId: maya._id, name: maya.name, status: 'accepted', respondedAt: daysAgo(1) },
+      ],
+      options: [],
+      restaurantOptions: [],
+      votes: new Map(),
+    },
+    // 18. Vibe Test: Moderate — Alice owns (atmosphere: Moderate)
+    {
+      type: 'group-swipe',
+      title: 'Vibe Test: Moderate',
+      ownerId: alice._id,
+      status: 'voting',
+      cuisine: 'Japanese',
+      budget: '$$',
+      invites: [
+        { userId: liam._id, name: liam.name, status: 'accepted', respondedAt: daysAgo(1) },
+        { userId: maya._id, name: maya.name, status: 'accepted', respondedAt: daysAgo(1) },
+      ],
+      options: [],
+      restaurantOptions: [],
+      votes: new Map(),
+    },
+    // 19. Vibe Test: Lively — Jerry owns (atmosphere: Lively)
+    {
+      type: 'group-swipe',
+      title: 'Vibe Test: Lively',
+      ownerId: jerry._id,
+      status: 'voting',
+      cuisine: 'Japanese',
+      budget: '$$',
+      invites: [
+        { userId: alice._id, name: alice.name, status: 'accepted', respondedAt: daysAgo(1) },
+        { userId: maya._id, name: maya.name, status: 'accepted', respondedAt: daysAgo(1) },
+      ],
+      options: [],
+      restaurantOptions: [],
+      votes: new Map(),
+    },
   ]);
 
   const [planTaco, planBrunch, planFriday, planTeamLunch, planSushi, planBirthday, planCancelled, planThaiGroup, planBurgerGroup, _planLastCall, planPizzaNight, planQuickLunch, planGameNight, planCoffeeRun, planRamenGroup, planCurveballTest] = seededPlans;
 
-  console.log('Created 16 plans:');
+  console.log('Created 19 plans:');
   console.log('  UPCOMING (voting):');
   console.log('    1. Taco Tuesday       — Maya+Jerry partial, Liam partial, Alice not yet');
   console.log('    2. Weekend Brunch     — Maya+Liam voted, Alice not yet');
@@ -643,6 +711,10 @@ async function seedReset() {
   console.log('   15. Group Pick: Ramen Run — Jerry owns group-swipe → test Cancel + Delegate');
   console.log('  CURVEBALL TEST (Liam-focused):');
   console.log('   16. Group Pick: Curveball Test — Liam owns, Jerry+Maya, allowCurveball ON');
+  console.log('  VIBE FILTER TEST (same cuisine/budget, different atmosphere):');
+  console.log('   17. Vibe Test: Quiet    — Liam owns (Quiet),   Japanese $$, live API deck');
+  console.log('   18. Vibe Test: Moderate — Alice owns (Moderate), Japanese $$, live API deck');
+  console.log('   19. Vibe Test: Lively   — Jerry owns (Lively),  Japanese $$, live API deck');
   console.log();
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
