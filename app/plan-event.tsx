@@ -122,9 +122,10 @@ export default function PlanEventScreen() {
       selectedTime !== null,
       selectedCuisines.length > 0,
       selectedBudget !== null, // always has default, so always filled
+      selectedFriendIds.length > 0,
     ];
     return filled;
-  }, [title, selectedDate, selectedTime, selectedCuisines, selectedBudget]);
+  }, [title, selectedDate, selectedTime, selectedCuisines, selectedBudget, selectedFriendIds]);
 
   const filledCount = useMemo(() => formProgress.filter(Boolean).length, [formProgress]);
 
@@ -167,7 +168,7 @@ export default function PlanEventScreen() {
 
   // Update glow based on form progress
   useEffect(() => {
-    const targetGlow = filledCount / 5;
+    const targetGlow = filledCount / 6;
     Animated.timing(buttonGlowAnim, {
       toValue: targetGlow,
       duration: 400,
@@ -177,7 +178,7 @@ export default function PlanEventScreen() {
 
   // Breathing pulse when all fields filled
   useEffect(() => {
-    if (filledCount === 5) {
+    if (filledCount === 6) {
       const pulse = Animated.loop(
         Animated.sequence([
           Animated.timing(buttonPulseAnim, {
@@ -465,6 +466,19 @@ export default function PlanEventScreen() {
     if (!title.trim()) {
       Alert.alert('Missing title', 'Give your dining plan a name');
       return;
+    }
+
+    if (!isEditMode && selectedFriendIds.length === 0) {
+      Alert.alert('Invite a friend', 'Plans need at least one other person');
+      return;
+    }
+
+    if (!isEditMode && eventDateTime) {
+      const rsvpDeadline = new Date(eventDateTime.getTime() - rsvpHoursBefore * 3600000);
+      if (rsvpDeadline <= new Date()) {
+        Alert.alert('RSVP deadline passed', 'Move the event later or pick a shorter RSVP window');
+        return;
+      }
     }
 
     // Trigger sparkle burst on press (Feature 3)
@@ -1000,9 +1014,9 @@ export default function PlanEventScreen() {
             />
             <Animated.View style={{ transform: [{ scale: buttonPulseAnim }], width: '100%' }}>
               <Pressable
-                style={[styles.createBtn, { backgroundColor: Colors.primary, shadowColor: Colors.primary }, (!title.trim() || loading) && styles.createBtnDisabled]}
+                style={[styles.createBtn, { backgroundColor: Colors.primary, shadowColor: Colors.primary }, (!title.trim() || loading || (!isEditMode && selectedFriendIds.length === 0)) && styles.createBtnDisabled]}
                 onPress={handleCreate}
-                disabled={!title.trim() || loading}
+                disabled={!title.trim() || loading || (!isEditMode && selectedFriendIds.length === 0)}
                 testID="create-plan-btn"
               >
                 {loading ? (
