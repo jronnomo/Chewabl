@@ -37,6 +37,8 @@ import { MEAL_PERIODS, parseTimeToMinutes } from '../constants/mealPeriods';
 const Colors = StaticColors;
 
 const RSVP_OPTIONS = [
+  { label: '1h before', hoursBefore: 1 },
+  { label: '3h before', hoursBefore: 3 },
   { label: '12h before', hoursBefore: 12 },
   { label: '1 day before', hoursBefore: 24 },
   { label: '2 days before', hoursBefore: 48 },
@@ -151,17 +153,27 @@ export default function PlanEventScreen() {
     }
   }, [validRsvpOptions, rsvpHoursBefore]);
 
-  // Smart RSVP defaults when date changes
+  // Smart RSVP defaults when date or time changes
   useEffect(() => {
-    if (!selectedDate) return;
-    const today = new Date();
-    const selected = new Date(selectedDate + 'T00:00:00');
-    const diffDays = Math.ceil((selected.getTime() - today.getTime()) / 86400000);
-    if (diffDays <= 0) setRsvpHoursBefore(12);
-    else if (diffDays <= 1) setRsvpHoursBefore(24);
-    else if (diffDays < 5) setRsvpHoursBefore(48);
-    else setRsvpHoursBefore(72);
-  }, [selectedDate]);
+    if (!eventDateTime) return;
+    const now = new Date();
+    const hoursUntilEvent = (eventDateTime.getTime() - now.getTime()) / 3600000;
+    // Pick the largest RSVP option that's still valid (deadline > now)
+    const candidates = [...RSVP_OPTIONS].reverse();
+    let picked = candidates[candidates.length - 1].hoursBefore; // fallback: "At event"
+    for (const opt of candidates) {
+      const deadline = new Date(eventDateTime.getTime() - opt.hoursBefore * 3600000);
+      if (deadline > now) {
+        picked = opt.hoursBefore;
+        break;
+      }
+    }
+    // For events far out, prefer reasonable defaults instead of always picking the largest
+    if (hoursUntilEvent > 120) picked = Math.min(picked, 72);      // 5+ days: cap at 3 days before
+    else if (hoursUntilEvent > 48) picked = Math.min(picked, 48);   // 2-5 days: cap at 2 days before
+    else if (hoursUntilEvent > 24) picked = Math.min(picked, 24);   // 1-2 days: cap at 1 day before
+    setRsvpHoursBefore(picked);
+  }, [eventDateTime]);
 
   // Auto-migrate to tomorrow when all today's times passed
   useEffect(() => {
@@ -170,7 +182,7 @@ export default function PlanEventScreen() {
     const now = new Date();
     const currentMinutes = now.getHours() * 60 + now.getMinutes();
     const allPeriodTimes = MEAL_PERIODS.flatMap(p => p.times);
-    const allPassed = allPeriodTimes.every(t => parseTimeToMinutes(t) <= currentMinutes);
+    const allPassed = allPeriodTimes.every(t => parseTimeToMinutes(t) <= currentMinutes + 120);
     if (allPassed) {
       const tomorrow = new Date();
       tomorrow.setDate(tomorrow.getDate() + 1);

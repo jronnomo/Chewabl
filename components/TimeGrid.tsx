@@ -1,6 +1,6 @@
-import React, { useEffect, useRef, useMemo } from 'react';
+import React, { useEffect, useRef, useMemo, useState } from 'react';
 import { View, Text, Pressable, Animated, Easing, StyleSheet } from 'react-native';
-import { Coffee, Sun, Sunset, Moon } from 'lucide-react-native';
+import { Coffee, Sun, Sunset, Moon, ChevronRight } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { MEAL_PERIODS, parseTimeToMinutes } from '../constants/mealPeriods';
 import StaticColors from '../constants/colors';
@@ -24,6 +24,9 @@ const PERIOD_ICONS = {
 export default function TimeGrid({ selectedTime, onSelectTime, selectedDate }: TimeGridProps) {
   const Colors = useColors();
 
+  // Track which collapsed periods the user has manually expanded
+  const [manuallyExpanded, setManuallyExpanded] = useState<Set<string>>(new Set());
+
   // One animated value per period for staggered mount animation
   const periodAnims = useRef(MEAL_PERIODS.map(() => ({
     opacity: new Animated.Value(0),
@@ -39,21 +42,41 @@ export default function TimeGrid({ selectedTime, onSelectTime, selectedDate }: T
     return chipScaleAnims[time];
   };
 
+  const isToday = useMemo(() => {
+    return selectedDate === new Date().toISOString().split('T')[0];
+  }, [selectedDate]);
+
   // Compute which times are disabled (past times when date is today)
   const disabledTimes = useMemo(() => {
-    const todayStr = new Date().toISOString().split('T')[0];
-    if (selectedDate !== todayStr) return new Set<string>();
+    if (!isToday) return new Set<string>();
     const now = new Date();
     const currentMinutes = now.getHours() * 60 + now.getMinutes();
     const disabled = new Set<string>();
     for (const period of MEAL_PERIODS) {
       for (const time of period.times) {
-        if (parseTimeToMinutes(time) <= currentMinutes) {
+        if (parseTimeToMinutes(time) <= currentMinutes + 120) {
           disabled.add(time);
         }
       }
     }
     return disabled;
+  }, [isToday]);
+
+  // Compute which periods are fully past (all times disabled)
+  const fullyPastPeriods = useMemo(() => {
+    const past = new Set<string>();
+    if (!isToday) return past;
+    for (const period of MEAL_PERIODS) {
+      if (period.times.every(t => disabledTimes.has(t))) {
+        past.add(period.name);
+      }
+    }
+    return past;
+  }, [isToday, disabledTimes]);
+
+  // Reset manual expansions when date changes (e.g. switching to tomorrow expands all)
+  useEffect(() => {
+    setManuallyExpanded(new Set());
   }, [selectedDate]);
 
   // Staggered mount animation
@@ -99,11 +122,26 @@ export default function TimeGrid({ selectedTime, onSelectTime, selectedDate }: T
     });
   };
 
+  const toggleCollapsedPeriod = (periodName: string) => {
+    Haptics.selectionAsync();
+    setManuallyExpanded(prev => {
+      const next = new Set(prev);
+      if (next.has(periodName)) {
+        next.delete(periodName);
+      } else {
+        next.add(periodName);
+      }
+      return next;
+    });
+  };
+
   return (
     <View style={styles.container}>
       {MEAL_PERIODS.map((period, periodIndex) => {
         const anim = periodAnims[periodIndex];
         const Icon = PERIOD_ICONS[period.icon];
+        const isPeriodFullyPast = fullyPastPeriods.has(period.name);
+        const isCollapsed = isPeriodFullyPast && !manuallyExpanded.has(period.name);
 
         return (
           <Animated.View
@@ -117,55 +155,77 @@ export default function TimeGrid({ selectedTime, onSelectTime, selectedDate }: T
               },
             ]}
           >
-            {/* Period header */}
-            <View style={styles.periodHeader}>
-              <Icon size={14} color={Colors.textSecondary} />
-              <Text style={[styles.periodLabel, { color: Colors.textSecondary }]}>
+            {/* Period header — tappable when collapsed */}
+            <Pressable
+              style={[
+                styles.periodHeader,
+                isPeriodFullyPast && styles.periodHeaderCollapsible,
+              ]}
+              onPress={isPeriodFullyPast ? () => toggleCollapsedPeriod(period.name) : undefined}
+              disabled={!isPeriodFullyPast}
+            >
+              <Icon size={14} color={isPeriodFullyPast ? Colors.textTertiary : Colors.textSecondary} />
+              <Text style={[
+                styles.periodLabel,
+                { color: isPeriodFullyPast ? Colors.textTertiary : Colors.textSecondary },
+              ]}>
                 {period.name}
               </Text>
-            </View>
+              {isPeriodFullyPast && (
+                <View style={{ marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                  <Text style={{ fontSize: 12, color: Colors.textTertiary }}>Passed</Text>
+                  <ChevronRight
+                    size={14}
+                    color={Colors.textTertiary}
+                    style={{ transform: [{ rotate: isCollapsed ? '0deg' : '90deg' }] }}
+                  />
+                </View>
+              )}
+            </Pressable>
 
-            {/* Time chips grid */}
-            <View style={styles.chipsGrid}>
-              {period.times.map((time) => {
-                const isSelected = selectedTime === time;
-                const isDisabled = disabledTimes.has(time);
-                const scaleAnim = ensureChipAnim(time);
+            {/* Time chips grid — hidden when collapsed */}
+            {!isCollapsed && (
+              <View style={styles.chipsGrid}>
+                {period.times.map((time) => {
+                  const isSelected = selectedTime === time;
+                  const isDisabled = disabledTimes.has(time);
+                  const scaleAnim = ensureChipAnim(time);
 
-                return (
-                  <Animated.View
-                    key={time}
-                    style={[
-                      styles.chipWrapper,
-                      { transform: [{ scale: scaleAnim }] },
-                    ]}
-                  >
-                    <Pressable
+                  return (
+                    <Animated.View
+                      key={time}
                       style={[
-                        styles.chip,
-                        { backgroundColor: Colors.card, borderColor: Colors.border },
-                        isSelected && { backgroundColor: Colors.primary, borderColor: Colors.primary },
-                        isDisabled && styles.chipDisabled,
+                        styles.chipWrapper,
+                        { transform: [{ scale: scaleAnim }] },
                       ]}
-                      onPress={() => handleChipPress(time, isDisabled)}
-                      disabled={isDisabled}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected: isSelected, disabled: isDisabled }}
                     >
-                      <Text
+                      <Pressable
                         style={[
-                          styles.chipText,
-                          { color: Colors.text },
-                          isSelected && styles.chipTextSelected,
+                          styles.chip,
+                          { backgroundColor: Colors.card, borderColor: Colors.border },
+                          isSelected && { backgroundColor: Colors.primary, borderColor: Colors.primary },
+                          isDisabled && styles.chipDisabled,
                         ]}
+                        onPress={() => handleChipPress(time, isDisabled)}
+                        disabled={isDisabled}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: isSelected, disabled: isDisabled }}
                       >
-                        {time}
-                      </Text>
-                    </Pressable>
-                  </Animated.View>
-                );
-              })}
-            </View>
+                        <Text
+                          style={[
+                            styles.chipText,
+                            { color: Colors.text },
+                            isSelected && styles.chipTextSelected,
+                          ]}
+                        >
+                          {time}
+                        </Text>
+                      </Pressable>
+                    </Animated.View>
+                  );
+                })}
+              </View>
+            )}
           </Animated.View>
         );
       })}
@@ -188,6 +248,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 5,
     marginBottom: 8,
+  },
+  periodHeaderCollapsible: {
+    marginBottom: 0,
   },
   periodLabel: {
     fontSize: 13,
