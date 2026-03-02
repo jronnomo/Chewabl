@@ -124,6 +124,17 @@ export default function GroupSessionScreen() {
       return { sessionRestaurants: [] as Restaurant[], curveballIds: new Set<string>() };
     }
 
+    // PATH A: Server already has curveball data — all users see the same curveballs
+    if (activePlan?.curveballIds && activePlan.curveballIds.length > 0
+        && activePlan?.restaurantOptions && activePlan.restaurantOptions.length > 0) {
+      return {
+        sessionRestaurants: activePlan.restaurantOptions,
+        curveballIds: new Set(activePlan.curveballIds),
+      };
+    }
+
+    // PATH B: No curveball data yet — first user computes
+
     // Determine the base deck
     let base: Restaurant[];
 
@@ -440,6 +451,8 @@ export default function GroupSessionScreen() {
           status: 'voting',
           restaurantOptions: sessionRestaurants,
           restaurantCount,
+          allowCurveball: curveballIds.size > 0 ? true : undefined,
+          curveballIds: curveballIds.size > 0 ? [...curveballIds] : undefined,
           inviteeIds: inviteeIds.length > 0 ? inviteeIds : undefined,
         });
         setActivePlan(plan);
@@ -456,7 +469,10 @@ export default function GroupSessionScreen() {
       // Populate them now so the backend can validate votes.
       try {
         setIsSubmitting(true);
-        const updated = await updatePlan(activePlan.id, { restaurantOptions: sessionRestaurants });
+        const updated = await updatePlan(activePlan.id, {
+          restaurantOptions: sessionRestaurants,
+          curveballIds: curveballIds.size > 0 ? [...curveballIds] : undefined,
+        });
         setActivePlan(updated);
       } catch {
         Alert.alert('Error', 'Failed to load restaurant deck. Please try again.');
@@ -488,7 +504,10 @@ export default function GroupSessionScreen() {
         // If restaurantOptions were never populated (autoStart skips lobby/handleStartSwiping),
         // populate them now so the backend can validate votes.
         if ((!activePlan.restaurantOptions || activePlan.restaurantOptions.length === 0) && sessionRestaurants.length > 0) {
-          const populated = await updatePlan(activePlan.id, { restaurantOptions: sessionRestaurants });
+          const populated = await updatePlan(activePlan.id, {
+            restaurantOptions: sessionRestaurants,
+            curveballIds: curveballIds.size > 0 ? [...curveballIds] : undefined,
+          });
           setActivePlan(populated);
         }
 

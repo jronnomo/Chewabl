@@ -15,6 +15,8 @@ export interface CreatePlanInput {
   options?: string[];
   restaurantOptions?: Restaurant[];
   restaurantCount?: number;
+  allowCurveball?: boolean;
+  curveballIds?: string[];
 }
 
 export async function getPlans(): Promise<DiningPlan[]> {
