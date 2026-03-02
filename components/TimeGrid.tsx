@@ -1,5 +1,5 @@
-import React, { useEffect, useRef, useMemo, useState } from 'react';
-import { View, Text, Pressable, Animated, Easing, StyleSheet } from 'react-native';
+import React, { useEffect, useRef, useMemo, useState, useCallback } from 'react';
+import { View, Text, Pressable, Animated, Easing, LayoutAnimation, Platform, StyleSheet, UIManager } from 'react-native';
 import { Coffee, Sun, Sunset, Moon, ChevronRight } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { MEAL_PERIODS, parseTimeToMinutes } from '../constants/mealPeriods';
@@ -7,6 +7,11 @@ import StaticColors from '../constants/colors';
 import { useColors } from '../context/ThemeContext';
 
 const Colors = StaticColors;
+
+// Enable LayoutAnimation on Android
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 interface TimeGridProps {
   selectedTime: string;
@@ -26,6 +31,8 @@ export default function TimeGrid({ selectedTime, onSelectTime, selectedDate }: T
 
   // Track which collapsed periods the user has manually expanded
   const [manuallyExpanded, setManuallyExpanded] = useState<Set<string>>(new Set());
+  // Track which active (default-expanded) periods the user has manually collapsed
+  const [manuallyCollapsed, setManuallyCollapsed] = useState<Set<string>>(new Set());
 
   // One animated value per period for staggered mount animation
   const periodAnims = useRef(MEAL_PERIODS.map(() => ({
@@ -74,9 +81,31 @@ export default function TimeGrid({ selectedTime, onSelectTime, selectedDate }: T
     return past;
   }, [isToday, disabledTimes]);
 
-  // Reset manual expansions when date changes (e.g. switching to tomorrow expands all)
+  // Determine which period contains the selected time
+  const activePeriodName = useMemo(() => {
+    if (!selectedTime) return null;
+    for (const period of MEAL_PERIODS) {
+      if (period.times.includes(selectedTime)) {
+        return period.name;
+      }
+    }
+    return null;
+  }, [selectedTime]);
+
+  // Reset manual toggle sets when the active period changes (user picked time in different period)
+  const prevActivePeriod = useRef(activePeriodName);
+  useEffect(() => {
+    if (prevActivePeriod.current !== activePeriodName && prevActivePeriod.current !== null) {
+      setManuallyExpanded(new Set());
+      setManuallyCollapsed(new Set());
+    }
+    prevActivePeriod.current = activePeriodName;
+  }, [activePeriodName]);
+
+  // Reset manual expansions when date changes
   useEffect(() => {
     setManuallyExpanded(new Set());
+    setManuallyCollapsed(new Set());
   }, [selectedDate]);
 
   // Staggered mount animation
@@ -122,18 +151,33 @@ export default function TimeGrid({ selectedTime, onSelectTime, selectedDate }: T
     });
   };
 
-  const toggleCollapsedPeriod = (periodName: string) => {
+  const togglePeriod = useCallback((periodName: string, isDefaultExpanded: boolean) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     Haptics.selectionAsync();
-    setManuallyExpanded(prev => {
-      const next = new Set(prev);
-      if (next.has(periodName)) {
-        next.delete(periodName);
-      } else {
-        next.add(periodName);
-      }
-      return next;
-    });
-  };
+    if (isDefaultExpanded) {
+      // Active period: toggle manuallyCollapsed
+      setManuallyCollapsed(prev => {
+        const next = new Set(prev);
+        if (next.has(periodName)) {
+          next.delete(periodName);
+        } else {
+          next.add(periodName);
+        }
+        return next;
+      });
+    } else {
+      // Non-active period: toggle manuallyExpanded
+      setManuallyExpanded(prev => {
+        const next = new Set(prev);
+        if (next.has(periodName)) {
+          next.delete(periodName);
+        } else {
+          next.add(periodName);
+        }
+        return next;
+      });
+    }
+  }, []);
 
   return (
     <View style={styles.container}>
@@ -141,7 +185,15 @@ export default function TimeGrid({ selectedTime, onSelectTime, selectedDate }: T
         const anim = periodAnims[periodIndex];
         const Icon = PERIOD_ICONS[period.icon];
         const isPeriodFullyPast = fullyPastPeriods.has(period.name);
-        const isCollapsed = isPeriodFullyPast && !manuallyExpanded.has(period.name);
+        const isActivePeriod = period.name === activePeriodName;
+
+        // Default expanded = active period AND not fully past
+        const defaultExpanded = isActivePeriod && !isPeriodFullyPast;
+        const isCollapsed = defaultExpanded
+          ? manuallyCollapsed.has(period.name)
+          : !manuallyExpanded.has(period.name);
+
+        const availableCount = period.times.filter(t => !disabledTimes.has(t)).length;
 
         return (
           <Animated.View
@@ -155,32 +207,53 @@ export default function TimeGrid({ selectedTime, onSelectTime, selectedDate }: T
               },
             ]}
           >
-            {/* Period header — tappable when collapsed */}
+            {/* Period header — always tappable */}
             <Pressable
               style={[
                 styles.periodHeader,
-                isPeriodFullyPast && styles.periodHeaderCollapsible,
+                isCollapsed && styles.periodHeaderCollapsible,
               ]}
-              onPress={isPeriodFullyPast ? () => toggleCollapsedPeriod(period.name) : undefined}
-              disabled={!isPeriodFullyPast}
+              onPress={() => togglePeriod(period.name, defaultExpanded)}
             >
-              <Icon size={14} color={isPeriodFullyPast ? Colors.textTertiary : Colors.textSecondary} />
+              <Icon
+                size={14}
+                color={
+                  isPeriodFullyPast
+                    ? Colors.textTertiary
+                    : isActivePeriod
+                      ? Colors.primary
+                      : Colors.textSecondary
+                }
+              />
               <Text style={[
                 styles.periodLabel,
-                { color: isPeriodFullyPast ? Colors.textTertiary : Colors.textSecondary },
+                {
+                  color: isPeriodFullyPast
+                    ? Colors.textTertiary
+                    : isActivePeriod
+                      ? Colors.primary
+                      : Colors.textSecondary,
+                },
               ]}>
                 {period.name}
               </Text>
-              {isPeriodFullyPast && (
-                <View style={{ marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <View style={{ marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                {isPeriodFullyPast && (
                   <Text style={{ fontSize: 12, color: Colors.textTertiary }}>Passed</Text>
-                  <ChevronRight
-                    size={14}
-                    color={Colors.textTertiary}
-                    style={{ transform: [{ rotate: isCollapsed ? '0deg' : '90deg' }] }}
-                  />
-                </View>
-              )}
+                )}
+                {!isPeriodFullyPast && isCollapsed && (
+                  <View style={[styles.countBadge, { backgroundColor: Colors.card, borderColor: Colors.border }]}>
+                    <Text style={[styles.countBadgeText, { color: Colors.textSecondary }]}>
+                      {availableCount}
+                    </Text>
+                  </View>
+                )}
+                <ChevronRight
+                  size={14}
+                  color={isPeriodFullyPast ? Colors.textTertiary : Colors.textSecondary}
+                  style={{ transform: [{ rotate: isCollapsed ? '0deg' : '90deg' }] }}
+                />
+              </View>
             </Pressable>
 
             {/* Time chips grid — hidden when collapsed */}
@@ -263,10 +336,6 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   chipWrapper: {
-    // 3 chips per row with gap: calc so each is ~(screenWidth - 2*paddingH - 2*gap) / 3
-    // Use minWidth to approximate — parent is inside ScrollView with paddingHorizontal 20
-    // 3 chips per row: (full width - 40px padding - 16px total gap) / 3
-    // We'll use flex basis approach: width ~106pt
     minWidth: 96,
     flex: 1,
     maxWidth: '33%',
@@ -290,5 +359,15 @@ const styles = StyleSheet.create({
   },
   chipTextSelected: {
     color: '#FFF',
+  },
+  countBadge: {
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+  },
+  countBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
   },
 });

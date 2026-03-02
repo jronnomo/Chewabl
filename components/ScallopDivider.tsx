@@ -1,18 +1,55 @@
 import React, { useState } from 'react';
 import { View, StyleSheet, LayoutChangeEvent } from 'react-native';
 import Svg, { Rect, Circle, Mask, G } from 'react-native-svg';
-import StaticColors from '../constants/colors';
+import { seededRange } from '../lib/scallopUtils';
 import { useColors } from '../context/ThemeContext';
 
-const Colors = StaticColors;
-
 interface ScallopDividerProps {
-  color?: string; // defaults to Colors.border — for dark mode flexibility
+  color?: string;
 }
 
-const SVG_HEIGHT = 16;
-const CIRCLE_RADIUS = 8;
-const SCALLOP_SPACING = 24; // diameter ~16 + gap ~8
+const SVG_HEIGHT = 22;
+const BASE_RADIUS = 12;
+const SCALLOP_SPACING = 38;
+
+interface FlatScallop {
+  cx: number;
+  cy: number;
+  r: number;
+}
+
+function generateFlatScallops(width: number): FlatScallop[] {
+  const count = Math.max(1, Math.round(width / SCALLOP_SPACING));
+  const actualSpacing = width / (count + 1);
+  const scallops: FlatScallop[] = [];
+
+  // Main scallops
+  for (let i = 0; i < count; i++) {
+    const seed = i * 7 + 42;
+    const radiusMult = seededRange(seed, 0.82, 1.20);
+    const jitter = seededRange(seed + 1, -0.04, 0.04) * SCALLOP_SPACING;
+    scallops.push({
+      cx: actualSpacing * (i + 1) + jitter,
+      cy: 0,
+      r: BASE_RADIUS * radiusMult,
+    });
+  }
+
+  // Micro-bites between every 3rd pair
+  const mainCount = scallops.length;
+  for (let i = 0; i < mainCount - 1; i += 3) {
+    const seed = i * 13 + 200;
+    const midCx = (scallops[i].cx + scallops[i + 1].cx) / 2;
+    const microJitter = seededRange(seed + 2, -0.02, 0.02) * SCALLOP_SPACING;
+    scallops.push({
+      cx: midCx + microJitter,
+      cy: 0,
+      r: BASE_RADIUS * seededRange(seed, 0.35, 0.55),
+    });
+  }
+
+  return scallops;
+}
 
 export default function ScallopDivider({ color }: ScallopDividerProps) {
   const Colors = useColors();
@@ -24,26 +61,20 @@ export default function ScallopDivider({ color }: ScallopDividerProps) {
     setWidth(e.nativeEvent.layout.width);
   };
 
-  const scallopCount = width > 0 ? Math.floor(width / SCALLOP_SPACING) : 0;
-
-  // Calculate even spacing so scallops are centered across the width
-  const totalScallopWidth = scallopCount * SCALLOP_SPACING;
-  const offsetX = (width - totalScallopWidth) / 2 + SCALLOP_SPACING / 2;
+  const scallops = width > 0 ? generateFlatScallops(width) : [];
 
   return (
     <View style={styles.container} onLayout={handleLayout}>
-      {width > 0 && scallopCount > 0 && (
+      {width > 0 && scallops.length > 0 && (
         <Svg width={width} height={SVG_HEIGHT}>
           <Mask id="scallopMask">
-            {/* White rect = visible area */}
             <Rect x="0" y="0" width={width} height={SVG_HEIGHT} fill="white" />
-            {/* Black circles = cutouts along the top edge */}
-            {Array.from({ length: scallopCount }).map((_, i) => (
+            {scallops.map((s, i) => (
               <Circle
                 key={i}
-                cx={offsetX + i * SCALLOP_SPACING}
-                cy={0}
-                r={CIRCLE_RADIUS}
+                cx={s.cx}
+                cy={s.cy}
+                r={s.r}
                 fill="black"
               />
             ))}
@@ -60,6 +91,6 @@ export default function ScallopDivider({ color }: ScallopDividerProps) {
 const styles = StyleSheet.create({
   container: {
     width: '100%',
-    height: SVG_HEIGHT,
+    marginVertical: 10,
   },
 });
