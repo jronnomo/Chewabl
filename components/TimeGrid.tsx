@@ -8,13 +8,17 @@ import { useColors } from '../context/ThemeContext';
 
 const Colors = StaticColors;
 
+function localDateStr(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 // Enable LayoutAnimation on Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
 interface TimeGridProps {
-  selectedTime: string;
+  selectedTime: string | null;
   onSelectTime: (time: string) => void;
   selectedDate: string;
 }
@@ -50,7 +54,7 @@ export default function TimeGrid({ selectedTime, onSelectTime, selectedDate }: T
   };
 
   const isToday = useMemo(() => {
-    return selectedDate === new Date().toISOString().split('T')[0];
+    return selectedDate === localDateStr(new Date());
   }, [selectedDate]);
 
   // Compute which times are disabled (past times when date is today)

@@ -43,6 +43,14 @@ import { SPARKLES } from '../lib/sparkleUtils';
 
 const Colors = StaticColors;
 
+/** Format a Date to YYYY-MM-DD in local time (avoids UTC shift from toISOString) */
+function localDateStr(d: Date): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 // Enable LayoutAnimation on Android
 if (Platform.OS === 'android') {
   UIManager.setLayoutAnimationEnabledExperimental?.(true);
@@ -91,10 +99,10 @@ export default function PlanEventScreen() {
 
   const [title, setTitle] = useState<string>(existingPlan?.title ?? '');
   const [selectedDate, setSelectedDate] = useState<string>(
-    existingPlan?.date ?? new Date().toISOString().split('T')[0]
+    existingPlan?.date ?? localDateStr(new Date())
   );
   const [allowCurveball, setAllowCurveball] = useState(false);
-  const [selectedTime, setSelectedTime] = useState<string>(existingPlan?.time ?? '7:00 PM');
+  const [selectedTime, setSelectedTime] = useState<string | null>(existingPlan?.time ?? null);
   const [selectedCuisines, setSelectedCuisines] = useState<string[]>(
     existingPlan?.cuisine && existingPlan.cuisine !== 'Any' ? existingPlan.cuisine.split(', ') : []
   );
@@ -326,11 +334,19 @@ export default function PlanEventScreen() {
   }, [rsvpShakeAnim]);
 
   // Computed date strings
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = localDateStr(new Date());
   const tomorrowStr = useMemo(() => {
     const d = new Date();
     d.setDate(d.getDate() + 1);
-    return d.toISOString().split('T')[0];
+    return localDateStr(d);
+  }, []);
+
+  // Hide "Today" chip when all time slots have passed (e.g. after 9pm with 2h buffer)
+  const todayAvailable = useMemo(() => {
+    const now = new Date();
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    const allPeriodTimes = MEAL_PERIODS.flatMap(p => p.times);
+    return allPeriodTimes.some(t => parseTimeToMinutes(t) > currentMinutes + 120);
   }, []);
 
   const isCustomDate = selectedDate !== todayStr && selectedDate !== tomorrowStr;
@@ -358,10 +374,11 @@ export default function PlanEventScreen() {
   // Compute valid RSVP options
   const validRsvpOptions = useMemo(() => {
     const now = new Date();
+    const oneHourFromNow = new Date(now.getTime() + 3600000);
     return RSVP_OPTIONS.map(opt => {
       if (!eventDateTime) return { ...opt, valid: true };
       const deadline = new Date(eventDateTime.getTime() - opt.hoursBefore * 3600000);
-      return { ...opt, valid: deadline > now };
+      return { ...opt, valid: deadline > oneHourFromNow };
     });
   }, [eventDateTime]);
 
@@ -389,12 +406,13 @@ export default function PlanEventScreen() {
     if (!eventDateTime) return;
     const now = new Date();
     const hoursUntilEvent = (eventDateTime.getTime() - now.getTime()) / 3600000;
-    // Pick the largest RSVP option that's still valid (deadline > now)
+    // Pick the largest RSVP option that's still valid (deadline > 1h from now)
     const candidates = [...RSVP_OPTIONS].reverse();
-    let picked = candidates[candidates.length - 1].hoursBefore; // fallback: "At event"
+    const oneHourFromNow = new Date(now.getTime() + 3600000);
+    let picked = candidates[candidates.length - 1].hoursBefore; // fallback: smallest option
     for (const opt of candidates) {
       const deadline = new Date(eventDateTime.getTime() - opt.hoursBefore * 3600000);
-      if (deadline > now) {
+      if (deadline > oneHourFromNow) {
         picked = opt.hoursBefore;
         break;
       }
@@ -408,7 +426,7 @@ export default function PlanEventScreen() {
 
   // Auto-migrate to tomorrow when all today's times passed
   useEffect(() => {
-    const todayDateStr = new Date().toISOString().split('T')[0];
+    const todayDateStr = localDateStr(new Date());
     if (selectedDate !== todayDateStr) return;
     const now = new Date();
     const currentMinutes = now.getHours() * 60 + now.getMinutes();
@@ -417,7 +435,7 @@ export default function PlanEventScreen() {
     if (allPassed) {
       const tomorrow = new Date();
       tomorrow.setDate(tomorrow.getDate() + 1);
-      setSelectedDate(tomorrow.toISOString().split('T')[0]);
+      setSelectedDate(localDateStr(tomorrow));
     }
   }, [selectedDate]);
 
@@ -515,7 +533,7 @@ export default function PlanEventScreen() {
         const payload = {
           title: title.trim(),
           date: selectedDate,
-          time: selectedTime,
+          time: selectedTime ?? undefined,
           cuisine: effectiveCuisine,
           budget: effectiveBudget,
           restaurant: restaurantPayload,
@@ -546,7 +564,7 @@ export default function PlanEventScreen() {
           id: `p${Date.now()}`,
           title: title.trim(),
           date: selectedDate,
-          time: selectedTime,
+          time: selectedTime ?? undefined,
           status: pinnedRestaurant ? 'confirmed' : 'voting',
           restaurant: pinnedRestaurant ?? undefined,
           cuisine: effectiveCuisine,
@@ -556,7 +574,7 @@ export default function PlanEventScreen() {
           rsvpDeadline,
           options: suggestedOptions,
           votes: {},
-          createdAt: new Date().toISOString().split('T')[0],
+          createdAt: localDateStr(new Date()),
         };
         addPlan(newPlan);
         resultPlanId = newPlan.id;
@@ -673,31 +691,33 @@ export default function PlanEventScreen() {
               <Text style={[styles.sectionTitle, { color: Colors.text }]}>Date</Text>
             </View>
             <View style={[styles.chipRow, { flexWrap: 'wrap' }]}>
-              {/* Today chip */}
-              <Pressable
-                style={[
-                  styles.dateChip,
-                  { backgroundColor: Colors.card, borderColor: Colors.border },
-                  selectedDate === todayStr && [
-                    styles.chipActive,
-                    { backgroundColor: Colors.primary, borderColor: Colors.primary },
-                  ],
-                ]}
-                onPress={() => {
-                  Haptics.selectionAsync();
-                  setSelectedDate(todayStr);
-                }}
-              >
-                <Text
+              {/* Today chip — hidden when all time slots have passed */}
+              {todayAvailable && (
+                <Pressable
                   style={[
-                    styles.dateChipText,
-                    { color: Colors.text },
-                    selectedDate === todayStr && styles.chipTextActive,
+                    styles.dateChip,
+                    { backgroundColor: Colors.card, borderColor: Colors.border },
+                    selectedDate === todayStr && [
+                      styles.chipActive,
+                      { backgroundColor: Colors.primary, borderColor: Colors.primary },
+                    ],
                   ]}
+                  onPress={() => {
+                    Haptics.selectionAsync();
+                    setSelectedDate(todayStr);
+                  }}
                 >
-                  Today
-                </Text>
-              </Pressable>
+                  <Text
+                    style={[
+                      styles.dateChipText,
+                      { color: Colors.text },
+                      selectedDate === todayStr && styles.chipTextActive,
+                    ]}
+                  >
+                    Today
+                  </Text>
+                </Pressable>
+              )}
 
               {/* Tomorrow chip */}
               <Pressable
@@ -805,21 +825,19 @@ export default function PlanEventScreen() {
                     const chipScale = getCuisineScale(c);
                     return (
                       <Animated.View key={c} style={{ transform: [{ scale: chipScale }] }}>
-                        <View style={isSelected ? [styles.cuisineChipGlow, { borderColor: Colors.primary }] : undefined}>
-                          <Pressable
-                            style={[
-                              styles.cuisineChip,
-                              { backgroundColor: Colors.card, borderColor: Colors.border },
-                              isSelected && [styles.chipActive, { backgroundColor: Colors.primary, borderColor: Colors.primary }],
-                            ]}
-                            onPress={() => toggleCuisine(c)}
-                            testID={`cuisine-chip-${c.toLowerCase()}`}
-                          >
-                            <Text style={[styles.cuisineChipText, { color: Colors.text }, isSelected && styles.chipTextActive]}>
-                              {CUISINE_EMOJIS[c] || '\u{1F37D}\u{FE0F}'} {c}
-                            </Text>
-                          </Pressable>
-                        </View>
+                        <Pressable
+                          style={[
+                            styles.cuisineChip,
+                            { backgroundColor: Colors.card, borderColor: Colors.border },
+                            isSelected && [styles.chipActive, { backgroundColor: Colors.primary, borderColor: Colors.primary }],
+                          ]}
+                          onPress={() => toggleCuisine(c)}
+                          testID={`cuisine-chip-${c.toLowerCase()}`}
+                        >
+                          <Text style={[styles.cuisineChipText, { color: Colors.text }, isSelected && styles.chipTextActive]}>
+                            {CUISINE_EMOJIS[c] || '\u{1F37D}\u{FE0F}'} {c}
+                          </Text>
+                        </Pressable>
                       </Animated.View>
                     );
                   })}
@@ -1055,7 +1073,10 @@ export default function PlanEventScreen() {
       <CalendarSheet
         visible={calendarVisible}
         onClose={() => setCalendarVisible(false)}
-        onSelectDate={(date) => setSelectedDate(date)}
+        onSelectDate={(date) => {
+          setSelectedDate(date);
+          setCalendarVisible(false);
+        }}
         selectedDate={selectedDate}
       />
 

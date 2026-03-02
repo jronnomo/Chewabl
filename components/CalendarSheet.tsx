@@ -98,32 +98,12 @@ export default function CalendarSheet({ visible, onClose, onSelectDate, selected
     });
   }, [currentMonth, gridOpacity, today, maxDate]);
 
-  const handleDayPress = useCallback((date: Date) => {
-    const key = formatDateToISO(date);
-    Haptics.selectionAsync();
-    setTempSelectedDate(date);
-
-    const scaleAnim = ensureDayAnim(key);
-    Animated.spring(scaleAnim, {
-      toValue: 1.05,
-      tension: 300,
-      friction: 12,
-      useNativeDriver: true,
-    }).start(() => {
-      Animated.spring(scaleAnim, {
-        toValue: 1,
-        tension: 300,
-        friction: 12,
-        useNativeDriver: true,
-      }).start();
-    });
-  }, [dayCellAnims]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const handleSelectDate = useCallback(() => {
+  const handleDayPress = (date: Date) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    onSelectDate(formatDateToISO(tempSelectedDate));
-    onClose();
-  }, [tempSelectedDate, onSelectDate, onClose]);
+    setTempSelectedDate(date);
+    // Confirm immediately — parent handles closing the sheet
+    onSelectDate(formatDateToISO(date));
+  };
 
   // Build calendar grid for current month
   const calendarDays = useCallback((): (Date | null)[] => {
@@ -253,14 +233,6 @@ export default function CalendarSheet({ visible, onClose, onSelectDate, selected
             })}
           </Animated.View>
 
-          {/* Select Date button */}
-          <Pressable
-            style={[styles.selectBtn, { backgroundColor: Colors.primary, shadowColor: Colors.primary }]}
-            onPress={handleSelectDate}
-            accessibilityRole="button"
-          >
-            <Text style={styles.selectBtnText}>Select Date</Text>
-          </Pressable>
         </Pressable>
       </Pressable>
     </Modal>
@@ -346,21 +318,5 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '500',
     color: Colors.text,
-  },
-  selectBtn: {
-    backgroundColor: Colors.primary,
-    paddingVertical: 16,
-    borderRadius: 28,
-    alignItems: 'center',
-    shadowColor: Colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  selectBtnText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#FFF',
   },
 });
