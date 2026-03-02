@@ -1000,20 +1000,6 @@ export default function PlanEventScreen() {
             ) : null}
           </View>
 
-          <View style={[styles.infoCard, { backgroundColor: Colors.secondaryLight }]}>
-            <Sparkles size={18} color={Colors.secondary} />
-            <View style={styles.infoCardContent}>
-              <Text style={[styles.infoCardTitle, { color: Colors.text }]}>
-                {pinnedRestaurant ? 'Restaurant Locked In' : 'Smart Suggestions'}
-              </Text>
-              <Text style={[styles.infoCardText, { color: Colors.textSecondary }]}>
-                {pinnedRestaurant
-                  ? `This plan is set for ${pinnedRestaurant.name}. Invite friends and pick a time that works for everyone!`
-                  : "We'll suggest 3-5 curated restaurants based on your preferences. Friends can vote on their favorites!"}
-              </Text>
-            </View>
-          </View>
-
           <View style={{ height: 20 }} />
         </ScrollView>
 
