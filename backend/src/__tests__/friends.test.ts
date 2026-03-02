@@ -1,7 +1,9 @@
 import request from 'supertest';
+import mongoose from 'mongoose';
 import app from '../app';
 import { connectTestDB, disconnectTestDB, clearDB } from './helpers/db';
 import { createTestUser, authHeader } from './helpers/auth';
+import Plan from '../models/Plan';
 
 beforeAll(async () => { await connectTestDB(); });
 afterAll(async () => { await disconnectTestDB(); });
@@ -94,5 +96,68 @@ describe('Friend lifecycle', () => {
       .set(authHeader(alice.token))
       .send({ userId: alice.userId });
     expect(res.status).toBe(400);
+  });
+
+  it('includes mutualPlans count in friend list', async () => {
+    const alice = await createTestUser({ name: 'Alice' });
+    const bob = await createTestUser({ name: 'Bob' });
+
+    // Make them friends: Alice sends request, Bob accepts
+    const sendRes = await request(app)
+      .post('/friends/request')
+      .set(authHeader(alice.token))
+      .send({ userId: bob.userId });
+    const friendshipId = sendRes.body._id ?? sendRes.body.id;
+
+    await request(app)
+      .put(`/friends/request/${friendshipId}`)
+      .set(authHeader(bob.token))
+      .send({ action: 'accept' });
+
+    // Initially mutualPlans should be 0
+    const res0 = await request(app)
+      .get('/friends')
+      .set(authHeader(alice.token));
+    expect(res0.status).toBe(200);
+    expect(res0.body.length).toBe(1);
+    expect(res0.body[0].mutualPlans).toBe(0);
+
+    // Create plan where Alice is owner and Bob is invited
+    const aliceOid = new mongoose.Types.ObjectId(alice.userId);
+    const bobOid = new mongoose.Types.ObjectId(bob.userId);
+
+    await Plan.create({
+      title: 'Taco Night',
+      ownerId: aliceOid,
+      invites: [{ userId: bobOid, name: 'Bob', status: 'pending' }],
+    });
+
+    // Verify mutualPlans is now 1
+    const res1 = await request(app)
+      .get('/friends')
+      .set(authHeader(alice.token));
+    expect(res1.status).toBe(200);
+    expect(res1.body[0].mutualPlans).toBe(1);
+
+    // Create another plan where Bob is owner and Alice is invited
+    await Plan.create({
+      title: 'Sushi Outing',
+      ownerId: bobOid,
+      invites: [{ userId: aliceOid, name: 'Alice', status: 'accepted' }],
+    });
+
+    // Verify mutualPlans is now 2
+    const res2 = await request(app)
+      .get('/friends')
+      .set(authHeader(alice.token));
+    expect(res2.status).toBe(200);
+    expect(res2.body[0].mutualPlans).toBe(2);
+
+    // Verify from Bob's perspective too
+    const res3 = await request(app)
+      .get('/friends')
+      .set(authHeader(bob.token));
+    expect(res3.status).toBe(200);
+    expect(res3.body[0].mutualPlans).toBe(2);
   });
 });

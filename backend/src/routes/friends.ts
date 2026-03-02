@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import { requireAuth, AuthRequest } from '../middleware/auth';
 import Friendship from '../models/Friendship';
 import User from '../models/User';
+import Plan from '../models/Plan';
 import { createNotification } from '../utils/createNotification';
 
 const router = Router();
@@ -27,13 +28,33 @@ router.get('/', requireAuth, async (req: AuthRequest, res: Response): Promise<vo
     const friends = await User.find({ _id: { $in: friendIds } })
       .select('name phone avatarUri inviteCode');
 
-    res.json(friends.map(u => ({
-      id: u.id,
-      name: u.name,
-      phone: u.phone,
-      avatarUri: u.avatarUri,
-      inviteCode: u.inviteCode,
-    })));
+    // Count mutual plans for each friend
+    const friendsWithPlans = await Promise.all(
+      friends.map(async (u) => {
+        const friendOid = u._id as mongoose.Types.ObjectId;
+        const mutualPlans = await Plan.countDocuments({
+          status: { $ne: 'cancelled' },
+          $or: [
+            // Current user is owner, friend is invited
+            { ownerId: uid, 'invites.userId': friendOid },
+            // Friend is owner, current user is invited
+            { ownerId: friendOid, 'invites.userId': uid },
+            // Both are in invites
+            { 'invites.userId': { $all: [uid, friendOid] } },
+          ],
+        });
+        return {
+          id: u.id,
+          name: u.name,
+          phone: u.phone,
+          avatarUri: u.avatarUri,
+          inviteCode: u.inviteCode,
+          mutualPlans,
+        };
+      })
+    );
+
+    res.json(friendsWithPlans);
   } catch {
     res.status(500).json({ error: 'Server error' });
   }
