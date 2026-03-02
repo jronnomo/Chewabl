@@ -23,6 +23,9 @@ import * as Haptics from 'expo-haptics';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useApp } from '../context/AppContext';
 import RestaurantCountSlider from '../components/RestaurantCountSlider';
+import ScallopDivider from '../components/ScallopDivider';
+import BudgetSegmentedControl from '../components/BudgetSegmentedControl';
+import FriendAvatarRow from '../components/FriendAvatarRow';
 import { useAuth } from '../context/AuthContext';
 import { CUISINES, BUDGET_OPTIONS, restaurants } from '../mocks/restaurants';
 import { getRegisteredRestaurant } from '../lib/restaurantRegistry';
@@ -727,6 +730,8 @@ export default function PlanEventScreen() {
             </View>
           </View>
 
+          <ScallopDivider />
+
           {/* Time section */}
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
@@ -739,6 +744,8 @@ export default function PlanEventScreen() {
               selectedDate={selectedDate}
             />
           </View>
+
+          <ScallopDivider />
 
           {pinnedRestaurant ? (
             <View style={[styles.pinnedCard, { backgroundColor: Colors.card, borderColor: Colors.primary }]}>
@@ -793,23 +800,19 @@ export default function PlanEventScreen() {
                 </View>
               </View>
 
-              {/* Budget section (Feature 1) */}
+              <ScallopDivider />
+
+              {/* Budget section (Feature 3: BudgetSegmentedControl) */}
               <View style={styles.inputGroup}>
                 <View style={styles.labelRow}>
                   <DollarSign size={16} color={Colors.primary} />
                   <Text style={[styles.label, { color: Colors.text }]}>How fancy?</Text>
                 </View>
-                <View style={styles.budgetRow}>
-                  {BUDGET_OPTIONS.map(b => (
-                    <Pressable
-                      key={b}
-                      style={[styles.budgetChip, { backgroundColor: Colors.card, borderColor: Colors.border }, selectedBudget === b && [styles.chipActive, { backgroundColor: Colors.primary, borderColor: Colors.primary }]]}
-                      onPress={() => { Haptics.selectionAsync(); setSelectedBudget(b); }}
-                    >
-                      <Text style={[styles.budgetChipText, { color: Colors.text }, selectedBudget === b && styles.chipTextActive]}>{b}</Text>
-                    </Pressable>
-                  ))}
-                </View>
+                <BudgetSegmentedControl
+                  options={BUDGET_OPTIONS}
+                  selected={selectedBudget}
+                  onSelect={setSelectedBudget}
+                />
               </View>
 
               {/* Feature 4: Extra Spice Collapsible Section */}
@@ -888,30 +891,23 @@ export default function PlanEventScreen() {
 
           {/* Friends section (Feature 1) */}
           {friends.length > 0 && (
-            <View style={styles.inputGroup}>
-              <View style={styles.labelRow}>
-                <UserCheck size={16} color={Colors.primary} />
-                <Text style={[styles.label, { color: Colors.text }]}>Who's coming?</Text>
+            <>
+              <ScallopDivider />
+              <View style={styles.inputGroup}>
+                <View style={styles.labelRow}>
+                  <UserCheck size={16} color={Colors.primary} />
+                  <Text style={[styles.label, { color: Colors.text }]}>Who's coming?</Text>
+                </View>
+                <FriendAvatarRow
+                  friends={friends}
+                  selectedIds={selectedFriendIds}
+                  onToggle={toggleFriend}
+                />
               </View>
-              <View style={styles.wrapRow}>
-                {friends.map(f => {
-                  const selected = selectedFriendIds.includes(f.id);
-                  return (
-                    <Pressable
-                      key={f.id}
-                      style={[styles.friendChip, { backgroundColor: Colors.card, borderColor: Colors.border }, selected && [styles.chipActive, { backgroundColor: Colors.primary, borderColor: Colors.primary }]]}
-                      onPress={() => toggleFriend(f.id)}
-                    >
-                      <Image source={f.avatarUri || DEFAULT_AVATAR_URI} style={styles.friendChipAvatar} contentFit="cover" />
-                      <Text style={[styles.friendChipText, { color: Colors.text }, selected && styles.chipTextActive]}>
-                        {f.name.split(' ')[0]}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            </View>
+            </>
           )}
+
+          <ScallopDivider />
 
           {/* RSVP Deadline section */}
           <View style={styles.section}>
