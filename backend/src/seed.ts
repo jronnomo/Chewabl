@@ -33,11 +33,11 @@ const SEED_EMAILS = [
 const SEED_PASSWORD = 'seed1234';
 
 const SEED_USERS = [
-  { name: 'Alice Chen',   email: 'alice@chewabl.dev', phone: '+14155550101' },
-  { name: 'Bob Nguyen',   email: 'bob@chewabl.dev',   phone: '+14155550102' },
-  { name: 'Carol Davis',  email: 'carol@chewabl.dev', phone: '+14155550103' },
-  { name: 'Dan Park',     email: 'dan@chewabl.dev',   phone: '+14155550104' },
-  { name: 'Eve Torres',   email: 'eve@chewabl.dev',   phone: '+14155550105' },
+  { name: 'Alice Chen',   email: 'alice@chewabl.dev', phone: '+14155550101', avatarUri: 'https://res.cloudinary.com/dxykko8em/image/upload/v1772418833/chewabl/seed-avatars/alice.png' },
+  { name: 'Bob Nguyen',   email: 'bob@chewabl.dev',   phone: '+14155550102', avatarUri: 'https://res.cloudinary.com/dxykko8em/image/upload/v1772418835/chewabl/seed-avatars/bob.png' },
+  { name: 'Carol Davis',  email: 'carol@chewabl.dev', phone: '+14155550103', avatarUri: 'https://res.cloudinary.com/dxykko8em/image/upload/v1772418836/chewabl/seed-avatars/carol.png' },
+  { name: 'Dan Park',     email: 'dan@chewabl.dev',   phone: '+14155550104', avatarUri: 'https://res.cloudinary.com/dxykko8em/image/upload/v1772418838/chewabl/seed-avatars/dan.png' },
+  { name: 'Eve Torres',   email: 'eve@chewabl.dev',   phone: '+14155550105', avatarUri: 'https://res.cloudinary.com/dxykko8em/image/upload/v1772418839/chewabl/seed-avatars/eve.png' },
 ];
 
 async function seed() {

@@ -137,6 +137,7 @@ async function seedReset() {
       phone: '+14155550101',
       passwordHash,
       inviteCode: nanoid(8).toUpperCase(),
+      avatarUri: 'https://res.cloudinary.com/dxykko8em/image/upload/v1772418833/chewabl/seed-avatars/alice.png',
       favorites: [],
       preferences: {
         name: 'Alice',
@@ -156,6 +157,7 @@ async function seedReset() {
       phone: '+14155550102',
       passwordHash,
       inviteCode: 'Chewabl',
+      avatarUri: 'https://res.cloudinary.com/dxykko8em/image/upload/v1772418921/chewabl/seed-avatars/jerry.png',
       favorites: [],
       preferences: {
         name: 'Jerry',
@@ -175,6 +177,7 @@ async function seedReset() {
       phone: '+15551234567',
       passwordHash,
       inviteCode: nanoid(8).toUpperCase(),
+      avatarUri: 'https://res.cloudinary.com/dxykko8em/image/upload/v1772418923/chewabl/seed-avatars/maya.png',
       favorites: [],
     },
     {
@@ -183,6 +186,7 @@ async function seedReset() {
       phone: '+15559876543',
       passwordHash,
       inviteCode: nanoid(8).toUpperCase(),
+      avatarUri: 'https://res.cloudinary.com/dxykko8em/image/upload/v1772418924/chewabl/seed-avatars/liam.png',
       favorites: [],
       preferences: {
         name: 'Liam',
@@ -203,6 +207,7 @@ async function seedReset() {
       phone: '+15555648583', // iOS Sim: Kate Bell (555) 564-8583
       passwordHash,
       inviteCode: nanoid(8).toUpperCase(),
+      avatarUri: 'https://res.cloudinary.com/dxykko8em/image/upload/v1772418925/chewabl/seed-avatars/sofia.png',
       favorites: [],
     },
     {
@@ -212,6 +217,7 @@ async function seedReset() {
       phone: '+18885555512', // iOS Sim: John Appleseed (888) 555-5512
       passwordHash,
       inviteCode: nanoid(8).toUpperCase(),
+      avatarUri: 'https://res.cloudinary.com/dxykko8em/image/upload/v1772418926/chewabl/seed-avatars/noah.png',
       favorites: [],
     },
     {
@@ -221,6 +227,7 @@ async function seedReset() {
       phone: '+15555228243', // iOS Sim: Anna Haro (555) 522-8243
       passwordHash,
       inviteCode: nanoid(8).toUpperCase(),
+      avatarUri: 'https://res.cloudinary.com/dxykko8em/image/upload/v1772418928/chewabl/seed-avatars/zara.png',
       favorites: [],
     },
     {
@@ -230,6 +237,7 @@ async function seedReset() {
       phone: '+14085555270', // iOS Sim: Daniel Higgins Jr. (408) 555-5270
       passwordHash,
       inviteCode: nanoid(8).toUpperCase(),
+      avatarUri: 'https://res.cloudinary.com/dxykko8em/image/upload/v1772418929/chewabl/seed-avatars/marcus.png',
       favorites: [],
     },
     {
@@ -239,6 +247,7 @@ async function seedReset() {
       phone: '+15550000000',
       passwordHash,
       inviteCode: nanoid(8).toUpperCase(),
+      avatarUri: 'https://res.cloudinary.com/dxykko8em/image/upload/v1772418930/chewabl/seed-avatars/olivia.png',
       favorites: [],
     },
   ]);
