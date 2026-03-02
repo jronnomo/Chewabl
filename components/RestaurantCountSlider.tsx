@@ -11,6 +11,7 @@ interface RestaurantCountSliderProps {
   onValueChange: (n: number) => void;
   min?: number;
   max?: number;
+  label?: string;
 }
 
 export default function RestaurantCountSlider({
@@ -18,11 +19,15 @@ export default function RestaurantCountSlider({
   onValueChange,
   min = 5,
   max = 20,
+  label,
 }: RestaurantCountSliderProps) {
   const Colors = useColors(); // component level, shadows for dark mode
 
   return (
     <View style={styles.container}>
+      {label ? (
+        <Text style={[styles.sectionLabel, { color: Colors.text }]}>{label}</Text>
+      ) : null}
       <View style={styles.row}>
         <Text style={[styles.label, { color: Colors.text }]}>Restaurants</Text>
         <View style={[styles.badge, { backgroundColor: Colors.primary }]}>
@@ -53,6 +58,11 @@ export default function RestaurantCountSlider({
 const styles = StyleSheet.create({
   container: {
     paddingVertical: 8,
+  },
+  sectionLabel: {
+    fontSize: 15,
+    fontWeight: '700',
+    marginBottom: 10,
   },
   row: {
     flexDirection: 'row',
