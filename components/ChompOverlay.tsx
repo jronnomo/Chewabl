@@ -9,37 +9,28 @@ import {
 } from 'react-native';
 import Svg, { Defs, Mask, Rect, Circle } from 'react-native-svg';
 import * as Haptics from 'expo-haptics';
-import { useThemeTransition } from '../context/ThemeTransitionContext';
+import { useThemeTransition, ChompConfig } from '../context/ThemeTransitionContext';
 import { ScallopCircle, generateScallops } from '../lib/scallopUtils';
 
-// ─── ANIMATION TIMING ───────────────────────────────────────────────────────
-// 4 discrete *chomp* bites with pauses between them
-const BITE_COUNT = 5;
-const BITE_DURATION = 200;    // ms per bite's grow animation
-const BITE_PAUSE = 120;       // ms pause between bites
-const COMMIT_DELAY = 150;     // ms before isDarkMode flips
-
-// [DA-FIX-5] Haptic thresholds: fire at the start of each bite
-const HAPTIC_THRESHOLDS = [0.01, 1.01, 2.01, 3.01, 4.01] as const;
-
 interface BiteSpec {
-  /** Bite center X (positioned off one screen edge) */
   cx: number;
-  /** Bite center Y */
   cy: number;
-  /** Maximum reach of the bite from center */
   targetRadius: number;
-  /** Scallop circles along the bite arc — define the organic irregular edge */
   scallops: ScallopCircle[];
 }
 
+const HAPTIC_STYLE_MAP: Record<string, Haptics.ImpactFeedbackStyle> = {
+  Light: Haptics.ImpactFeedbackStyle.Light,
+  Medium: Haptics.ImpactFeedbackStyle.Medium,
+  Heavy: Haptics.ImpactFeedbackStyle.Heavy,
+};
+
 export default function ChompOverlay() {
-  // [DA-FIX-4] Dimensions from hook — updates on rotation
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
 
-  // [DA-FIX-4] Bite specs with scalloped perimeters — recalculates on rotation
+  // All 5 bite specs — we slice based on activeConfig.biteCount at render time
   const biteSpecs = useMemo((): BiteSpec[] => {
-    const scallopBaseR = screenWidth * 0.1; // base scallop circle radius
+    const scallopBaseR = screenWidth * 0.1;
 
     return [
       // 1. Top-left bite (small — first tentative nibble)
@@ -81,33 +72,21 @@ export default function ChompOverlay() {
   }, [screenWidth, screenHeight]);
 
   // ── Component state ────────────────────────────────────────────────────────
-
-  // Whether overlay is rendered at all (null-return gate)
   const [visible, setVisible] = useState(false);
-
-  // The captured old-theme background color string (e.g. '#F2F0ED')
   const [overlayColor, setOverlayColor] = useState('#F2F0ED');
+  const activeConfigRef = useRef<ChompConfig | null>(null);
 
-  // Animated progress: 0 → BITE_COUNT. Each integer step = one bite fully grown.
-  // Driven by Animated.sequence, listened to via addListener → setProgress
   const progressAnim = useRef(new Animated.Value(0)).current;
-
-  // React state copy of progressAnim — needed to re-render the SVG
   const [progress, setProgress] = useState(0);
 
-  // Tracks which haptic thresholds have already fired this animation run
   const hapticFiredRef = useRef<Set<number>>(new Set());
-
-  // [DA-FIX-6] Resource refs for cleanup on unmount
   const commitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const listenerIdRef = useRef<string | null>(null);
 
-  // Context
   const { registerOverlayTrigger } = useThemeTransition();
 
   const trigger = useCallback(
-    async (fromBgColor: string, onCommit: () => void, onDone: () => void) => {
-      // [DA-FIX-3] Check reduced motion BEFORE showing overlay
+    async (config: ChompConfig, onCommit: () => void, onDone: () => void) => {
       const reducedMotion = await AccessibilityInfo.isReduceMotionEnabled();
       if (reducedMotion) {
         onCommit();
@@ -115,13 +94,15 @@ export default function ChompOverlay() {
         return;
       }
 
-      // 1. Show overlay with old theme color
-      setOverlayColor(fromBgColor);
+      // Store config for this animation run
+      activeConfigRef.current = config;
+
+      // 1. Show overlay with config color
+      setOverlayColor(config.overlayColor);
       setProgress(0);
       setVisible(true);
 
-      // 2. Commit the theme after COMMIT_DELAY so new theme renders underneath
-      // [DA-FIX-6] Store timer ID for cleanup
+      // 2. Commit after commitDelay so new content renders underneath
       commitTimerRef.current = setTimeout(() => {
         commitTimerRef.current = null;
 
@@ -133,69 +114,81 @@ export default function ChompOverlay() {
           progressAnim.setValue(0);
           hapticFiredRef.current.clear();
 
-          // 4. Attach listener to drive SVG re-renders + haptics
-          // [DA-FIX-6] Store listener ID for cleanup
+          // 4. Build haptic thresholds from config
+          const thresholds = Array.from(
+            { length: config.biteCount },
+            (_, i) => i + 0.01,
+          );
+
+          // 5. Attach listener to drive SVG re-renders + haptics
           const listenerId = progressAnim.addListener(({ value }) => {
             setProgress(value);
-            for (const threshold of HAPTIC_THRESHOLDS) {
-              if (value >= threshold && !hapticFiredRef.current.has(threshold)) {
-                hapticFiredRef.current.add(threshold);
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            for (let i = 0; i < thresholds.length; i++) {
+              const t = thresholds[i];
+              if (value >= t && !hapticFiredRef.current.has(t)) {
+                hapticFiredRef.current.add(t);
+                const seq = config.hapticSequence[i];
+                if (seq) {
+                  Haptics.impactAsync(HAPTIC_STYLE_MAP[seq.style]);
+                  if (seq.withSuccessNotification) {
+                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                  }
+                }
               }
             }
           });
           listenerIdRef.current = listenerId;
 
-          // 5. Build stepped animation: *chomp* pause ×5
-          // Total: 5×200 + 4×120 = 1480ms, plus 150ms commit delay = 1630ms
+          // 6. Build stepped animation: *chomp* pause x biteCount
           const steps: Animated.CompositeAnimation[] = [];
-          for (let i = 0; i < BITE_COUNT; i++) {
+          for (let i = 0; i < config.biteCount; i++) {
             steps.push(
               Animated.timing(progressAnim, {
-                toValue: i + 1 + (i === BITE_COUNT - 1 ? 0.01 : 0),
-                duration: BITE_DURATION,
+                toValue: i + 1 + (i === config.biteCount - 1 ? 0.01 : 0),
+                duration: config.biteDuration,
                 easing: Easing.out(Easing.cubic),
                 useNativeDriver: false,
               })
             );
-            if (i < BITE_COUNT - 1) {
-              steps.push(Animated.delay(BITE_PAUSE));
+            if (i < config.biteCount - 1) {
+              steps.push(Animated.delay(config.bitePause));
             }
           }
 
           animationStarted = true;
           Animated.sequence(steps).start(() => {
-            // 6. Animation complete — cleanup
             progressAnim.removeListener(listenerId);
             listenerIdRef.current = null;
             setVisible(false);
+            activeConfigRef.current = null;
             onDone();
           });
         } finally {
           if (!animationStarted) {
             setVisible(false);
+            activeConfigRef.current = null;
             onDone();
           }
         }
-      }, COMMIT_DELAY);
+      }, config.commitDelay);
     },
     [], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
-  // [DA-FIX-1] Ref that always points to the latest trigger function
+  // Ref that always points to the latest trigger function
   const triggerRef = useRef(trigger);
   useEffect(() => {
     triggerRef.current = trigger;
   });
 
-  // [DA-FIX-1] Register a STABLE WRAPPER once on mount
+  // Register a STABLE WRAPPER once on mount
   useEffect(() => {
     registerOverlayTrigger((...args: Parameters<typeof trigger>) => {
       triggerRef.current(...args);
     });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // [DA-FIX-6] Clean up timer and listener on component unmount
+  // Clean up timer and listener on component unmount
   useEffect(() => {
     return () => {
       if (commitTimerRef.current !== null) {
@@ -207,8 +200,11 @@ export default function ChompOverlay() {
     };
   }, [progressAnim]);
 
-  // Critical: return null when not animating → zero rendering cost at rest
   if (!visible) return null;
+
+  // Slice biteSpecs based on active config's biteCount
+  const activeBiteCount = activeConfigRef.current?.biteCount ?? 5;
+  const activeBites = biteSpecs.slice(0, activeBiteCount);
 
   return (
     <View
@@ -225,17 +221,14 @@ export default function ChompOverlay() {
               height={screenHeight}
               fill="white"
             />
-            {biteSpecs.map((spec, i) => {
-              // Each bite grows when progress passes its index
+            {activeBites.map((spec, i) => {
               const t = Math.max(0, Math.min(1, progress - i));
               if (t <= 0) return null;
 
               const mainR = t * spec.targetRadius;
-              // Fill circle: slightly smaller than scallop arc, fills the body behind the edge
               const fillR = mainR * 0.95;
 
               return [
-                // Interior fill — solid body of the bite
                 <Circle
                   key={`fill-${i}`}
                   cx={spec.cx}
@@ -243,8 +236,6 @@ export default function ChompOverlay() {
                   r={fillR}
                   fill="black"
                 />,
-                // Scallop circles along the arc — creates the organic cookie-bite edge
-                // Each scallop's center sits on the mainR arc, radius scales with t
                 ...spec.scallops.map((sc, j) => (
                   <Circle
                     key={`sc-${i}-${j}`}

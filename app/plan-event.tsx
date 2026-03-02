@@ -23,7 +23,6 @@ import * as Haptics from 'expo-haptics';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useApp } from '../context/AppContext';
 import RestaurantCountSlider from '../components/RestaurantCountSlider';
-import ScallopDivider from '../components/ScallopDivider';
 import BudgetSegmentedControl from '../components/BudgetSegmentedControl';
 import FriendAvatarRow from '../components/FriendAvatarRow';
 import { useAuth } from '../context/AuthContext';
@@ -35,6 +34,8 @@ import { createPlan, updatePlan } from '../services/plans';
 import StaticColors from '../constants/colors';
 import { DEFAULT_AVATAR_URI } from '../constants/images';
 import { useColors } from '../context/ThemeContext';
+import { useThemeTransition, buildPlanSuccessChompConfig } from '../context/ThemeTransitionContext';
+import PlanSuccessOverlay from '../components/PlanSuccessOverlay';
 import TimeGrid from '../components/TimeGrid';
 import CalendarSheet from '../components/CalendarSheet';
 import { MEAL_PERIODS, parseTimeToMinutes } from '../constants/mealPeriods';
@@ -106,7 +107,12 @@ export default function PlanEventScreen() {
   const [loading, setLoading] = useState(false);
   const [calendarVisible, setCalendarVisible] = useState(false);
   const [isExtraSpiceExpanded, setIsExtraSpiceExpanded] = useState(false);
+  const [successOverlayVisible, setSuccessOverlayVisible] = useState(false);
+  const [successVariant, setSuccessVariant] = useState<'voting' | 'pinned'>('voting');
+  const pendingPlanIdRef = useRef<string | null>(null);
   const isEditMode = !!existingPlan;
+
+  const { requestChomp } = useThemeTransition();
 
   // ── Feature 2: Form Progress ──
   const formProgress = useMemo(() => {
@@ -542,19 +548,15 @@ export default function PlanEventScreen() {
         resultPlanId = newPlan.id;
       }
 
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-
       if (isEditMode) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         queryClient.invalidateQueries({ queryKey: ['plans'] });
         router.back();
-      } else if (pinnedRestaurant) {
-        router.replace(`/group-session?planId=${resultPlanId}&autoStart=true` as never);
       } else {
-        Alert.alert(
-          'Plan Created!',
-          'Invites sent! Voting will open after your RSVP deadline.',
-          [{ text: 'OK', onPress: () => router.back() }]
-        );
+        // Show branded overlay — haptics come from chomp animation
+        pendingPlanIdRef.current = resultPlanId;
+        setSuccessVariant(pinnedRestaurant ? 'pinned' : 'voting');
+        setSuccessOverlayVisible(true);
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to create plan';
@@ -564,6 +566,20 @@ export default function PlanEventScreen() {
       setLoading(false);
     }
   }, [title, selectedDate, selectedTime, selectedCuisines, selectedBudget, selectedFriendIds, rsvpHoursBefore, restaurantCount, isAuthenticated, isEditMode, existingPlan, addPlan, router, allowCurveball, pinnedRestaurant, eventDateTime, triggerSparkles, queryClient]);
+
+  // ── Feast Finale: overlay → chomp → navigate ──
+  const handleFeastConfirm = useCallback(() => {
+    setSuccessOverlayVisible(false);
+    const planId = pendingPlanIdRef.current;
+
+    requestChomp(buildPlanSuccessChompConfig(Colors.primary), () => {
+      if (successVariant === 'pinned' && planId) {
+        router.replace(`/group-session?planId=${planId}&autoStart=true` as never);
+      } else {
+        router.back();
+      }
+    });
+  }, [Colors.primary, successVariant, requestChomp, router]);
 
   // ── Glow color interpolation (Feature 3) ──
   const glowOpacity = buttonGlowAnim.interpolate({
@@ -730,8 +746,6 @@ export default function PlanEventScreen() {
             </View>
           </View>
 
-          <ScallopDivider />
-
           {/* Time section */}
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
@@ -744,8 +758,6 @@ export default function PlanEventScreen() {
               selectedDate={selectedDate}
             />
           </View>
-
-          <ScallopDivider />
 
           {pinnedRestaurant ? (
             <View style={[styles.pinnedCard, { backgroundColor: Colors.card, borderColor: Colors.primary }]}>
@@ -799,8 +811,6 @@ export default function PlanEventScreen() {
                   })}
                 </View>
               </View>
-
-              <ScallopDivider />
 
               {/* Budget section (Feature 3: BudgetSegmentedControl) */}
               <View style={styles.inputGroup}>
@@ -892,7 +902,6 @@ export default function PlanEventScreen() {
           {/* Friends section (Feature 1) */}
           {friends.length > 0 && (
             <>
-              <ScallopDivider />
               <View style={styles.inputGroup}>
                 <View style={styles.labelRow}>
                   <UserCheck size={16} color={Colors.primary} />
@@ -906,8 +915,6 @@ export default function PlanEventScreen() {
               </View>
             </>
           )}
-
-          <ScallopDivider />
 
           {/* RSVP Deadline section */}
           <View style={styles.section}>
@@ -1036,6 +1043,12 @@ export default function PlanEventScreen() {
         onClose={() => setCalendarVisible(false)}
         onSelectDate={(date) => setSelectedDate(date)}
         selectedDate={selectedDate}
+      />
+
+      <PlanSuccessOverlay
+        visible={successOverlayVisible}
+        variant={successVariant}
+        onConfirm={handleFeastConfirm}
       />
     </KeyboardAvoidingView>
   );
