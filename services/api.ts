@@ -20,6 +20,11 @@ export class SessionExpiredError extends Error {
   }
 }
 
+/** Extended request options — adds custom flags to the standard RequestInit */
+interface RequestOptions extends RequestInit {
+  skipSessionExpiry?: boolean;
+}
+
 // Dedup flag to prevent concurrent 401s from clearing token multiple times
 let _handling401 = false;
 
@@ -48,12 +53,13 @@ export async function clearToken(): Promise<void> {
 
 async function request<T>(
   path: string,
-  options: RequestInit = {}
+  options: RequestOptions = {}
 ): Promise<T> {
+  const { skipSessionExpiry, ...fetchOptions } = options;
   const token = await getToken();
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    ...(options.headers as Record<string, string> || {}),
+    ...(fetchOptions.headers as Record<string, string> || {}),
   };
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
@@ -64,7 +70,7 @@ async function request<T>(
 
   try {
     const response = await fetch(`${BASE_URL}${path}`, {
-      ...options,
+      ...fetchOptions,
       headers,
       signal: controller.signal,
     }).catch((err: unknown) => {
@@ -78,6 +84,19 @@ async function request<T>(
     });
 
     if (response.status === 401) {
+      if (skipSessionExpiry) {
+        // Auth endpoint — parse body and throw plain Error so caller gets the message
+        const body = await response.text();
+        let message = 'Invalid credentials';
+        try {
+          const parsed = JSON.parse(body);
+          message = parsed.error || message;
+        } catch {
+          // body wasn't JSON
+        }
+        throw new Error(message);
+      }
+      // All other 401s: global session expiry flow
       if (!_handling401) {
         _handling401 = true;
         try {
@@ -110,8 +129,8 @@ async function request<T>(
 
 export const api = {
   get: <T>(path: string) => request<T>(path, { method: 'GET' }),
-  post: <T>(path: string, body: unknown) =>
-    request<T>(path, { method: 'POST', body: JSON.stringify(body) }),
+  post: <T>(path: string, body: unknown, opts?: Pick<RequestOptions, 'skipSessionExpiry'>) =>
+    request<T>(path, { method: 'POST', body: JSON.stringify(body), ...opts }),
   put: <T>(path: string, body: unknown) =>
     request<T>(path, { method: 'PUT', body: JSON.stringify(body) }),
   delete: <T>(path: string) => request<T>(path, { method: 'DELETE' }),

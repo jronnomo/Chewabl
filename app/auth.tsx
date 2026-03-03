@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,27 +10,259 @@ import {
   ScrollView,
   Alert,
   ActivityIndicator,
+  Animated,
+  LayoutAnimation,
+  UIManager,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Mail, Lock, User, Phone, ChevronRight, Eye, EyeOff } from 'lucide-react-native';
+import { Mail, Lock, User, Phone, ChevronRight, Eye, EyeOff, CheckCircle } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useAuth } from '../context/AuthContext';
 import { useApp } from '../context/AppContext';
 import StaticColors from '../constants/colors';
 import { useColors } from '../context/ThemeContext';
 
+// Enable LayoutAnimation on Android
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
 const Colors = StaticColors;
 
 type Tab = 'signin' | 'signup';
+
+type FieldErrors = {
+  name?: string;
+  email?: string;
+  password?: string;
+  form?: string;
+};
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function isValidEmail(val: string): boolean {
+  return EMAIL_RE.test(val.trim());
+}
+
+function mapErrorToFields(message: string, tab: Tab): FieldErrors {
+  // Network / timeout — not field errors
+  if (message.includes('Cannot connect to server') || message.includes('Request timed out')) {
+    return { form: message };
+  }
+
+  // Rate limiting
+  if (message.includes('Too many')) {
+    return { form: 'Too many attempts. Please wait a minute and try again.' };
+  }
+
+  // Server error
+  if (message === 'Server error') {
+    return { form: 'Something went wrong on our end. Please try again.' };
+  }
+
+  // Login errors
+  if (tab === 'signin') {
+    if (message === 'Invalid credentials') {
+      return {
+        password: "That email and password combo didn't work. Double-check and try again.",
+      };
+    }
+    if (message === 'Password must be at least 8 characters') {
+      return { password: 'Password must be at least 8 characters.' };
+    }
+  }
+
+  // Register errors
+  if (tab === 'signup') {
+    if (message === 'Email already registered') {
+      return { email: 'This email already has an account. Try signing in instead.' };
+    }
+    if (message === 'Invalid email format') {
+      return { email: 'Please enter a valid email address.' };
+    }
+    if (message === 'Password must be at least 8 characters') {
+      return { password: 'Password must be at least 8 characters.' };
+    }
+    if (message === 'name, email, and password are required') {
+      return { form: 'Please fill in all required fields.' };
+    }
+  }
+
+  // Fallback
+  return { form: message };
+}
+
+function InlineFieldError({ message }: { message?: string }) {
+  const Colors = useColors();
+  const opacity = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(-8)).current;
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    if (message) {
+      setVisible(true);
+      translateY.setValue(-8);
+      opacity.setValue(0);
+      Animated.parallel([
+        Animated.spring(translateY, {
+          toValue: 0,
+          useNativeDriver: true,
+          damping: 18,
+          stiffness: 200,
+        }),
+        Animated.timing(opacity, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    } else if (visible) {
+      Animated.timing(opacity, {
+        toValue: 0,
+        duration: 150,
+        useNativeDriver: true,
+      }).start(() => {
+        setVisible(false);
+      });
+    }
+  }, [message]);
+
+  if (!visible && !message) return null;
+
+  return (
+    <Animated.View style={{ opacity, transform: [{ translateY }] }}>
+      <Text
+        style={{
+          fontSize: 13,
+          fontWeight: '500',
+          color: Colors.error,
+          paddingLeft: 14,
+          marginTop: 4,
+        }}
+      >
+        {message ?? ''}
+      </Text>
+    </Animated.View>
+  );
+}
+
+function ChecklistItem({ label, met }: { label: string; met: boolean }) {
+  const Colors = useColors();
+  const scale = useRef(new Animated.Value(1)).current;
+  const prevMet = useRef(false);
+
+  useEffect(() => {
+    if (met && !prevMet.current) {
+      Animated.sequence([
+        Animated.timing(scale, { toValue: 1.2, duration: 80, useNativeDriver: true }),
+        Animated.spring(scale, { toValue: 1, useNativeDriver: true, damping: 10, stiffness: 200 }),
+      ]).start();
+    }
+    prevMet.current = met;
+  }, [met]);
+
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 3 }}>
+      <Animated.View style={{ transform: [{ scale }] }}>
+        <CheckCircle
+          size={14}
+          color={met ? Colors.success : Colors.textTertiary}
+        />
+      </Animated.View>
+      <Text
+        style={{
+          fontSize: 12,
+          color: met ? Colors.success : Colors.textTertiary,
+          marginLeft: 6,
+        }}
+      >
+        {label}
+      </Text>
+    </View>
+  );
+}
+
+function ReadyBadge() {
+  const Colors = useColors();
+  const scale = useRef(new Animated.Value(0.8)).current;
+
+  useEffect(() => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    Animated.spring(scale, {
+      toValue: 1,
+      useNativeDriver: true,
+      damping: 12,
+      stiffness: 200,
+    }).start();
+  }, []);
+
+  return (
+    <Animated.View
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 4,
+        transform: [{ scale }],
+      }}
+    >
+      <CheckCircle size={14} color={Colors.success} />
+      <Text
+        style={{
+          fontSize: 12,
+          fontWeight: '600',
+          color: Colors.success,
+          marginLeft: 6,
+        }}
+      >
+        Ready!
+      </Text>
+    </Animated.View>
+  );
+}
+
+function PasswordChecklist({ password }: { password: string }) {
+  const Colors = useColors();
+  const prevMet = useRef<Record<string, boolean>>({});
+  const lengthMet = password.length >= 8;
+
+  useEffect(() => {
+    if (lengthMet && !prevMet.current.length) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    prevMet.current.length = lengthMet;
+  }, [lengthMet]);
+
+  return (
+    <View
+      style={{
+        marginTop: 6,
+        paddingHorizontal: 14,
+        paddingVertical: 8,
+        borderRadius: 10,
+        backgroundColor: Colors.surfaceElevated,
+      }}
+    >
+      {lengthMet ? (
+        <ReadyBadge />
+      ) : (
+        <ChecklistItem
+          label={`8+ characters (${password.length}/8)`}
+          met={false}
+        />
+      )}
+    </View>
+  );
+}
 
 export default function AuthScreen() {
   const Colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { signIn, signUp } = useAuth();
-  const { setGuestMode, isOnboarded } = useApp();
+  const { setGuestMode } = useApp();
 
   const [tab, setTab] = useState<Tab>('signin');
   const [name, setName] = useState('');
@@ -40,21 +272,92 @@ export default function AuthScreen() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
+  // Inline field errors
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const [passwordTouched, setPasswordTouched] = useState(false);
+  const [emailValid, setEmailValid] = useState(false);
+  const [nameValid, setNameValid] = useState(false);
+
+  // Track which fields should show error border without error text
+  // (used for "Invalid credentials" where both fields are implicated)
+  const [errorBorderFields, setErrorBorderFields] = useState<Set<string>>(new Set());
+
   const emailRef = useRef<TextInput>(null);
   const passwordRef = useRef<TextInput>(null);
   const phoneRef = useRef<TextInput>(null);
 
+  const clearForm = useCallback((newTab: Tab) => {
+    setTab(newTab);
+    setName('');
+    setEmail('');
+    setPassword('');
+    setPhone('');
+    setShowPassword(false);
+    setFieldErrors({});
+    setPasswordTouched(false);
+    setEmailValid(false);
+    setNameValid(false);
+    setErrorBorderFields(new Set());
+  }, []);
+
+  const handleEmailChange = useCallback((val: string) => {
+    setEmail(val);
+    if (fieldErrors.email) {
+      setFieldErrors((prev) => ({ ...prev, email: undefined }));
+    }
+    if (errorBorderFields.has('email')) {
+      setErrorBorderFields(new Set());
+    }
+    setEmailValid(isValidEmail(val));
+  }, [fieldErrors.email, errorBorderFields]);
+
+  const handleNameChange = useCallback((val: string) => {
+    setName(val);
+    if (fieldErrors.name) {
+      setFieldErrors((prev) => ({ ...prev, name: undefined }));
+    }
+    setNameValid(val.trim().length >= 2);
+  }, [fieldErrors.name]);
+
+  const handlePasswordChange = useCallback((val: string) => {
+    setPassword(val);
+    if (fieldErrors.password) {
+      setFieldErrors((prev) => ({ ...prev, password: undefined }));
+    }
+    if (errorBorderFields.has('password')) {
+      setErrorBorderFields(new Set());
+    }
+    if (!passwordTouched && val.length > 0) {
+      setPasswordTouched(true);
+    }
+  }, [fieldErrors.password, passwordTouched, errorBorderFields]);
+
   const handleSubmit = useCallback(async () => {
-    if (!email.trim() || !password.trim()) {
-      Alert.alert('Missing fields', 'Email and password are required.');
-      return;
-    }
+    setFieldErrors({});
+    setErrorBorderFields(new Set());
+
+    // Client-side validation
+    const errors: FieldErrors = {};
+
     if (tab === 'signup' && !name.trim()) {
-      Alert.alert('Missing fields', 'Please enter your name.');
-      return;
+      errors.name = 'Please enter your full name.';
     }
-    if (password.length < 8) {
-      Alert.alert('Weak Password', 'Password must be at least 8 characters.');
+    if (!email.trim()) {
+      errors.email = 'Email address is required.';
+    } else if (!isValidEmail(email)) {
+      errors.email = 'Please enter a valid email address.';
+    }
+    if (!password.trim()) {
+      errors.password = 'Password is required.';
+    } else if (tab === 'signup' && password.length < 8) {
+      errors.password = 'Password must be at least 8 characters.';
+      setPasswordTouched(true);
+    }
+
+    if (Object.keys(errors).length > 0) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setFieldErrors(errors);
       return;
     }
 
@@ -75,22 +378,44 @@ export default function AuthScreen() {
       }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Something went wrong';
+
       if (message.includes('Cannot connect to server')) {
         Alert.alert(
           'Server Unavailable',
           'The server is not reachable right now. You can continue as a guest to explore the app — your preferences will be saved locally.',
           [
             { text: 'Try Again', style: 'cancel' },
-            { text: 'Continue as Guest', onPress: async () => { await setGuestMode(true); await AsyncStorage.setItem('chewabl_onboarded', 'true'); router.replace('/(tabs)' as never); } },
+            {
+              text: 'Continue as Guest',
+              onPress: async () => {
+                await setGuestMode(true);
+                await AsyncStorage.setItem('chewabl_onboarded', 'true');
+                router.replace('/(tabs)' as never);
+              },
+            },
           ]
         );
-      } else {
-        Alert.alert('Error', message);
+        return;
       }
+
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      const mapped = mapErrorToFields(message, tab);
+
+      // For "Invalid credentials" on login, mark email border red too
+      if (message === 'Invalid credentials') {
+        setErrorBorderFields(new Set(['email']));
+      }
+
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setFieldErrors(mapped);
     } finally {
       setLoading(false);
     }
-  }, [tab, name, email, password, phone, signIn, signUp, router]);
+  }, [tab, name, email, password, phone, signIn, signUp, router, setGuestMode]);
+
+  const hasEmailError = !!fieldErrors.email || errorBorderFields.has('email');
+  const hasPasswordError = !!fieldErrors.password || errorBorderFields.has('password');
+  const hasNameError = !!fieldErrors.name;
 
   return (
     <KeyboardAvoidingView
@@ -114,7 +439,7 @@ export default function AuthScreen() {
           <View style={[styles.tabRow, { backgroundColor: Colors.card }]}>
             <Pressable
               style={[styles.tab, tab === 'signin' && styles.tabActive]}
-              onPress={() => { setTab('signin'); setName(''); setEmail(''); setPassword(''); setPhone(''); setShowPassword(false); }}
+              onPress={() => clearForm('signin')}
             >
               <Text style={[styles.tabText, { color: Colors.textSecondary }, tab === 'signin' && styles.tabTextActive]}>
                 Sign In
@@ -122,7 +447,7 @@ export default function AuthScreen() {
             </Pressable>
             <Pressable
               style={[styles.tab, tab === 'signup' && styles.tabActive]}
-              onPress={() => { setTab('signup'); setName(''); setEmail(''); setPassword(''); setPhone(''); setShowPassword(false); }}
+              onPress={() => clearForm('signup')}
             >
               <Text style={[styles.tabText, { color: Colors.textSecondary }, tab === 'signup' && styles.tabTextActive]}>
                 Create Account
@@ -131,78 +456,123 @@ export default function AuthScreen() {
           </View>
 
           <View style={styles.form}>
+            {/* Name field (signup only) */}
             {tab === 'signup' && (
-              <View style={[styles.inputWrap, { backgroundColor: Colors.card, borderColor: Colors.border }]}>
-                <User size={18} color={Colors.textSecondary} style={styles.inputIcon} />
+              <View style={styles.fieldGroup}>
+                <View
+                  style={[
+                    styles.inputWrap,
+                    { backgroundColor: Colors.card, borderColor: hasNameError ? Colors.error : Colors.border },
+                  ]}
+                >
+                  <User size={18} color={hasNameError ? Colors.error : Colors.textSecondary} style={styles.inputIcon} />
+                  <TextInput
+                    style={[styles.input, { color: Colors.text }]}
+                    placeholder="Full name"
+                    placeholderTextColor={Colors.textTertiary}
+                    value={name}
+                    onChangeText={handleNameChange}
+                    autoCapitalize="words"
+                    returnKeyType="next"
+                    onSubmitEditing={() => emailRef.current?.focus()}
+                  />
+                  {nameValid && !hasNameError && (
+                    <CheckCircle size={16} color={Colors.success} />
+                  )}
+                </View>
+                <InlineFieldError message={fieldErrors.name} />
+              </View>
+            )}
+
+            {/* Email field */}
+            <View style={styles.fieldGroup}>
+              <View
+                style={[
+                  styles.inputWrap,
+                  { backgroundColor: Colors.card, borderColor: hasEmailError ? Colors.error : Colors.border },
+                ]}
+              >
+                <Mail size={18} color={hasEmailError ? Colors.error : Colors.textSecondary} style={styles.inputIcon} />
                 <TextInput
+                  ref={emailRef}
                   style={[styles.input, { color: Colors.text }]}
-                  placeholder="Full name"
+                  placeholder="Email address"
                   placeholderTextColor={Colors.textTertiary}
-                  value={name}
-                  onChangeText={setName}
-                  autoCapitalize="words"
+                  value={email}
+                  onChangeText={handleEmailChange}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
                   returnKeyType="next"
-                  onSubmitEditing={() => emailRef.current?.focus()}
+                  onSubmitEditing={() => passwordRef.current?.focus()}
                 />
-              </View>
-            )}
-
-            <View style={[styles.inputWrap, { backgroundColor: Colors.card, borderColor: Colors.border }]}>
-              <Mail size={18} color={Colors.textSecondary} style={styles.inputIcon} />
-              <TextInput
-                ref={emailRef}
-                style={[styles.input, { color: Colors.text }]}
-                placeholder="Email address"
-                placeholderTextColor={Colors.textTertiary}
-                value={email}
-                onChangeText={setEmail}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                autoCorrect={false}
-                returnKeyType="next"
-                onSubmitEditing={() => passwordRef.current?.focus()}
-              />
-            </View>
-
-            <View style={[styles.inputWrap, { backgroundColor: Colors.card, borderColor: Colors.border }]}>
-              <Lock size={18} color={Colors.textSecondary} style={styles.inputIcon} />
-              <TextInput
-                ref={passwordRef}
-                style={[styles.input, { color: Colors.text }]}
-                placeholder="Password"
-                placeholderTextColor={Colors.textTertiary}
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry={!showPassword}
-                returnKeyType={tab === 'signup' ? 'next' : 'done'}
-                onSubmitEditing={tab === 'signin' ? handleSubmit : () => phoneRef.current?.focus()}
-              />
-              <Pressable onPress={() => setShowPassword(!showPassword)} hitSlop={8} accessibilityLabel="Toggle password visibility" accessibilityRole="button">
-                {showPassword ? (
-                  <EyeOff size={18} color={Colors.textSecondary} />
-                ) : (
-                  <Eye size={18} color={Colors.textSecondary} />
+                {emailValid && !hasEmailError && (
+                  <CheckCircle size={16} color={Colors.success} />
                 )}
-              </Pressable>
+              </View>
+              <InlineFieldError message={fieldErrors.email} />
             </View>
 
-            {tab === 'signup' && (
-              <View style={[styles.inputWrap, { backgroundColor: Colors.card, borderColor: Colors.border }]}>
-                <Phone size={18} color={Colors.textSecondary} style={styles.inputIcon} />
+            {/* Password field */}
+            <View style={styles.fieldGroup}>
+              <View
+                style={[
+                  styles.inputWrap,
+                  { backgroundColor: Colors.card, borderColor: hasPasswordError ? Colors.error : Colors.border },
+                ]}
+              >
+                <Lock size={18} color={hasPasswordError ? Colors.error : Colors.textSecondary} style={styles.inputIcon} />
                 <TextInput
-                  ref={phoneRef}
+                  ref={passwordRef}
                   style={[styles.input, { color: Colors.text }]}
-                  placeholder="Phone number (optional)"
+                  placeholder="Password"
                   placeholderTextColor={Colors.textTertiary}
-                  value={phone}
-                  onChangeText={setPhone}
-                  keyboardType="phone-pad"
-                  returnKeyType="done"
-                  onSubmitEditing={handleSubmit}
+                  value={password}
+                  onChangeText={handlePasswordChange}
+                  secureTextEntry={!showPassword}
+                  returnKeyType={tab === 'signup' ? 'next' : 'done'}
+                  onSubmitEditing={tab === 'signin' ? handleSubmit : () => phoneRef.current?.focus()}
                 />
+                <Pressable
+                  onPress={() => setShowPassword(!showPassword)}
+                  hitSlop={8}
+                  accessibilityLabel="Toggle password visibility"
+                  accessibilityRole="button"
+                >
+                  {showPassword ? (
+                    <EyeOff size={18} color={Colors.textSecondary} />
+                  ) : (
+                    <Eye size={18} color={Colors.textSecondary} />
+                  )}
+                </Pressable>
+              </View>
+              <InlineFieldError message={fieldErrors.password} />
+              {tab === 'signup' && passwordTouched && (
+                <PasswordChecklist password={password} />
+              )}
+            </View>
+
+            {/* Phone field (signup only) */}
+            {tab === 'signup' && (
+              <View style={styles.fieldGroup}>
+                <View style={[styles.inputWrap, { backgroundColor: Colors.card, borderColor: Colors.border }]}>
+                  <Phone size={18} color={Colors.textSecondary} style={styles.inputIcon} />
+                  <TextInput
+                    ref={phoneRef}
+                    style={[styles.input, { color: Colors.text }]}
+                    placeholder="Phone number (optional)"
+                    placeholderTextColor={Colors.textTertiary}
+                    value={phone}
+                    onChangeText={setPhone}
+                    keyboardType="phone-pad"
+                    returnKeyType="done"
+                    onSubmitEditing={handleSubmit}
+                  />
+                </View>
               </View>
             )}
 
+            {/* Submit button */}
             <Pressable
               style={[styles.submitBtn, loading && styles.submitBtnDisabled]}
               onPress={handleSubmit}
@@ -220,11 +590,30 @@ export default function AuthScreen() {
                 </>
               )}
             </Pressable>
+
+            {/* Form-level error */}
+            {fieldErrors.form && (
+              <Text
+                style={{
+                  fontSize: 13,
+                  fontWeight: '500',
+                  color: Colors.error,
+                  textAlign: 'center',
+                  marginTop: 8,
+                }}
+              >
+                {fieldErrors.form}
+              </Text>
+            )}
           </View>
 
           <Pressable
             style={styles.skipBtn}
-            onPress={async () => { await setGuestMode(true); await AsyncStorage.setItem('chewabl_onboarded', 'true'); router.replace('/(tabs)' as never); }}
+            onPress={async () => {
+              await setGuestMode(true);
+              await AsyncStorage.setItem('chewabl_onboarded', 'true');
+              router.replace('/(tabs)' as never);
+            }}
           >
             <Text style={[styles.skipBtnText, { color: Colors.textSecondary }]}>
               Continue without an account
@@ -301,8 +690,9 @@ const styles = StyleSheet.create({
   tabTextActive: {
     color: '#FFF',
   },
-  form: {
-    gap: 14,
+  form: {},
+  fieldGroup: {
+    marginBottom: 14,
   },
   inputWrap: {
     flexDirection: 'row',
