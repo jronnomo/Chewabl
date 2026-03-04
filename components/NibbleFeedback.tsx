@@ -44,43 +44,44 @@ export default function NibbleFeedback({
   const [nibblePos, setNibblePos] = useState<{ x: number; y: number } | null>(null);
 
   const handlePress = useCallback(
-    async (e: GestureResponderEvent) => {
-      const reduced = await AccessibilityInfo.isReduceMotionEnabled();
-      if (reduced) {
-        onPress(e);
-        return;
-      }
+    (e: GestureResponderEvent) => {
+      // Extract coords synchronously before React recycles the synthetic event
+      const locationX = e.nativeEvent?.locationX ?? 0;
+      const locationY = e.nativeEvent?.locationY ?? 0;
 
-      // Get press location relative to the button
-      const { locationX, locationY } = e.nativeEvent;
-      setNibblePos({ x: locationX - NIBBLE_SIZE / 2, y: locationY - NIBBLE_SIZE / 2 });
+      // Fire onPress immediately (before any async work)
+      onPress(e);
 
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      // Animate nibble (skip if reduced motion)
+      AccessibilityInfo.isReduceMotionEnabled().then(reduced => {
+        if (reduced) return;
 
-      // Animate in
-      scaleAnim.setValue(0);
-      opacityAnim.setValue(0.3);
+        setNibblePos({ x: locationX - NIBBLE_SIZE / 2, y: locationY - NIBBLE_SIZE / 2 });
 
-      Animated.parallel([
-        Animated.spring(scaleAnim, {
-          toValue: 1,
-          tension: 300,
-          friction: 8,
-          useNativeDriver: true,
-        }),
-        Animated.sequence([
-          Animated.delay(100),
-          Animated.timing(opacityAnim, {
-            toValue: 0,
-            duration: 100,
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+        scaleAnim.setValue(0);
+        opacityAnim.setValue(0.3);
+
+        Animated.parallel([
+          Animated.spring(scaleAnim, {
+            toValue: 1,
+            tension: 300,
+            friction: 8,
             useNativeDriver: true,
           }),
-        ]),
-      ]).start(() => {
-        setNibblePos(null);
+          Animated.sequence([
+            Animated.delay(100),
+            Animated.timing(opacityAnim, {
+              toValue: 0,
+              duration: 100,
+              useNativeDriver: true,
+            }),
+          ]),
+        ]).start(() => {
+          setNibblePos(null);
+        });
       });
-
-      onPress(e);
     },
     [onPress, scaleAnim, opacityAnim],
   );
