@@ -2,16 +2,12 @@ import React, { useRef, useCallback, useState } from 'react';
 import {
   Animated,
   Pressable,
-  View,
   StyleSheet,
   GestureResponderEvent,
-  AccessibilityInfo,
   ViewStyle,
   StyleProp,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
-import Svg, { Circle } from 'react-native-svg';
-import { useColors } from '../context/ThemeContext';
 import { seededRandom } from '../lib/scallopUtils';
 
 interface NibbleFeedbackProps {
@@ -23,13 +19,26 @@ interface NibbleFeedbackProps {
   accessibilityLabel?: string;
 }
 
-const NIBBLE_SIZE = 24;
-const NIBBLE_DURATION = 200;
+const CRUMB_COUNT = 12;
+const BURST_RADIUS = 28;
 
-/**
- * A Pressable wrapper that shows a small bite-mark SVG at the press location.
- * Use on primary CTA buttons for food-themed press feedback.
- */
+interface Crumb {
+  angle: number;
+  distance: number;
+  size: number;
+  delay: number;
+}
+
+// Pre-generate crumb directions so they're consistent per-render
+function generateCrumbs(): Crumb[] {
+  return Array.from({ length: CRUMB_COUNT }, (_, i) => ({
+    angle: (seededRandom(i * 13) * Math.PI * 2),
+    distance: BURST_RADIUS * (0.4 + seededRandom(i * 13 + 1) * 0.6),
+    size: 2.5 + seededRandom(i * 13 + 2) * 3,
+    delay: seededRandom(i * 13 + 3) * 60, // stagger 0-60ms
+  }));
+}
+
 export default function NibbleFeedback({
   onPress,
   disabled,
@@ -38,62 +47,43 @@ export default function NibbleFeedback({
   testID,
   accessibilityLabel,
 }: NibbleFeedbackProps) {
-  const Colors = useColors();
-  const scaleAnim = useRef(new Animated.Value(0)).current;
-  const opacityAnim = useRef(new Animated.Value(0)).current;
-  const [nibblePos, setNibblePos] = useState<{ x: number; y: number } | null>(null);
+  const crumbs = useRef(generateCrumbs()).current;
+
+  // Each crumb gets its own animated progress (0 → 1)
+  const crumbAnims = useRef(crumbs.map(() => new Animated.Value(0))).current;
+  const [pressPos, setPressPos] = useState<{ x: number; y: number } | null>(null);
 
   const handlePress = useCallback(
     (e: GestureResponderEvent) => {
-      // Extract coords synchronously before React recycles the synthetic event
+      if (disabled) return;
+
       const locationX = e.nativeEvent?.locationX ?? 0;
       const locationY = e.nativeEvent?.locationY ?? 0;
 
-      // Fire onPress immediately (before any async work)
-      onPress(e);
+      setPressPos({ x: locationX, y: locationY });
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
-      // Animate nibble (skip if reduced motion)
-      AccessibilityInfo.isReduceMotionEnabled().then(reduced => {
-        if (reduced) return;
+      // Reset all crumbs
+      crumbAnims.forEach(a => a.setValue(0));
 
-        setNibblePos({ x: locationX - NIBBLE_SIZE / 2, y: locationY - NIBBLE_SIZE / 2 });
-
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-
-        scaleAnim.setValue(0);
-        opacityAnim.setValue(0.3);
-
-        Animated.parallel([
-          Animated.spring(scaleAnim, {
-            toValue: 1,
-            tension: 300,
-            friction: 8,
-            useNativeDriver: true,
-          }),
+      // Stagger-launch each crumb
+      Animated.parallel(
+        crumbAnims.map((anim, i) =>
           Animated.sequence([
-            Animated.delay(100),
-            Animated.timing(opacityAnim, {
-              toValue: 0,
-              duration: 100,
+            Animated.delay(crumbs[i].delay),
+            Animated.timing(anim, {
+              toValue: 1,
+              duration: 350,
               useNativeDriver: true,
             }),
-          ]),
-        ]).start(() => {
-          setNibblePos(null);
-        });
-      });
-    },
-    [onPress, scaleAnim, opacityAnim],
-  );
+          ])
+        )
+      ).start(() => setPressPos(null));
 
-  // Generate small bite-mark circles using seeded random for consistency
-  const biteCircles = useRef(
-    Array.from({ length: 5 }, (_, i) => ({
-      cx: NIBBLE_SIZE / 2 + (seededRandom(i * 7) - 0.5) * NIBBLE_SIZE * 0.6,
-      cy: NIBBLE_SIZE / 2 + (seededRandom(i * 7 + 1) - 0.5) * NIBBLE_SIZE * 0.6,
-      r: 2 + seededRandom(i * 7 + 2) * 3,
-    })),
-  ).current;
+      setTimeout(() => onPress(e), 100);
+    },
+    [onPress, disabled, crumbAnims, crumbs],
+  );
 
   return (
     <Pressable
@@ -104,40 +94,53 @@ export default function NibbleFeedback({
       accessibilityLabel={accessibilityLabel}
     >
       {children}
-      {nibblePos && (
-        <Animated.View
-          style={[
-            styles.nibble,
-            {
-              left: nibblePos.x,
-              top: nibblePos.y,
-              transform: [{ scale: scaleAnim }],
-              opacity: opacityAnim,
-            },
-          ]}
-          pointerEvents="none"
-        >
-          <Svg width={NIBBLE_SIZE} height={NIBBLE_SIZE}>
-            {biteCircles.map((c, i) => (
-              <Circle
-                key={i}
-                cx={c.cx}
-                cy={c.cy}
-                r={c.r}
-                fill={Colors.primary}
-              />
-            ))}
-          </Svg>
-        </Animated.View>
-      )}
+      {pressPos && crumbs.map((crumb, i) => {
+        const dx = Math.cos(crumb.angle) * crumb.distance;
+        const dy = Math.sin(crumb.angle) * crumb.distance;
+
+        const translateX = crumbAnims[i].interpolate({
+          inputRange: [0, 1],
+          outputRange: [0, dx],
+        });
+        const translateY = crumbAnims[i].interpolate({
+          inputRange: [0, 0.5, 1],
+          outputRange: [0, dy * 0.7, dy + 8], // slight gravity at end
+        });
+        const scale = crumbAnims[i].interpolate({
+          inputRange: [0, 0.15, 0.5, 1],
+          outputRange: [0, 1.3, 1, 0.3], // pop in big, shrink as they fly
+        });
+        const opacity = crumbAnims[i].interpolate({
+          inputRange: [0, 0.1, 0.6, 1],
+          outputRange: [0, 1, 0.8, 0],
+        });
+
+        return (
+          <Animated.View
+            key={i}
+            pointerEvents="none"
+            style={[
+              styles.crumb,
+              {
+                left: pressPos.x - crumb.size / 2,
+                top: pressPos.y - crumb.size / 2,
+                width: crumb.size,
+                height: crumb.size,
+                borderRadius: crumb.size / 2,
+                transform: [{ translateX }, { translateY }, { scale }],
+                opacity,
+              },
+            ]}
+          />
+        );
+      })}
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  nibble: {
+  crumb: {
     position: 'absolute',
-    width: NIBBLE_SIZE,
-    height: NIBBLE_SIZE,
+    backgroundColor: 'rgba(255,255,255,0.9)',
   },
 });
