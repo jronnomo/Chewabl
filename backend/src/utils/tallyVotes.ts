@@ -10,6 +10,11 @@ export function tallyWinner(plan: IPlan): IPlanRestaurant | null {
     return null;
   }
 
+  // Exclude curveball restaurants from winner eligibility
+  const curveballSet = new Set(plan.curveballIds ?? []);
+  const eligible = plan.restaurantOptions.filter(r => !curveballSet.has(r.id));
+  if (eligible.length === 0) return null;
+
   const voteCounts: Record<string, number> = {};
   const votesObj: Record<string, string[]> =
     plan.votes instanceof Map
@@ -22,7 +27,7 @@ export function tallyWinner(plan: IPlan): IPlanRestaurant | null {
     }
   }
 
-  const sorted = plan.restaurantOptions
+  const sorted = eligible
     .map(r => ({ restaurant: r, count: voteCounts[r.id] || 0 }))
     .sort((a, b) => b.count - a.count || b.restaurant.rating - a.restaurant.rating);
 

@@ -12,13 +12,21 @@ export async function register(
   password: string,
   phone?: string
 ): Promise<AuthResponse> {
-  const res = await api.post<AuthResponse>('/auth/register', { name, email, password, phone });
+  const res = await api.post<AuthResponse>(
+    '/auth/register',
+    { name, email, password, phone },
+    { skipSessionExpiry: true }
+  );
   await setToken(res.token);
   return res;
 }
 
 export async function login(email: string, password: string): Promise<AuthResponse> {
-  const res = await api.post<AuthResponse>('/auth/login', { email, password });
+  const res = await api.post<AuthResponse>(
+    '/auth/login',
+    { email, password },
+    { skipSessionExpiry: true }
+  );
   await setToken(res.token);
   return res;
 }

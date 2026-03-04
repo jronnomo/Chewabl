@@ -97,7 +97,7 @@ router.get('/:id', requireAuth, async (req: AuthRequest, res: Response): Promise
 // Create plan
 router.post('/', requireAuth, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { title, date, time, cuisine, budget, inviteeIds, rsvpDeadline, options, type, status: reqStatus, restaurant, restaurantOptions, restaurantCount, allowCurveball } = req.body as {
+    const { title, date, time, cuisine, budget, inviteeIds, rsvpDeadline, options, type, status: reqStatus, restaurant, restaurantOptions, restaurantCount, allowCurveball, curveballIds } = req.body as {
       title: string;
       date?: string;
       time?: string;
@@ -112,6 +112,7 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response): Promise<v
       restaurantOptions?: Array<Record<string, unknown>>;
       restaurantCount?: number;
       allowCurveball?: boolean;
+      curveballIds?: string[];
     };
 
     // Input length validation
@@ -168,6 +169,7 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response): Promise<v
       ...(restaurant ? { restaurant } : {}),
       ...(restaurantCount !== undefined ? { restaurantCount } : {}),
       ...(allowCurveball !== undefined ? { allowCurveball } : {}),
+      ...(curveballIds ? { curveballIds } : {}),
       invites,
       rsvpDeadline: rsvpDeadline ? new Date(rsvpDeadline) : undefined,
       options: options || [],
@@ -330,9 +332,13 @@ router.post('/:id/swipe', requireAuth, async (req: AuthRequest, res: Response): 
       res.status(400).json({ error: 'You have already submitted swipes for this plan' }); return;
     }
 
+    // Filter curveball IDs from votes server-side (defense-in-depth)
+    const curveballSet = new Set(plan.curveballIds ?? []);
+    const cleanVotes = votes.filter(v => !curveballSet.has(v));
+
     // Validate vote IDs exist in restaurantOptions
     const validIds = new Set(plan.restaurantOptions.map(r => r.id));
-    const invalidVotes = votes.filter(v => !validIds.has(v));
+    const invalidVotes = cleanVotes.filter(v => !validIds.has(v));
     if (invalidVotes.length > 0) {
       res.status(400).json({ error: 'Some vote IDs are not in restaurantOptions' }); return;
     }
@@ -345,9 +351,9 @@ router.post('/:id/swipe', requireAuth, async (req: AuthRequest, res: Response): 
 
     // Store votes using Map set method
     if (plan.votes instanceof Map) {
-      plan.votes.set(userId, votes);
+      plan.votes.set(userId, cleanVotes);
     } else {
-      (plan.votes as unknown as Map<string, string[]>).set(userId, votes);
+      (plan.votes as unknown as Map<string, string[]>).set(userId, cleanVotes);
     }
     plan.swipesCompleted.push(userId);
 
@@ -423,7 +429,7 @@ router.put('/:id', requireAuth, async (req: AuthRequest, res: Response): Promise
     const isOwner = plan.ownerId.toString() === userId;
     const isParticipant = isOwner || plan.invites.some(i => i.userId.toString() === userId && i.status !== 'declined');
 
-    const { title, date, time, cuisine, budget, options, rsvpDeadline, restaurant, allowCurveball, restaurantOptions } = req.body;
+    const { title, date, time, cuisine, budget, options, rsvpDeadline, restaurant, allowCurveball, restaurantOptions, curveballIds } = req.body;
 
     // Allow any participant to populate restaurantOptions when currently empty
     const isOnlyPopulatingOptions = restaurantOptions !== undefined
@@ -455,6 +461,7 @@ router.put('/:id', requireAuth, async (req: AuthRequest, res: Response): Promise
     if (rsvpDeadline !== undefined) plan.rsvpDeadline = rsvpDeadline ? new Date(rsvpDeadline) : undefined;
     if (restaurant !== undefined) plan.restaurant = restaurant || undefined;
     if (allowCurveball !== undefined) plan.allowCurveball = allowCurveball;
+    if (curveballIds !== undefined) plan.curveballIds = curveballIds;
     if (restaurantOptions !== undefined) plan.restaurantOptions = restaurantOptions;
 
     await plan.save();
