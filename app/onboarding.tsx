@@ -17,6 +17,9 @@ import { ChevronRight, ChevronLeft, Utensils } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
+import { useThemeTransition, buildOnboardingCompleteChompConfig } from '../context/ThemeTransitionContext';
+import NibbleFeedback from '../components/NibbleFeedback';
+import CrumbTrail from '../components/CrumbTrail';
 import { CUISINES, BUDGET_OPTIONS, DIETARY_OPTIONS, ATMOSPHERE_OPTIONS, GROUP_SIZE_OPTIONS, DISTANCE_OPTIONS } from '../mocks/restaurants';
 import { UserPreferences } from '../types';
 import StaticColors from '../constants/colors';
@@ -32,6 +35,7 @@ export default function OnboardingScreen() {
   const router = useRouter();
   const { saveOnboarding } = useApp();
   const { user } = useAuth();
+  const { requestChomp } = useThemeTransition();
   const [step, setStep] = useState<number>(0);
   const [isSaving, setIsSaving] = useState(false);
   const [selectedCuisines, setSelectedCuisines] = useState<string[]>([]);
@@ -78,7 +82,9 @@ export default function OnboardingScreen() {
       setIsSaving(true);
       saveOnboarding.mutate(prefs, {
         onSuccess: () => {
-          router.replace('/' as never);
+          requestChomp(buildOnboardingCompleteChompConfig(Colors.primary), () => {
+            router.replace('/' as never);
+          });
         },
         onError: () => {
           setIsSaving(false);
@@ -86,7 +92,7 @@ export default function OnboardingScreen() {
         },
       });
     }
-  }, [step, user, selectedCuisines, selectedBudget, selectedDietary, selectedAtmosphere, selectedGroupSize, selectedDistance, saveOnboarding, router, animateTransition]);
+  }, [step, user, selectedCuisines, selectedBudget, selectedDietary, selectedAtmosphere, selectedGroupSize, selectedDistance, saveOnboarding, router, animateTransition, requestChomp, Colors.primary]);
 
   const handleBack = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -278,14 +284,14 @@ export default function OnboardingScreen() {
             </Pressable>
           )}
           <View style={styles.flex} />
-          <Pressable
+          <NibbleFeedback
             style={[styles.nextBtn, (!canProceed || isSaving) && styles.nextBtnDisabled]}
             onPress={handleNext}
             disabled={!canProceed || isSaving}
             testID="onboarding-next-btn"
           >
             {isSaving ? (
-              <ActivityIndicator color="#FFF" />
+              <CrumbTrail color="#FFF" />
             ) : (
               <>
                 <Text style={styles.nextBtnText}>
@@ -294,7 +300,7 @@ export default function OnboardingScreen() {
                 <ChevronRight size={18} color="#FFF" />
               </>
             )}
-          </Pressable>
+          </NibbleFeedback>
         </View>
       </View>
     </KeyboardAvoidingView>

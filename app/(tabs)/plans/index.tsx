@@ -21,6 +21,7 @@ import { rsvpPlan, cancelPlan, delegateOrganizer, leavePlan, derivePlanPhase } f
 import { DiningPlan } from '../../../types';
 import StaticColors from '../../../constants/colors';
 import { useColors } from '../../../context/ThemeContext';
+import { useThemeTransition, buildRsvpAcceptChompConfig } from '../../../context/ThemeTransitionContext';
 
 const Colors = StaticColors;
 
@@ -41,6 +42,7 @@ export default function PlansScreen() {
   const Colors = useColors();
   const { plans, localAvatarUri } = useApp();
   const { user, isAuthenticated } = useAuth();
+  const { requestChomp } = useThemeTransition();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<TabFilter>('upcoming');
   const { planId, from } = useLocalSearchParams<{ planId?: string; from?: string }>();
@@ -63,7 +65,13 @@ export default function PlansScreen() {
       rsvpPlan(planId, action),
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['plans'] });
-      Alert.alert('Done', variables.action === 'accept' ? 'You accepted the invite!' : 'Invite declined.');
+      if (variables.action === 'accept') {
+        requestChomp(buildRsvpAcceptChompConfig(Colors.primary), () => {
+          Alert.alert('Done', 'You accepted the invite!');
+        });
+      } else {
+        Alert.alert('Done', 'Invite declined.');
+      }
     },
     onError: (err: Error) => {
       Alert.alert('RSVP Failed', err.message || 'Something went wrong. Please try again.');

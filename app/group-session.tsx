@@ -42,6 +42,7 @@ import { Restaurant, GroupMember, SwipeResult, Friend, DiningPlan } from '@/type
 import StaticColors from '@/constants/colors';
 import { DEFAULT_AVATAR_URI } from '@/constants/images';
 import { useColors } from '@/context/ThemeContext';
+import { useThemeTransition, buildResultsRevealChompConfig } from '@/context/ThemeTransitionContext';
 
 const Colors = StaticColors;
 
@@ -80,6 +81,7 @@ export default function GroupSessionScreen() {
   const params = useLocalSearchParams<{ planId?: string; curveball?: string; autoStart?: string }>();
   const { preferences, plans, localAvatarUri } = useApp();
   const { user, isAuthenticated } = useAuth();
+  const { requestChomp } = useThemeTransition();
   const queryClient = useQueryClient();
   const [restaurantCount, setRestaurantCount] = useState<number>(10);
 
@@ -383,11 +385,12 @@ export default function GroupSessionScreen() {
         if (freshPlan.status === 'confirmed') {
           const res = buildResultsFromPlan(freshPlan);
           setResults(res);
-          if (members.length > 1) {
-            setShowConfetti(true);
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          }
-          setPhase('results');
+          requestChomp(buildResultsRevealChompConfig(Colors.primary), () => {
+            if (members.length > 1) {
+              setShowConfetti(true);
+            }
+            setPhase('results');
+          });
         }
       } catch {
         // Silently ignore polling errors
@@ -519,11 +522,12 @@ export default function GroupSessionScreen() {
         if (updatedPlan.status === 'confirmed') {
           const res = buildResultsFromPlan(updatedPlan);
           setResults(res);
-          if (members.length > 1) {
-            setShowConfetti(true);
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          }
-          setPhase('results');
+          requestChomp(buildResultsRevealChompConfig(Colors.primary), () => {
+            if (members.length > 1) {
+              setShowConfetti(true);
+            }
+            setPhase('results');
+          });
         } else {
           // Plan still voting — go to waiting phase
           setPhase('waiting');
@@ -546,9 +550,11 @@ export default function GroupSessionScreen() {
       resultList.sort((a, b) => b.yesCount - a.yesCount || b.restaurant.rating - a.restaurant.rating);
       setResults(resultList);
       if (params.planId) clearSwipeProgress(params.planId);
-      setPhase('results');
+      requestChomp(buildResultsRevealChompConfig(Colors.primary), () => {
+        setPhase('results');
+      });
     }
-  }, [myMemberId, isAuthenticated, activePlan, sessionRestaurants, curveballIds, buildResultsFromPlan, queryClient, params.planId]);
+  }, [myMemberId, isAuthenticated, activePlan, sessionRestaurants, curveballIds, buildResultsFromPlan, queryClient, params.planId, requestChomp, Colors.primary]);
 
   const handleSwipeRight = useCallback((restaurant: Restaurant) => {
     setIsAnimating(true);

@@ -13,6 +13,7 @@ import * as Haptics from 'expo-haptics';
 import { Restaurant } from '../types';
 import StaticColors from '../constants/colors';
 import { useColors } from '../context/ThemeContext';
+import SizzleShimmer from './SizzleShimmer';
 
 const Colors = StaticColors;
 
@@ -56,6 +57,7 @@ export default React.memo(function RestaurantCard({ restaurant, variant = 'verti
         onPressOut={handlePressOut}
         testID={`restaurant-card-compact-${restaurant.id}`}
       >
+        <SizzleShimmer>
         <Animated.View style={[styles.compactCard, { backgroundColor: Colors.card, transform: [{ scale: scaleAnim }] }]}>
           <Image source={{ uri: restaurant.imageUrl }} style={styles.compactImage} contentFit="cover" />
           <View style={styles.compactInfo}>
@@ -68,6 +70,7 @@ export default React.memo(function RestaurantCard({ restaurant, variant = 'verti
             </View>
           </View>
         </Animated.View>
+        </SizzleShimmer>
       </Pressable>
     );
   }
@@ -80,6 +83,7 @@ export default React.memo(function RestaurantCard({ restaurant, variant = 'verti
         onPressOut={handlePressOut}
         testID={`restaurant-card-horizontal-${restaurant.id}`}
       >
+        <SizzleShimmer>
         <Animated.View style={[styles.horizontalCard, { backgroundColor: Colors.card, transform: [{ scale: scaleAnim }] }]}>
           <Image source={{ uri: restaurant.imageUrl }} style={styles.horizontalImage} contentFit="cover" />
           {restaurant.lastCallDeal && (
@@ -106,6 +110,7 @@ export default React.memo(function RestaurantCard({ restaurant, variant = 'verti
             )}
           </View>
         </Animated.View>
+        </SizzleShimmer>
       </Pressable>
     );
   }
@@ -117,6 +122,7 @@ export default React.memo(function RestaurantCard({ restaurant, variant = 'verti
       onPressOut={handlePressOut}
       testID={`restaurant-card-${restaurant.id}`}
     >
+      <SizzleShimmer>
       <Animated.View style={[styles.verticalCard, { backgroundColor: Colors.card, transform: [{ scale: scaleAnim }] }]}>
         <Image source={{ uri: restaurant.imageUrl }} style={styles.verticalImage} contentFit="cover" />
         {restaurant.lastCallDeal && (
@@ -155,6 +161,7 @@ export default React.memo(function RestaurantCard({ restaurant, variant = 'verti
           )}
         </View>
       </Animated.View>
+      </SizzleShimmer>
     </Pressable>
   );
 });

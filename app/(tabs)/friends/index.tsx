@@ -41,6 +41,7 @@ import { Friend, FriendRequest } from '../../../types';
 import StaticColors from '../../../constants/colors';
 import { DEFAULT_AVATAR_URI } from '../../../constants/images';
 import { useColors } from '../../../context/ThemeContext';
+import { useThemeTransition, buildFriendAcceptChompConfig } from '../../../context/ThemeTransitionContext';
 
 const Colors = StaticColors;
 
@@ -59,6 +60,7 @@ export default function FriendsTabScreen() {
   const router = useRouter();
   const Colors = useColors();
   const { user } = useAuth();
+  const { requestChomp } = useThemeTransition();
   const queryClient = useQueryClient();
   const params = useLocalSearchParams<{ tab?: string; from?: string }>();
 
@@ -102,10 +104,14 @@ export default function FriendsTabScreen() {
   const respondMutation = useMutation({
     mutationFn: ({ id, action }: { id: string; action: 'accept' | 'decline' }) =>
       respondToRequest(id, action),
-    onSuccess: () => {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['friendRequests'] });
       queryClient.invalidateQueries({ queryKey: ['friends'] });
+      if (variables.action === 'accept') {
+        requestChomp(buildFriendAcceptChompConfig(Colors.primary), () => {});
+      } else {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
     },
     onError: (err: Error) => {
       Alert.alert('Error', err.message);

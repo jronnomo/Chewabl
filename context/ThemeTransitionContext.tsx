@@ -5,6 +5,9 @@ import createContextHook from '@nkzw/create-context-hook';
 // Describes all parameters for a single chomp animation run.
 // Different callers (theme toggle, plan success) supply different configs.
 
+export type BitePattern = 'fixed' | 'randomized' | 'spiral' | 'edges-in';
+export type ChompEasing = 'cubic-out' | 'bounce' | 'spring';
+
 export interface ChompConfig {
   biteCount: number;
   biteDuration: number;
@@ -15,6 +18,17 @@ export interface ChompConfig {
     style: 'Light' | 'Medium' | 'Heavy';
     withSuccessNotification?: boolean;
   }>;
+
+  // Phase 2 — all optional, backward compatible
+  bitePattern?: BitePattern;
+  positionSeed?: number;
+  easingCurve?: ChompEasing;
+  scallopJitter?: number;       // 0–1 intensity multiplier
+  enableCrumbs?: boolean;
+  crumbCount?: number;          // particles per bite (default 5)
+  crumbStyle?: 'crumbs' | 'confetti';
+  confettiOnFinalOnly?: boolean; // if crumbStyle='confetti', fire only on last bite (default true)
+  radiusScale?: number[];       // per-bite radius multipliers
 }
 
 // ─── Factory helpers ────────────────────────────────────────────────────────
@@ -46,6 +60,136 @@ export function buildPlanSuccessChompConfig(primaryColor: string): ChompConfig {
     hapticSequence: [
       { style: 'Light' },
       { style: 'Light' },
+      { style: 'Medium' },
+      { style: 'Heavy', withSuccessNotification: true },
+    ],
+  };
+}
+
+// ─── Auth lifecycle builders ────────────────────────────────────────────────
+
+export function buildSignInChompConfig(primaryColor: string): ChompConfig {
+  return {
+    biteCount: 3,
+    biteDuration: 150,
+    bitePause: 80,
+    commitDelay: 120,
+    overlayColor: primaryColor,
+    hapticSequence: [
+      { style: 'Light' },
+      { style: 'Medium' },
+      { style: 'Medium', withSuccessNotification: true },
+    ],
+  };
+}
+
+export function buildSignUpChompConfig(primaryColor: string): ChompConfig {
+  return {
+    biteCount: 4,
+    biteDuration: 140,
+    bitePause: 70,
+    commitDelay: 120,
+    overlayColor: primaryColor,
+    hapticSequence: [
+      { style: 'Light' },
+      { style: 'Light' },
+      { style: 'Medium' },
+      { style: 'Heavy', withSuccessNotification: true },
+    ],
+  };
+}
+
+export function buildGuestEntryChompConfig(primaryColor: string): ChompConfig {
+  return {
+    biteCount: 2,
+    biteDuration: 160,
+    bitePause: 90,
+    commitDelay: 120,
+    overlayColor: primaryColor,
+    hapticSequence: [
+      { style: 'Light' },
+      { style: 'Medium' },
+    ],
+  };
+}
+
+export function buildOnboardingCompleteChompConfig(primaryColor: string): ChompConfig {
+  return {
+    biteCount: 4,
+    biteDuration: 130,
+    bitePause: 60,
+    commitDelay: 120,
+    overlayColor: primaryColor,
+    hapticSequence: [
+      { style: 'Light' },
+      { style: 'Medium' },
+      { style: 'Medium' },
+      { style: 'Heavy', withSuccessNotification: true },
+    ],
+  };
+}
+
+export function buildSignOutChompConfig(primaryColor: string): ChompConfig {
+  return {
+    biteCount: 3,
+    biteDuration: 180,
+    bitePause: 100,
+    commitDelay: 150,
+    overlayColor: primaryColor,
+    hapticSequence: [
+      { style: 'Medium' },
+      { style: 'Medium' },
+      { style: 'Heavy' },
+    ],
+  };
+}
+
+// ─── App-wide expansion builders (Phase 3) ──────────────────────────────────
+
+export function buildFriendAcceptChompConfig(primaryColor: string): ChompConfig {
+  return {
+    biteCount: 2,
+    biteDuration: 150,
+    bitePause: 80,
+    commitDelay: 100,
+    overlayColor: primaryColor,
+    hapticSequence: [
+      { style: 'Light' },
+      { style: 'Medium', withSuccessNotification: true },
+    ],
+  };
+}
+
+export function buildRsvpAcceptChompConfig(primaryColor: string): ChompConfig {
+  return {
+    biteCount: 3,
+    biteDuration: 140,
+    bitePause: 70,
+    commitDelay: 100,
+    overlayColor: primaryColor,
+    hapticSequence: [
+      { style: 'Light' },
+      { style: 'Medium' },
+      { style: 'Medium', withSuccessNotification: true },
+    ],
+  };
+}
+
+export function buildResultsRevealChompConfig(primaryColor: string): ChompConfig {
+  return {
+    biteCount: 5,
+    biteDuration: 140,
+    bitePause: 60,
+    commitDelay: 150,
+    overlayColor: primaryColor,
+    bitePattern: 'spiral',
+    easingCurve: 'bounce',
+    enableCrumbs: true,
+    crumbCount: 8,
+    hapticSequence: [
+      { style: 'Light' },
+      { style: 'Light' },
+      { style: 'Medium' },
       { style: 'Medium' },
       { style: 'Heavy', withSuccessNotification: true },
     ],

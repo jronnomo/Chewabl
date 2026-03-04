@@ -32,7 +32,7 @@
  *   Sofia → Alice      (pending — Alice received)
  *   Alice → Noah       (pending — Alice sent)
  *
- * ─── Plans (19) ──────────────────────────────────────────────────
+ * ─── Plans (21) ──────────────────────────────────────────────────
  *   1. Taco Tuesday       │ voting    │ upcoming │ Alice owns │ Maya+Jerry partial, Liam partial, Alice not yet
  *   2. Weekend Brunch      │ voting    │ upcoming │ Alice owns │ Maya+Liam voted, Alice not yet
  *   3. Friday Night Out    │ voting    │ upcoming │ Alice owns │ Alice voted, Maya+Liam not yet
@@ -42,7 +42,7 @@
  *   7. Cancelled Meetup    │ cancelled │ past     │ Alice owns │ Maya declined, Liam accepted
  *   8. Group Pick: Thai Garden  │ group-swipe │ confirmed │ Alice owns │ no date/time, Maya+Liam
  *   9. Group Pick: Burger Barn  │ group-swipe │ confirmed │ Liam owns  │ no date/time, Alice+Maya
- *  10. Last Call Sushi     │ group-swipe │ voting  │ Alice owns │ Jerry last to swipe
+ *  10. Chomp: Results Reveal│ group-swipe │ voting  │ Alice owns │ Jerry last to swipe → triggers results reveal chomp
  *  11. Jerry's Pizza Night │ voting    │ upcoming │ Jerry owns │ 3 accepted → test Cancel + Delegate
  *  12. Jerry's Quick Lunch │ voting    │ upcoming │ Jerry owns │ 1 invitee → Cancel, Delegate BLOCKED
  *  13. Maya's Game Night   │ voting    │ upcoming │ Maya owns  │ Jerry+Liam accepted → test Leave (no auto-cancel)
@@ -52,6 +52,8 @@
  *  17. Vibe Test: Quiet    │ group-swipe │ voting │ Liam owns  │ atmosphere=Quiet, Japanese $$, live API deck
  *  18. Vibe Test: Moderate │ group-swipe │ voting │ Alice owns │ atmosphere=Moderate, Japanese $$, live API deck
  *  19. Vibe Test: Lively   │ group-swipe │ voting │ Jerry owns │ atmosphere=Lively, Japanese $$, live API deck
+ *  20. Chomp: RSVP Accept  │ voting    │ upcoming │ Alice owns │ Jerry has PENDING invite → triggers RSVP accept chomp
+ *  21. Chomp: RSVP Accept 2│ voting    │ upcoming │ Maya owns  │ Jerry has PENDING invite → second RSVP accept test
  */
 
 import mongoose from 'mongoose';
@@ -505,10 +507,11 @@ async function seedReset() {
       options: [],
       votes: new Map(),
     },
-    // 10. Last Call Sushi — group-swipe, voting, Alice owns, Jerry is last to swipe
+    // 10. Chomp: Results Reveal — group-swipe, voting, Alice owns, Jerry is last to swipe
+    //     Jerry finishes swiping → triggers results reveal chomp (spiral, 5 bites, bounce easing)
     {
       type: 'group-swipe',
-      title: 'Last Call Sushi',
+      title: 'Chomp: Results Reveal',
       ownerId: alice._id,
       status: 'voting',
       cuisine: 'Japanese',
@@ -692,11 +695,52 @@ async function seedReset() {
       restaurantOptions: [],
       votes: new Map(),
     },
+
+    // ── Plans 20-21: Chomp Animation test plans (Jerry RSVP testing) ─────
+
+    // 20. Chomp: RSVP Accept — Alice owns, Jerry has PENDING invite
+    //     Jerry accepts → triggers RSVP accept chomp (3 bites, moderate celebration)
+    {
+      title: 'Chomp: RSVP Accept',
+      date: fmt(daysFromNow(7)),
+      time: '7:30 PM',
+      ownerId: alice._id,
+      status: 'voting',
+      cuisine: 'Italian',
+      budget: '$$$',
+      invites: [
+        { userId: jerry._id, name: jerry.name, status: 'pending' },
+        { userId: maya._id, name: maya.name, status: 'accepted', respondedAt: daysAgo(1) },
+      ],
+      rsvpDeadline: daysFromNow(5),
+      options: RESTAURANT_OPTIONS,
+      restaurantOptions: RESTAURANT_OPTION_OBJECTS,
+      votes: new Map(),
+    },
+    // 21. Chomp: RSVP Accept 2 — Maya owns, Jerry has PENDING invite
+    //     Second RSVP test so Jerry can test it again without re-seeding
+    {
+      title: 'Chomp: RSVP Accept 2',
+      date: fmt(daysFromNow(9)),
+      time: '6:00 PM',
+      ownerId: maya._id,
+      status: 'voting',
+      cuisine: 'Mexican',
+      budget: '$$',
+      invites: [
+        { userId: jerry._id, name: jerry.name, status: 'pending' },
+        { userId: liam._id, name: liam.name, status: 'accepted', respondedAt: daysAgo(1) },
+      ],
+      rsvpDeadline: daysFromNow(7),
+      options: RESTAURANT_OPTIONS,
+      restaurantOptions: RESTAURANT_OPTION_OBJECTS,
+      votes: new Map(),
+    },
   ]);
 
-  const [planTaco, planBrunch, planFriday, planTeamLunch, planSushi, planBirthday, planCancelled, planThaiGroup, planBurgerGroup, _planLastCall, planPizzaNight, planQuickLunch, planGameNight, planCoffeeRun, planRamenGroup, planCurveballTest] = seededPlans;
+  const [planTaco, planBrunch, planFriday, planTeamLunch, planSushi, planBirthday, planCancelled, planThaiGroup, planBurgerGroup, _planResultsReveal, planPizzaNight, planQuickLunch, planGameNight, planCoffeeRun, planRamenGroup, planCurveballTest, _planVibeQuiet, _planVibeMod, _planVibeLively, planChompRsvp, planChompRsvp2] = seededPlans;
 
-  console.log('Created 19 plans:');
+  console.log('Created 21 plans:');
   console.log('  UPCOMING (voting):');
   console.log('    1. Taco Tuesday       — Maya+Jerry partial, Liam partial, Alice not yet');
   console.log('    2. Weekend Brunch     — Maya+Liam voted, Alice not yet');
@@ -710,8 +754,11 @@ async function seedReset() {
   console.log('  GROUP SWIPE (confirmed, no date/time):');
   console.log('    8. Group Pick: Thai Garden — group swipe, Alice owns, Maya+Liam');
   console.log('    9. Group Pick: Burger Barn — group swipe, Liam owns, Alice+Maya');
-  console.log('  GROUP SWIPE (voting, Jerry last to swipe):');
-  console.log('   10. Last Call Sushi    — group swipe, Alice owns, Jerry hasn\'t swiped');
+  console.log('  CHOMP ANIMATION TESTS (Jerry-focused):');
+  console.log('   10. Chomp: Results Reveal — Jerry swipes last → results reveal chomp');
+  console.log('   20. Chomp: RSVP Accept    — Jerry has pending invite → RSVP accept chomp');
+  console.log('   21. Chomp: RSVP Accept 2  — Jerry has pending invite → second RSVP accept test');
+  console.log('       (Friend accept chomp: Marcus → Jerry pending friendship)');
   console.log('  PLAN MANAGEMENT (Jerry-focused):');
   console.log('   11. Jerry\'s Pizza Night  — Jerry owns, 3 accepted → test Cancel + Delegate');
   console.log('   12. Jerry\'s Quick Lunch  — Jerry owns, 1 invitee → test Cancel, Delegate BLOCKED');
@@ -981,6 +1028,26 @@ async function seedReset() {
       createdAt: hoursAgo(6),
     },
 
+    // ── Chomp: RSVP Accept plan notifications ──────────────────────────
+    {
+      userId: jerry._id,
+      type: 'plan_invite',
+      title: 'Dining Plan Invite',
+      body: 'Alice Chen invited you to "Chomp: RSVP Accept"',
+      data: { planId: planChompRsvp._id.toString() },
+      read: false,
+      createdAt: hoursAgo(3),
+    },
+    {
+      userId: jerry._id,
+      type: 'plan_invite',
+      title: 'Dining Plan Invite',
+      body: 'Maya Johnson invited you to "Chomp: RSVP Accept 2"',
+      data: { planId: planChompRsvp2._id.toString() },
+      read: false,
+      createdAt: hoursAgo(2),
+    },
+
     // ── Curveball Test plan notifications ──────────────────────────────
     {
       userId: jerry._id,
@@ -1002,9 +1069,9 @@ async function seedReset() {
     },
   ]);
 
-  console.log('Created 27 notifications:');
+  console.log('Created 29 notifications:');
   console.log('  Alice: 14 (7 unread, 7 read)');
-  console.log('  Jerry: 12 (9 unread, 3 read)');
+  console.log('  Jerry: 14 (11 unread, 3 read)');
   console.log('  Maya: 1 (1 unread)');
   console.log();
 
@@ -1029,8 +1096,14 @@ async function seedReset() {
   console.log('              Team Lunch (guest), Sushi Saturday (confirmed),');
   console.log('              Group Pick: Thai Garden (group-swipe),');
   console.log('              Group Pick: Burger Barn (group-swipe, Liam owns),');
-  console.log('              Last Call Sushi (group-swipe, Jerry last to swipe)');
+  console.log('              Chomp: Results Reveal (group-swipe, Jerry last to swipe)');
   console.log('    Past:     Birthday Dinner (completed), Cancelled Meetup');
+  console.log();
+  console.log('  Plans tab (Jerry) — Chomp Animation tests:');
+  console.log('    10. Chomp: Results Reveal — swipe to finish → results reveal chomp');
+  console.log('    20. Chomp: RSVP Accept    — accept invite → RSVP accept chomp');
+  console.log('    21. Chomp: RSVP Accept 2  — accept invite → second RSVP test');
+  console.log('        Friend accept chomp: accept Marcus Lee in Friends tab');
   console.log();
   console.log('  Plans tab (Jerry) — Plan Management test plans:');
   console.log('    11. Jerry\'s Pizza Night  — OWNER, 3 accepted → Cancel + Delegate');

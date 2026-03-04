@@ -8,6 +8,7 @@ import { derivePlanPhase } from '../services/plans';
 import StaticColors from '../constants/colors';
 import { DEFAULT_AVATAR_URI } from '../constants/images';
 import { useColors } from '../context/ThemeContext';
+import SizzleShimmer from './SizzleShimmer';
 
 const Colors = StaticColors;
 
@@ -166,6 +167,7 @@ export default React.memo(function PlanCard({ plan, currentUserId, currentUserAv
 
   return (
     <Pressable onPress={handlePress} onPressIn={handlePressIn} onPressOut={handlePressOut} testID={`plan-card-${plan.id}`}>
+      <SizzleShimmer>
       <Animated.View style={[styles.card, { transform: [{ scale: scaleAnim }], backgroundColor: Colors.card }]}>
         <View style={styles.header}>
           <View style={styles.titleRow}>
@@ -244,6 +246,7 @@ export default React.memo(function PlanCard({ plan, currentUserId, currentUserAv
 
         <PlanCardFooter plan={plan} currentUserId={currentUserId} currentUserAvatarUri={currentUserAvatarUri} />
       </Animated.View>
+      </SizzleShimmer>
     </Pressable>
   );
 });

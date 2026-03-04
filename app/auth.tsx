@@ -21,6 +21,9 @@ import { Mail, Lock, User, Phone, ChevronRight, Eye, EyeOff, CheckCircle } from 
 import * as Haptics from 'expo-haptics';
 import { useAuth } from '../context/AuthContext';
 import { useApp } from '../context/AppContext';
+import { useThemeTransition, buildSignInChompConfig, buildSignUpChompConfig, buildGuestEntryChompConfig } from '../context/ThemeTransitionContext';
+import NibbleFeedback from '../components/NibbleFeedback';
+import CrumbTrail from '../components/CrumbTrail';
 import StaticColors from '../constants/colors';
 import { useColors } from '../context/ThemeContext';
 
@@ -263,6 +266,7 @@ export default function AuthScreen() {
   const router = useRouter();
   const { signIn, signUp } = useAuth();
   const { setGuestMode } = useApp();
+  const { requestChomp } = useThemeTransition();
 
   const [tab, setTab] = useState<Tab>('signin');
   const [name, setName] = useState('');
@@ -368,13 +372,19 @@ export default function AuthScreen() {
         const returnedUser = await signIn(email.trim(), password);
         if (returnedUser.preferences) {
           await AsyncStorage.setItem('chewabl_onboarded', 'true');
-          router.replace('/(tabs)' as never);
+          requestChomp(buildSignInChompConfig(Colors.primary), () => {
+            router.replace('/(tabs)' as never);
+          });
         } else {
-          router.replace('/onboarding' as never);
+          requestChomp(buildSignInChompConfig(Colors.primary), () => {
+            router.replace('/onboarding' as never);
+          });
         }
       } else {
         await signUp(name.trim(), email.trim(), password, phone.trim() || undefined);
-        router.replace('/onboarding' as never);
+        requestChomp(buildSignUpChompConfig(Colors.primary), () => {
+          router.replace('/onboarding' as never);
+        });
       }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Something went wrong';
@@ -390,7 +400,9 @@ export default function AuthScreen() {
               onPress: async () => {
                 await setGuestMode(true);
                 await AsyncStorage.setItem('chewabl_onboarded', 'true');
-                router.replace('/(tabs)' as never);
+                requestChomp(buildGuestEntryChompConfig(Colors.primary), () => {
+                  router.replace('/(tabs)' as never);
+                });
               },
             },
           ]
@@ -411,7 +423,7 @@ export default function AuthScreen() {
     } finally {
       setLoading(false);
     }
-  }, [tab, name, email, password, phone, signIn, signUp, router, setGuestMode]);
+  }, [tab, name, email, password, phone, signIn, signUp, router, setGuestMode, requestChomp, Colors.primary]);
 
   const hasEmailError = !!fieldErrors.email || errorBorderFields.has('email');
   const hasPasswordError = !!fieldErrors.password || errorBorderFields.has('password');
@@ -573,14 +585,14 @@ export default function AuthScreen() {
             )}
 
             {/* Submit button */}
-            <Pressable
+            <NibbleFeedback
               style={[styles.submitBtn, loading && styles.submitBtnDisabled]}
               onPress={handleSubmit}
               disabled={loading}
               accessibilityLabel={tab === 'signin' ? 'Sign In Button' : 'Create Account Button'}
             >
               {loading ? (
-                <ActivityIndicator color="#FFF" />
+                <CrumbTrail color="#FFF" />
               ) : (
                 <>
                   <Text style={styles.submitBtnText}>
@@ -589,7 +601,7 @@ export default function AuthScreen() {
                   <ChevronRight size={18} color="#FFF" />
                 </>
               )}
-            </Pressable>
+            </NibbleFeedback>
 
             {/* Form-level error */}
             {fieldErrors.form && (
@@ -612,7 +624,9 @@ export default function AuthScreen() {
             onPress={async () => {
               await setGuestMode(true);
               await AsyncStorage.setItem('chewabl_onboarded', 'true');
-              router.replace('/(tabs)' as never);
+              requestChomp(buildGuestEntryChompConfig(Colors.primary), () => {
+                router.replace('/(tabs)' as never);
+              });
             }}
           >
             <Text style={[styles.skipBtnText, { color: Colors.textSecondary }]}>

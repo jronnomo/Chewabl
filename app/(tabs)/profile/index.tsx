@@ -50,7 +50,7 @@ import { requestNotificationPermissions, registerForPushNotifications } from '..
 import StaticColors from '../../../constants/colors';
 import { DEFAULT_AVATAR_URI } from '../../../constants/images';
 import { useColors } from '../../../context/ThemeContext';
-import { useThemeTransition } from '../../../context/ThemeTransitionContext';
+import { useThemeTransition, buildSignOutChompConfig } from '../../../context/ThemeTransitionContext';
 import { starPath, SPARKLES } from '../../../lib/sparkleUtils';
 import { generateScallops } from '../../../lib/scallopUtils';
 import { Restaurant } from '../../../types';
@@ -695,7 +695,7 @@ export default function ProfileScreen() {
     clearNewlyAddedFavorite,
   } = useApp();
   const { user, signOut, isAuthenticated, updateUser } = useAuth();
-  const { requestThemeToggle, isAnimating } = useThemeTransition();
+  const { requestThemeToggle, requestChomp, isAnimating } = useThemeTransition();
 
   const [avatarLoading, setAvatarLoading] = useState(false);
 
@@ -825,11 +825,12 @@ export default function ProfileScreen() {
   }, [preferences, updatePreferences]);
 
   const handleLogout = useCallback(async () => {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
     await setGuestMode(false);
     await signOut();
-    router.replace('/auth' as never);
-  }, [signOut, setGuestMode, router]);
+    requestChomp(buildSignOutChompConfig(Colors.primary), () => {
+      router.replace('/auth' as never);
+    });
+  }, [signOut, setGuestMode, router, requestChomp, Colors.primary]);
 
   const fullName = user?.name || preferences.name || 'Foodie';
   const displayName = fullName.split(' ')[0];

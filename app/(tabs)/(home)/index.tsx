@@ -21,6 +21,7 @@ import RestaurantCard from '../../../components/RestaurantCard';
 import { useUnreadCount } from '../../../hooks/useNotifications';
 import StaticColors from '../../../constants/colors';
 import { useColors } from '../../../context/ThemeContext';
+import CrumbTrail from '../../../components/CrumbTrail';
 
 const Colors = StaticColors;
 
@@ -74,7 +75,7 @@ export default function HomeScreen() {
   if (isLoading) {
     return (
       <View style={[styles.container, styles.centered, { backgroundColor: Colors.background }]}>
-        <ActivityIndicator size="large" color={Colors.primary} />
+        <CrumbTrail size="large" />
       </View>
     );
   }

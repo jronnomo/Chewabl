@@ -39,6 +39,7 @@ export function seededRange(seed: number, min: number, max: number): number {
  * @param arcStart  — start angle of the arc (radians)
  * @param arcEnd    — end angle of the arc (radians)
  * @param scallopBaseR — base radius for scallop circles (caller passes screenWidth * 0.1)
+ * @param jitter — 0–1 intensity multiplier for angular/radius variation (default 1.0)
  */
 export function generateScallops(
   biteIdx: number,
@@ -46,6 +47,7 @@ export function generateScallops(
   arcStart: number,
   arcEnd: number,
   scallopBaseR: number,
+  jitter: number = 1.0,
 ): ScallopCircle[] {
   // Spacing: 0.7 * diameter = 30% overlap for continuous scalloping
   const linearSpacing = scallopBaseR * 2 * 0.7;
@@ -60,11 +62,12 @@ export function generateScallops(
     const frac = count > 1 ? j / (count - 1) : 0.5;
     const baseAngle = arcStart + frac * arcRange;
     const seed = biteIdx * 1000 + j;
-    const radiusMult = seededRange(seed * 7 + 1, 0.85, 1.25);
-    const jitter = seededRange(seed * 7 + 2, -0.5, 0.5) * angularSpacing * 0.12;
+    const radiusRange = 0.2 * jitter; // 0.2 at full jitter (range 0.85–1.25), 0 at jitter=0
+    const radiusMult = 1.0 + seededRange(seed * 7 + 1, -radiusRange, radiusRange);
+    const angularJitter = seededRange(seed * 7 + 2, -0.5, 0.5) * angularSpacing * 0.12 * jitter;
 
     scallops.push({
-      angle: baseAngle + jitter,
+      angle: baseAngle + angularJitter,
       radius: scallopBaseR * radiusMult,
     });
   }
