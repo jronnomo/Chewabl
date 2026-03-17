@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Bell, CheckCheck } from 'lucide-react-native';
 import StaticColors from '../constants/colors';
 import { useColors } from '../context/ThemeContext';
@@ -27,6 +28,7 @@ export default function NotificationsScreen() {
   const Colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const queryClient = useQueryClient();
 
   const {
     data,
@@ -51,7 +53,8 @@ export default function NotificationsScreen() {
         markRead.mutate(notification.id);
       }
 
-      // Navigate based on type
+      // Navigate based on type — invalidate relevant caches first so
+      // the destination screen fetches fresh data instead of showing stale results.
       const notifData = notification.data;
       switch (notification.type) {
         case 'plan_invite':
@@ -64,6 +67,7 @@ export default function NotificationsScreen() {
         case 'organizer_changed':
         case 'participant_left':
         case 'plan_auto_cancelled':
+          queryClient.invalidateQueries({ queryKey: ['plans'] });
           if (notifData?.planId) {
             router.push(`/(tabs)/plans?planId=${notifData.planId}&from=notifications` as never);
           } else {
@@ -71,19 +75,22 @@ export default function NotificationsScreen() {
           }
           break;
         case 'group_swipe_invite':
+          queryClient.invalidateQueries({ queryKey: ['plans'] });
           router.push('/group-session' as never);
           break;
         case 'friend_request':
+          queryClient.invalidateQueries({ queryKey: ['friendRequests'] });
           router.push('/(tabs)/friends?tab=requests&from=notifications' as never);
           break;
         case 'friend_accepted':
+          queryClient.invalidateQueries({ queryKey: ['friends'] });
           router.push('/(tabs)/friends?from=notifications' as never);
           break;
         default:
           break;
       }
     },
-    [markRead, router],
+    [markRead, router, queryClient],
   );
 
   const handleDelete = useCallback(

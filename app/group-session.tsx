@@ -93,13 +93,29 @@ export default function GroupSessionScreen() {
     return null;
   });
 
-  // Sync activePlan when plans array loads asynchronously
+  // Fetch fresh plan from server to avoid stale cache (restaurantOptions may have
+  // been populated by another participant since the cache was last updated).
   useEffect(() => {
-    if (!activePlan && params.planId && plans.length > 0) {
+    if (!params.planId || !isAuthenticated) return;
+    getPlan(params.planId).then(fresh => {
+      setActivePlan(fresh);
+    }).catch(() => {
+      // Fall back to cached plan if server fetch fails
+      if (!activePlan && plans.length > 0) {
+        const found = plans.find(p => p.id === params.planId);
+        if (found) setActivePlan(found);
+      }
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.planId, isAuthenticated]);
+
+  // Sync activePlan from cache when not authenticated or planId not provided
+  useEffect(() => {
+    if (!activePlan && params.planId && plans.length > 0 && !isAuthenticated) {
       const found = plans.find(p => p.id === params.planId);
       if (found) setActivePlan(found);
     }
-  }, [activePlan, params.planId, plans]);
+  }, [activePlan, params.planId, plans, isAuthenticated]);
 
   // Wait for activePlan to load before fetching restaurants when navigating from a plan.
   // This prevents fetching with user preferences on the first render before plan data arrives.

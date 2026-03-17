@@ -21,7 +21,7 @@ import { Image } from 'expo-image';
 import { X, CalendarDays, Clock, UtensilsCrossed, DollarSign, Sparkles, UserCheck, Timer, Check, Flame, ChevronDown } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useApp } from '../context/AppContext';
+import { useApp, useNearbyRestaurants } from '../context/AppContext';
 import RestaurantCountSlider from '../components/RestaurantCountSlider';
 import BudgetSegmentedControl from '../components/BudgetSegmentedControl';
 import FriendAvatarRow from '../components/FriendAvatarRow';
@@ -121,6 +121,15 @@ export default function PlanEventScreen() {
   const isEditMode = !!existingPlan;
 
   const { requestChomp } = useThemeTransition();
+
+  // Pre-fetch restaurants with owner's location + selected filters so they're
+  // baked into the plan at creation time (all participants see the same deck).
+  const planCuisine = selectedCuisines.length > 0 ? selectedCuisines.join(', ') : undefined;
+  const { data: ownerRestaurants = [] } = useNearbyRestaurants(
+    restaurantCount,
+    planCuisine,
+    selectedBudget,
+  );
 
   // ── Feature 2: Form Progress ──
   const formProgress = useMemo(() => {
@@ -513,7 +522,7 @@ export default function PlanEventScreen() {
 
       const suggestedOptions = pinnedRestaurant
         ? [pinnedRestaurant]
-        : [];
+        : ownerRestaurants.slice(0, restaurantCount);
 
       const rsvpDeadline = eventDateTime
         ? new Date(eventDateTime.getTime() - rsvpHoursBefore * 3600000).toISOString()
@@ -597,7 +606,7 @@ export default function PlanEventScreen() {
       submittingRef.current = false;
       setLoading(false);
     }
-  }, [title, selectedDate, selectedTime, selectedCuisines, selectedBudget, selectedFriendIds, rsvpHoursBefore, restaurantCount, isAuthenticated, isEditMode, existingPlan, addPlan, router, allowCurveball, pinnedRestaurant, eventDateTime, triggerSparkles, queryClient]);
+  }, [title, selectedDate, selectedTime, selectedCuisines, selectedBudget, selectedFriendIds, rsvpHoursBefore, restaurantCount, isAuthenticated, isEditMode, existingPlan, addPlan, router, allowCurveball, pinnedRestaurant, eventDateTime, triggerSparkles, queryClient, ownerRestaurants]);
 
   // ── Feast Finale: overlay → chomp → navigate ──
   const handleFeastConfirm = useCallback(() => {
